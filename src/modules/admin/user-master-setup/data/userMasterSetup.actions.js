@@ -452,14 +452,13 @@ export async function loadUserMasterDetail(userId) {
   enriched = mergeRowWithLookupLabels(enriched, createLookupMaps(lookupData));
   const user = mapUserMasterDetail(enriched);
 
-  // Also load access rows
+  // Also load access rows (both active and inactive)
   const { data: accessData, error: accessErr } = await supabase
     .from("psb_m_userapproleaccess").select("*")
-    .eq("user_id", userId).eq("is_active", true)
+    .eq("user_id", userId)
     .order("app_id", { ascending: true }).order("role_id", { ascending: true });
   if (accessErr) throw new Error(accessErr.message || "Failed to fetch access rows.");
-  const accessRows = mapUserAccessRows(ensureArray(accessData), { applications: lookupData.applications, roles: lookupData.roles })
-    .filter((r) => r.is_active);
+  const accessRows = mapUserAccessRows(ensureArray(accessData), { applications: lookupData.applications, roles: lookupData.roles });
 
   return { user, accessRows };
 }

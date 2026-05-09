@@ -1094,8 +1094,13 @@ export default function TableZ({
                     <Form.Control
                       id={filterId}
                       type="text"
+                      inputMode={filter.inputMode || "text"}
                       value={String(filterValue || "")}
-                      onChange={(event) => handleFilterValueChange(filter.key, event.target.value)}
+                      onChange={(event) => {
+                        let val = event.target.value;
+                        if (filter.inputMode === "numeric") val = val.replace(/[^0-9.,$ x]/gi, "");
+                        handleFilterValueChange(filter.key, val);
+                      }}
                     />
                   </div>
                 );

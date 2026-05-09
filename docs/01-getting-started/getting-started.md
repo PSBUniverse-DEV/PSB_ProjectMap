@@ -1,6 +1,6 @@
 # Getting Started
 
-This is the complete setup guide for junior developers joining PSBUniverse. Follow every section in order. Run each command **one at a time**. Do not skip steps.
+This is the complete setup guide for developers joining PSBUniverse. Follow every section in order. Run each command **one at a time**. Do not skip steps.
 
 ---
 

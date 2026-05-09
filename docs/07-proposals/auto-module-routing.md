@@ -4,7 +4,7 @@
 
 ## Overview
 
-Route files in `src/app/` are auto-generated from module `index.js` definitions. Junior devs never touch `src/app/` — they only define routes in their module's `index.js` and the system generates everything else.
+Route files in `src/app/` are auto-generated from module `index.js` definitions. Developers never touch `src/app/` — they only define routes in their module's `index.js` and the system generates everything else.
 
 ---
 
@@ -48,7 +48,7 @@ export default function Page(props) {
 | `npm run gen:routes` | Manually regenerate all route files |
 | `npm run dev` | Auto-runs `gen:routes` via `predev` hook, then starts dev server |
 | `npm run build` | Auto-runs `gen:routes` via `prebuild` hook, then builds |
-
+For the full scripts reference, see [Getting Started — Part 7](../01-getting-started/getting-started-v2.md#part-7-scripts-reference).
 ---
 
 ## Why This Approach?
@@ -58,13 +58,13 @@ export default function Page(props) {
 The original system used a single `src/app/[...modulePath]/page.js` that dynamically imported modules at runtime via `loadModules()`. This had two problems:
 
 1. **Dev mode failure** — `import(/* webpackIgnore: true */ url)` does a native Node.js import that can't parse JSX. Works at Turbopack build time but fails at webpack/Turbopack dev runtime.
-2. **Junior dev friction** — when thin route files were added as a workaround, jr devs had to manually create files in `src/app/`, violating the "only touch your module folder" rule.
+2. **Dev friction** — when thin route files were added as a workaround, devs had to manually create files in `src/app/`, violating the "only touch your module folder" rule.
 
 ### Current: Auto-Generated Routes
 
 The generator solves both problems:
 - Route files use standard imports that work in all modes (dev, build, production).
-- Jr devs only define routes in `index.js` — the script handles `src/app/`.
+- Devs only define routes in `index.js` — the script handles `src/app/`.
 
 ### Key Design Decisions
 

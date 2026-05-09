@@ -1,5 +1,44 @@
 # Changelog
 
+## 2026-05-09 Microfrontends, Route Sync & Automation Scripts
+
+Added Vercel Microfrontends support, automated route sync across all layers, and scripts to register external modular apps.
+
+### Changes
+
+1. **Added `@vercel/microfrontends`** — `next.config.mjs` now uses `withMicrofrontends()` to enable multi-app routing via `microfrontends.json`.
+
+2. **Added `scripts/add-microfrontend.js`** — Registers a child app in `microfrontends.json`. Supports `--fallback` for custom URLs and `--modular <dir>` to generate the child repo's config files. Run with `npm run add-mfe -- <name>`.
+
+3. **Auto-generated rewrites** — `generate-routes.js` now produces `src/app/rewrites.json` from module definitions. `next.config.mjs` reads this file instead of hardcoded rewrites. No manual rewrite maintenance needed.
+
+4. **Layer 5 auto-sync** — Modules with a `microfrontend` field in their `index.js` get their paths synced to `microfrontends.json` automatically during build. If you rename a route, the microfrontend entry updates.
+
+5. **Layer 4 DB warnings** — Build output now prints a reminder to update `psb_s_appcard.route_path` when modules with `microfrontend` fields are detected.
+
+6. **Updated `create-module.js`** — New `--modular <dir>` flag scaffolds a module AND registers it as an external microfrontend app in one command. Sets the `microfrontend` field in the generated `index.js`.
+
+### New npm Scripts
+
+| Command | Purpose |
+|---------|----------|
+| `npm run add-mfe -- <name>` | Register a child app in `microfrontends.json` |
+| `npm run add-mfe -- <name> --modular <dir>` | Also generate child repo config files |
+| `npm run create-module -- <name> --modular <dir>` | Scaffold module + register microfrontend |
+
+### Impact
+
+- Hardcoded rewrites in `next.config.mjs` are replaced by auto-generated `rewrites.json`.
+- Adding a new `psbpages/` module no longer requires editing `next.config.mjs`.
+- Route path changes auto-propagate to Layers 2, 3, and 5. Only the DB (Layer 4) needs manual updates.
+- External modular apps can be set up with a single command.
+
+### Documentation
+
+- Updated [docs/02-architecture/module-system.md](02-architecture/module-system.md) — added `microfrontend` field to contract, `--modular` flag to scaffolding, filled in "Updating a Module Path" section, updated auto-route generation to cover rewrites and microfrontend sync.
+
+---
+
 ## 2026-05-02 Status Badge System & Design Tokens
 
 Unified all status indicators across the platform using a new `StatusBadge` component backed by CSS custom property tokens. Replaced all local status Badge implementations with a single shared component.
@@ -41,7 +80,7 @@ All active/inactive/pending/failed status indicators **must** use `StatusBadge`.
 
 ## 2026-04-29 Auto-Route Generation And Module Scaffolding
 
-Route files in `src/app/` are now auto-generated from module `index.js` definitions. A new scaffolding script lets junior devs create modules with one command.
+Route files in `src/app/` are now auto-generated from module `index.js` definitions. A new scaffolding script lets devs create modules with one command.
 
 ### Changes
 
@@ -53,7 +92,7 @@ Route files in `src/app/` are now auto-generated from module `index.js` definiti
 
 ### Impact
 
-- Junior devs never touch `src/app/` — they only define routes in their module's `index.js`.
+- Developers never touch `src/app/` — they only define routes in their module's `index.js`.
 - Running `npm run dev` or `npm run build` automatically regenerates routes.
 - Running `npm run create-module -- my-module` scaffolds a complete module with inline docs.
 - Stale routes are automatically cleaned up when modules are removed.
@@ -62,7 +101,7 @@ Route files in `src/app/` are now auto-generated from module `index.js` definiti
 
 - All docs updated to reference `npm run create-module` as the standard way to start a new module.
 - CRUD example rewritten from legacy 7-file structure to current 5-file pattern (actions, data, Page, View).
-- Junior dev quickstart and full guide updated to lead with the scaffolding command.
+- Developer quickstart and full guide updated to lead with the scaffolding command.
 
 ---
 
@@ -205,7 +244,7 @@ Updated:
 
 Behavior changes:
 1. Docs now reference `/examples` as the primary shared UI reference/playground route.
-2. Junior-dev guidance now reflects updated examples usage and supported table row-action type constraints.
+2. Developer guidance now reflects updated examples usage and supported table row-action type constraints.
 
 ## 2026-04-16 Core Refactor And Stability Update
 

@@ -1,6 +1,6 @@
 # Development Rules
 
-These are the non-negotiable rules for building anything inside PSBUniverse. Every developer — junior or senior — must follow these.
+These are the non-negotiable rules for building anything inside PSBUniverse. Every developer must follow these.
 
 Breaking these rules can break RBAC, module consistency, and platform stability.
 
@@ -315,14 +315,16 @@ Use migrations, not manual edits.
   * No direct pushes
 
 
-### Junior Developer Flow
+### Developer Flow
 
-1. Run `npm run create-module -- <module-name>` to scaffold the module.
-2. Update `index.js` with your module's `module_key`, name, icon, and routes.
-3. Register database records (app, groups, cards, card-role mappings).
-4. Build pages and components.
-5. Apply card access checks.
-6. Test with authorized and unauthorized users.
+1. Follow the [Getting Started Guide](../01-getting-started/getting-started-v2.md) (GitHub, dependencies, `.env.local`).
+2. Run `npm run create-module -- <module-name>` to scaffold the module.
+3. Update `index.js` with your module's `module_key`, name, icon, and routes.
+4. Register database records (app, groups, cards, card-role mappings).
+5. Build pages and components.
+6. Apply card access checks.
+7. Test with authorized and unauthorized users.
+8. If microfrontend: run `npm run add-mfe`, send file to senior, rebase after core push.
 
 ### Senior Developer Flow
 

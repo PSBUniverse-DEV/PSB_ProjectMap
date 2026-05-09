@@ -1,6 +1,8 @@
 # Your First Module — Quick Start
 
-This is a beginner-friendly walkthrough for creating your first module. If you've never worked on PSBUniverse before, start here.
+> **New here?** Start with the [Getting Started Guide](../01-getting-started/getting-started-v2.md) first — it covers GitHub setup, dependencies, environment config, and running the app. This page focuses only on building your first module.
+
+This is a beginner-friendly walkthrough for creating your first module.
 
 ---
 
@@ -199,6 +201,7 @@ That's it. No other files to touch.
 - [ ] Page entry files have **no** `"use client"` directive
 - [ ] View/component files **do** have `"use client"` at the top
 - [ ] Module shows up on the dashboard after login
+- [ ] If microfrontend: ran `npm run add-mfe`, sent file to senior, rebased after core push
 
 ---
 

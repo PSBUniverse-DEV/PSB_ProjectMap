@@ -6,7 +6,7 @@
  * Scans every module index.js under src/modules/, reads route definitions,
  * and auto-generates thin page.js wrappers inside src/app/.
  *
- * Junior devs NEVER touch src/app/ — this script does it for them.
+ * Developers NEVER touch src/app/ — this script does it for them.
  *
  * Usage:  node scripts/generate-routes.js
  * Also runs automatically via:  npm run dev  /  npm run build
@@ -19,6 +19,7 @@ import { pathToFileURL } from "node:url";
 const ROOT = path.resolve(process.cwd());
 const MODULES_DIR = path.join(ROOT, "src", "modules");
 const APP_DIR = path.join(ROOT, "src", "app");
+const MFE_PATH = path.join(ROOT, "microfrontends.json");
 
 const GENERATED_MARKER = "// @generated — do not edit. Run `npm run gen:routes` to regenerate.";
 
@@ -147,6 +148,124 @@ function cleanStaleRoutes(generatedPaths) {
 }
 
 // ---------------------------------------------------------------------------
+// 7. Generate rewrites.json for next.config.mjs
+//    Any psbpages/ module gets a clean URL rewrite:
+//      /dashboard      → /psbpages/dashboard
+//      /dashboard/:p*  → /psbpages/dashboard/:p*
+// ---------------------------------------------------------------------------
+
+function generateRewrites(moduleDefinitions) {
+  const rewrites = [];
+
+  for (const { definition } of moduleDefinitions) {
+    if (!definition?.routes || !Array.isArray(definition.routes)) continue;
+
+    for (const route of definition.routes) {
+      if (!route.path) continue;
+
+      // Only psbpages/ routes need rewrites (admin/ URLs are already clean)
+      const match = route.path.match(/^\/psbpages\/(.+)/);
+      if (!match) continue;
+
+      const cleanPath = `/${match[1]}`;
+
+      // Exact path
+      rewrites.push({ source: cleanPath, destination: route.path });
+
+      // Wildcard sub-paths (skip if path already has a deeper structure like /examples/data-table)
+      const segments = match[1].split("/").filter(Boolean);
+      if (segments.length === 1) {
+        rewrites.push({
+          source: `${cleanPath}/:path*`,
+          destination: `${route.path}/:path*`,
+        });
+      }
+    }
+  }
+
+  // Deduplicate by source
+  const seen = new Set();
+  return rewrites.filter((r) => {
+    if (seen.has(r.source)) return false;
+    seen.add(r.source);
+    return true;
+  });
+}
+
+// ---------------------------------------------------------------------------
+// 8. Sync microfrontends.json paths from module definitions (Layer 5)
+//    Modules with a `microfrontend` field link to a child app.
+//    If the module's route paths changed, update microfrontends.json.
+// ---------------------------------------------------------------------------
+
+function syncMicrofrontends(moduleDefinitions) {
+  if (!fs.existsSync(MFE_PATH)) return;
+
+  const mfe = JSON.parse(fs.readFileSync(MFE_PATH, "utf-8"));
+  if (!mfe.applications) return;
+
+  let changed = false;
+
+  for (const { definition } of moduleDefinitions) {
+    if (!definition?.microfrontend) continue;
+    if (!definition?.routes || !Array.isArray(definition.routes)) continue;
+
+    const appName = definition.microfrontend;
+    const appEntry = mfe.applications[appName];
+    if (!appEntry?.routing?.[0]) continue;
+
+    // Build the expected paths from the module's routes
+    const basePaths = definition.routes.map((r) => r.path).filter(Boolean);
+    // Get the root path (shortest/first) to derive the wildcard
+    const rootPath = basePaths.reduce((a, b) => (a.length <= b.length ? a : b));
+    const expectedPaths = [rootPath, `${rootPath}/:path*`];
+
+    const currentPaths = appEntry.routing[0].paths;
+
+    // Check if paths match
+    const pathsMatch =
+      currentPaths.length === expectedPaths.length &&
+      expectedPaths.every((p, i) => currentPaths[i] === p);
+
+    if (!pathsMatch) {
+      const oldPaths = currentPaths.join(", ");
+      appEntry.routing[0].paths = expectedPaths;
+      changed = true;
+      console.log(`  SYNC microfrontends.json: "${appName}"`);
+      console.log(`        was:  ${oldPaths}`);
+      console.log(`        now:  ${expectedPaths.join(", ")}`);
+    }
+  }
+
+  if (changed) {
+    fs.writeFileSync(MFE_PATH, JSON.stringify(mfe, null, 2) + "\n", "utf-8");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 9. Warn about DB routes that may be out of sync (Layer 4)
+//    Can't auto-fix the DB, but we can tell the dev what to check.
+// ---------------------------------------------------------------------------
+
+function warnDbSync(moduleDefinitions) {
+  const mfeModules = moduleDefinitions.filter(
+    ({ definition }) => definition?.microfrontend && definition?.routes?.length
+  );
+
+  if (mfeModules.length === 0) return;
+
+  console.log("  Layer 4 reminder: If you changed route paths, update psb_s_appcard.route_path in the DB:");
+  for (const { definition } of mfeModules) {
+    for (const route of definition.routes) {
+      if (route.path) {
+        console.log(`    - "${definition.name}" → route_path = '${route.path}'`);
+      }
+    }
+  }
+  console.log();
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -155,6 +274,7 @@ async function main() {
 
   const indexFiles = findModuleIndexFiles(MODULES_DIR);
   const generatedPaths = [];
+  const moduleDefinitions = [];
   let created = 0;
   let unchanged = 0;
 
@@ -166,6 +286,8 @@ async function main() {
       console.log(`  ERROR loading ${path.relative(ROOT, indexPath)}: ${err.message}`);
       continue;
     }
+
+    moduleDefinitions.push({ indexPath, definition });
 
     if (!definition?.routes || !Array.isArray(definition.routes)) continue;
 
@@ -193,6 +315,20 @@ async function main() {
   }
 
   cleanStaleRoutes(generatedPaths);
+
+  // Generate rewrites.json for next.config.mjs
+  const rewrites = generateRewrites(moduleDefinitions);
+  const rewritesPath = path.join(APP_DIR, "rewrites.json");
+  const rewritesContent = JSON.stringify(rewrites, null, 2) + "\n";
+  if (writeIfChanged(rewritesPath, rewritesContent)) {
+    console.log(`  WRITE ${path.relative(ROOT, rewritesPath)}`);
+  }
+
+  // Sync microfrontends.json paths from module definitions (Layer 5)
+  syncMicrofrontends(moduleDefinitions);
+
+  // Warn about DB routes that may need updating (Layer 4)
+  warnDbSync(moduleDefinitions);
 
   console.log(`\nDone. ${created} written, ${unchanged} unchanged.\n`);
 }

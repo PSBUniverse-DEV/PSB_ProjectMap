@@ -3,24 +3,23 @@
 /**
  * create-module.js
  *
- * Scaffolds a new module with the standard folder structure.
+ * Scaffolds a new module OR updates an existing one.
  *
  * Usage:
  *   npm run create-module -- metal-buildings
  *   npm run create-module -- admin/inventory-tracker
  *   npm run create-module -- psbpages/reports
  *
- * Generates:
- *   src/modules/<group?>/<module-name>/
- *     ├── index.js                          (module definition)
- *     ├── data/
- *     │   ├── <moduleName>.actions.js       ("use server" — DB queries)
- *     │   └── <moduleName>.data.js          (client helpers — forms, mappers)
- *     └── pages/
- *         ├── <ModuleName>Page.js           (server component — loads data)
- *         └── <ModuleName>View.jsx          ("use client" — UI, hooks, components)
+ * NEW module:
+ *   Creates all files under src/modules/<group?>/<module-name>/
+ *   Runs generate-routes.js to sync page wrappers + rewrites.
  *
- * Then auto-runs generate-routes.js to create the app/ page entry.
+ * EXISTING module:
+ *   Fills in missing files only (won't overwrite your work).
+ *   Runs generate-routes.js to sync page wrappers + rewrites.
+ *
+ * For microfrontend registration, use add-microfrontend.js separately:
+ *   npm run add-mfe -- metal-buildings
  */
 
 import fs from "node:fs";
@@ -34,7 +33,8 @@ const MODULES_DIR = path.join(ROOT, "src", "modules");
 // 1. Parse arguments
 // ---------------------------------------------------------------------------
 
-const rawInput = process.argv.slice(2).filter((a) => !a.startsWith("--"))[0];
+const allArgs = process.argv.slice(2);
+const rawInput = allArgs.filter((a) => !a.startsWith("--"))[0];
 
 if (!rawInput) {
   console.error(`
@@ -46,6 +46,9 @@ if (!rawInput) {
     npm run create-module -- metal-buildings           →  src/modules/metal-buildings/
     npm run create-module -- admin/inventory-tracker   →  src/modules/admin/inventory-tracker/
     npm run create-module -- psbpages/reports          →  src/modules/psbpages/reports/
+
+  For microfrontend registration, use add-mfe separately:
+    npm run add-mfe -- metal-buildings
   `);
   process.exit(1);
 }
@@ -83,15 +86,26 @@ const moduleDir = group
   ? path.join(MODULES_DIR, group, moduleSlug)
   : path.join(MODULES_DIR, moduleSlug);
 
+const isExisting = fs.existsSync(moduleDir);
+const appName = `psb-${moduleSlug}-app`;
+
+// Relative path from repo root for display
+const moduleDirRel = path.relative(ROOT, moduleDir).replace(/\\/g, "/");
+
 // ---------------------------------------------------------------------------
-// 3. Check for conflicts
+// 3. Compute paths for checklist
 // ---------------------------------------------------------------------------
 
-if (fs.existsSync(moduleDir)) {
-  console.error(`\n  ERROR: Module folder already exists at:`);
-  console.error(`         ${path.relative(ROOT, moduleDir)}\n`);
-  process.exit(1);
-}
+const filePaths = {
+  index:   `${moduleDirRel}/index.js`,
+  page:    `${moduleDirRel}/pages/${pascal}Page.js`,
+  view:    `${moduleDirRel}/pages/${pascal}View.jsx`,
+  actions: `${moduleDirRel}/data/${camel}.actions.js`,
+  data:    `${moduleDirRel}/data/${camel}.data.js`,
+  appPage: `src/app${routePath}/page.js`,
+  rewrites: `src/app/rewrites.json`,
+  mfeJson: `microfrontends.json`,
+};
 
 // ---------------------------------------------------------------------------
 // 4. File templates
@@ -109,30 +123,61 @@ const groupInfo = GROUP_DEFAULTS[group] || {
 
 // ── index.js ───────────────────────────────────────────────
 
+
 const indexContent = `\
 /**
  * Module Definition — ${moduleSlug}
+ * ═══════════════════════════════════════════════════════════
  *
- * Registers your module with the app. The route generator reads this
- * to auto-create page files under src/app/ when you run dev or build.
+ * This file registers your module with PSBUniverse Core.
+ * The route generator reads this to auto-create page files
+ * under src/app/ when you run \`npm run dev\` or \`npm run build\`.
  *
- * FIELDS:
- *   key         → Unique slug for this module (already set).
- *   module_key  → Must match an application key in Application Setup.
- *   name        → Display name shown in the sidebar.
- *   description → Short summary for tooltips.
- *   icon        → Font Awesome icon name. Browse: https://fontawesome.com/search?o=r&m=free
- *   group_name  → Sidebar section this appears under.
- *   group_desc  → Description for the sidebar section.
- *   order       → Sidebar position (lower = higher up).
- *   routes      → path = URL user visits, page = filename in pages/ (no extension).
+ * ───────────────────────────────────────────────────────────
+ * SETUP CHECKLIST — Verify these are done before your PR
+ * ───────────────────────────────────────────────────────────
+ *
+ * FILES (auto-created by create-module script):
+ *   ☐ ${filePaths.index}             ← You are here
+ *   ☐ ${filePaths.page}              ← Server component (loads data)
+ *   ☐ ${filePaths.view}             ← Client component (all UI)
+ *   ☐ ${filePaths.actions}  ← Server Actions (DB queries)
+ *   ☐ ${filePaths.data}     ← Client helpers (forms, constants)
+ *
+ * AUTO-GENERATED (do NOT edit — created on npm run dev/build):
+ *   ☐ ${filePaths.appPage}       ← Route wrapper
+ *   ☐ ${filePaths.rewrites}                     ← URL rewrites (if psbpages/)
+ *
+ * DATABASE SETUP (manual — ask senior dev if unsure):
+ *   ☐ psb_s_application  → Ensure your app exists (module_key must match below)
+ *   ☐ psb_s_appcard      → Add card with route_path = "${routePath}"
+ *   ☐ psb_m_appcardgroup → Add/use a group for your cards
+ *   ☐ psb_m_appcardroleaccess → Assign roles that can see this card
+ *   ☐ psb_s_role          → Ensure roles exist for your app
+ *   ☐ psb_m_userapproleaccess → Assign users to roles for testing
+ *
+ * HOW TO VERIFY EVERYTHING WORKS:
+ *   1. Run \`npm run dev\`
+ *   2. Open http://localhost:3000${routePath}
+ *   3. You should see "${displayName}" heading with "This page is ready."
+ *   4. If 404 → check that ${filePaths.appPage} exists (run npm run gen:routes)
+ *   5. If "No Access" → check your role mappings in the database
+ *   6. If module not on dashboard → check psb_s_appcard has this route_path
+ *
+ * UPDATING ROUTES:
+ *   If you change the path below, just run \`npm run dev\` or \`npm run build\`.
+ *   The old page wrapper is auto-deleted and a new one is created.
+ *   But you MUST also update psb_s_appcard.route_path in the database.
+ *
+ * DOCS: docs/02-architecture/module-system.md
+ * ═══════════════════════════════════════════════════════════
  */
 const ${camel}Module = {
   key: "${moduleSlug}",
   module_key: "psbuniverse",          // ← change to your app key from Application Setup
   name: "${displayName}",
   description: "TODO: Describe what this module does.",
-  icon: "box",                     // ← pick from https://fontawesome.com/search?o=r&m=free
+  icon: "box",                        // ← pick from https://fontawesome.com/search?o=r&m=free
   group_name: "${groupInfo.group_name}",
   group_desc: "${groupInfo.group_desc}",
   order: 200,                         // ← adjust to control sidebar position
@@ -253,7 +298,7 @@ const dataContent = `\
 `;
 
 // ---------------------------------------------------------------------------
-// 5. Write files
+// 5. Write files — skip existing (never overwrite dev work)
 // ---------------------------------------------------------------------------
 
 const files = [
@@ -264,16 +309,34 @@ const files = [
   { rel: `data/${camel}.data.js`, content: dataContent },
 ];
 
-console.log(`\nCreating module: ${displayName}`);
-console.log(`  Folder: ${path.relative(ROOT, moduleDir)}`);
+if (isExisting) {
+  console.log(`\nUpdating existing module: ${displayName}`);
+} else {
+  console.log(`\nCreating module: ${displayName}`);
+}
+console.log(`  Folder: ${moduleDirRel}`);
 console.log(`  Route:  ${routePath}\n`);
+
+let created = 0;
+let skipped = 0;
 
 for (const file of files) {
   const filePath = path.join(moduleDir, file.rel);
   const dir = path.dirname(filePath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(filePath, file.content, "utf-8");
-  console.log(`  CREATE  ${path.relative(ROOT, filePath)}`);
+
+  if (fs.existsSync(filePath)) {
+    console.log(`  SKIP (exists) ${path.relative(ROOT, filePath)}`);
+    skipped++;
+  } else {
+    fs.writeFileSync(filePath, file.content, "utf-8");
+    console.log(`  CREATE  ${path.relative(ROOT, filePath)}`);
+    created++;
+  }
+}
+
+if (isExisting && created === 0) {
+  console.log(`\n  All files already exist. No new files created.`);
 }
 
 // ---------------------------------------------------------------------------
@@ -283,10 +346,40 @@ for (const file of files) {
 console.log(`\nRunning route generator...\n`);
 execSync("node scripts/generate-routes.js", { cwd: ROOT, stdio: "inherit" });
 
-console.log(`\nDone! Your module is ready at:`);
-console.log(`  ${path.relative(ROOT, moduleDir)}/\n`);
-console.log(`Next steps:`);
-console.log(`  1. Open index.js — set module_key, icon, group_name, order`);
-console.log(`  2. Add server actions in data/${camel}.actions.js`);
-console.log(`  3. Build your UI in pages/${pascal}View.jsx`);
-console.log(`  4. Run \`npm run dev\` and visit http://localhost:3000${routePath}\n`);
+// ---------------------------------------------------------------------------
+// 7. Print summary with verification checklist
+// ---------------------------------------------------------------------------
+
+console.log(`\n${"═".repeat(60)}`);
+console.log(`  ${isExisting ? "UPDATE" : "SETUP"} COMPLETE: ${displayName}`);
+console.log(`${"═".repeat(60)}`);
+console.log();
+console.log(`  Module files:`);
+for (const file of files) {
+  const filePath = path.join(moduleDir, file.rel);
+  const exists = fs.existsSync(filePath);
+  console.log(`    ${exists ? "✅" : "❌"} ${moduleDirRel}/${file.rel}`);
+}
+
+console.log();
+console.log(`  Auto-generated (do NOT edit):`);
+const appPagePath = path.join(ROOT, "src", "app", ...routePath.split("/").filter(Boolean), "page.js");
+console.log(`    ${fs.existsSync(appPagePath) ? "✅" : "❌"} ${filePaths.appPage}`);
+console.log(`    ${fs.existsSync(path.join(ROOT, filePaths.rewrites)) ? "✅" : "❌"} ${filePaths.rewrites}`);
+
+console.log();
+console.log(`  Manual steps remaining:`);
+console.log(`    ☐ Open ${filePaths.index} — set module_key, icon, group_name, order`);
+console.log(`    ☐ DB: psb_s_application → ensure your app exists`);
+console.log(`    ☐ DB: psb_s_appcard → add card with route_path = "${routePath}"`);
+console.log(`    ☐ DB: psb_m_appcardroleaccess → assign roles`);
+console.log(`    ☐ Run \`npm run dev\` → visit http://localhost:3000${routePath}`);
+console.log(`    ☐ Verify: page loads with "${displayName}" heading`);
+console.log(`    ☐ Verify: unauthorized user sees "No Access"`);
+console.log();
+console.log(`  If this is a microfrontend, run separately:`);
+console.log(`    npm run add-mfe -- ${moduleSlug}`);
+
+console.log();
+console.log(`  Full guide: docs/02-architecture/module-system.md`);
+console.log(`${"═".repeat(60)}\n`);

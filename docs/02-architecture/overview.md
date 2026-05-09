@@ -2,6 +2,8 @@
 
 This is the primary reference for understanding how PSBUniverse Core works. Read this before modifying authentication, RBAC, module registration, or routing.
 
+> **New here?** Start with the [Getting Started Guide](../01-getting-started/getting-started-v2.md) — it covers setup, environment config, and building your first module. Come back here for the deep dive into how things work under the hood.
+
 ---
 
 ## What Is PSBUniverse Core?

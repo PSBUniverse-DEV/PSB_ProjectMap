@@ -6,7 +6,7 @@ Organized reference for the PSBUniverse Core platform. Start at the top and work
 
 ## 1. Getting Started
 
-- [Getting Started](01-getting-started/getting-started.md) — Install, configure, and run the project locally
+- [Getting Started](01-getting-started/getting-started-v2.md) — Install, configure, and run the project locally
 
 ## 2. Architecture
 
@@ -38,10 +38,12 @@ Organized reference for the PSBUniverse Core platform. Start at the top and work
 
 - [Auto Module Routing](07-proposals/auto-module-routing.md) — Implemented: auto-discovery replaces hardcoded pageImporters
 
-## 8. Junior Developer Guide
+## 8. Developer Guide
 
-- [Quick Start](08-junior-dev-guide/quickstart.md) — Build your first module (beginner-friendly walkthrough)
+- [Quick Start](08-junior-dev-guide/quickstart.md) — Build your first module (walkthrough)
 - [Full Guide](08-junior-dev-guide/full-guide.md) — Complete rulebook: permissions, RBAC, database, UI, PR checklist
+
+> Both guides reference the [Getting Started Guide](01-getting-started/getting-started-v2.md) for GitHub, environment, and dependency setup.
 
 ## Reference
 

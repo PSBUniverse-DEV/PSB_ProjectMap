@@ -2,6 +2,8 @@
 
 This guide covers everything about building modules: the required contract, folder structure, routing, auth integration, and the step-by-step build process.
 
+> **New here?** Start with the [Getting Started Guide](../01-getting-started/getting-started-v2.md) first — it covers GitHub setup, dependencies, environment config, running the app, and building your first module. This page is the detailed reference.
+
 ---
 
 ## What Is a Module?
@@ -84,6 +86,7 @@ export default myModule;
 | `group_desc` | No | Description for the group |
 | `order` | No | Sort order (lower = appears first) |
 | `public` | No | If `true`, skip `ModuleAccessGate` — page renders without RBAC check. Used for system pages (login, dashboard). |
+| `microfrontend` | No | Links to a child app name in `microfrontends.json`. Only for external modular apps. Enables auto-sync of route paths on build. |
 | `routes` | Yes | Array of route definitions (see below) |
 
 ### Route Definition
@@ -194,6 +197,9 @@ Routes are generated automatically by `scripts/generate-routes.js`. This script 
 4. Each generated file imports the page component directly from the module.
 5. Generated files are marked with `// @generated` — the script only overwrites files it owns.
 6. Stale generated routes (from deleted modules) are automatically cleaned up.
+7. Generates `src/app/rewrites.json` — clean URL rewrites for all `psbpages/` modules (e.g. `/dashboard` → `/psbpages/dashboard`). `next.config.mjs` reads this file automatically.
+8. Syncs `microfrontends.json` — if a module has a `microfrontend` field and its route paths changed, the script updates the paths in `microfrontends.json` to match.
+9. Prints a Layer 4 reminder — if modules with `microfrontend` fields are detected, it reminds you to check `psb_s_appcard.route_path` in the database.
 
 ### Example
 
@@ -223,6 +229,8 @@ export default function Page(props) {
 ### Key Rules
 
 - **Never manually create or edit `page.js` files in `src/app/admin/` or `src/app/psbpages/`** — they are auto-generated.
+- **Never manually edit `src/app/rewrites.json`** — it is regenerated on every build.
+- **Never hardcode rewrites in `next.config.mjs`** — rewrites come from `rewrites.json` automatically.
 - Generated files have a `// @generated` marker. The script will not overwrite files that lack this marker.
 - If you rename a route in your `index.js`, the old generated file is automatically removed.
 
@@ -296,11 +304,14 @@ SELECT * FROM psb_m_appcardroleaccess WHERE is_active = true;
 
 ## Scaffolding a New Module
 
-Use the built-in scaffolding command to create a new module with the correct folder structure:
+Use the built-in scaffolding command to create a new module — or run it on an existing module to fill in any missing files:
 
 ```bash
 npm run create-module -- <module-name>
 ```
+
+**New module:** Creates all 5 files, runs route generator, prints a verification checklist.
+**Existing module:** Skips files that already exist (never overwrites your work), runs route generator, prints the same checklist so you can verify everything is in place.
 
 The module name can include a group prefix with a slash:
 
@@ -313,7 +324,68 @@ npm run create-module -- admin/inventory-tracker
 
 # Creates src/modules/psbpages/reports/
 npm run create-module -- psbpages/reports
+
+# Run on an existing module to check/fill missing files
+npm run create-module -- admin/user-master-setup
 ```
+
+> *In simple terms:* You can run this command as many times as you want. It won't break anything. If the module exists, it just checks what's missing and fills in the gaps. If everything is there, it shows you a ✅ checklist.
+
+### Registering a Microfrontend (External Modular App)
+
+If your module lives in a **separate repo** (a microfrontend child app), here's how registration works.
+
+**Core's `microfrontends.json` is the single source of truth.** All repos in the microfrontend group must have an identical copy.
+
+#### Step 1: Developer runs `add-mfe` on their repo
+
+Since each app repo is a copy of core, it already has the script:
+
+```bash
+# Run on your own repo
+npm run add-mfe -- gutter
+
+# Custom fallback URL
+npm run add-mfe -- gutter --fallback my-gutter-app.vercel.app
+```
+
+This updates `microfrontends.json` in your repo with your app's routing entry.
+
+#### Step 2: Developer sends the file to the senior dev
+
+Send the updated `microfrontends.json` to the senior dev (Slack, Teams, etc.).
+
+#### Step 3: Senior dev merges into core
+
+The senior dev copies the routing entry into core's `microfrontends.json`, commits, and pushes.
+
+#### Step 4: Developer rebases core-main
+
+```bash
+git checkout core-main
+git pull core main
+git checkout main
+git rebase core-main
+git push origin main --force-with-lease
+```
+
+Now all repos have the same `microfrontends.json`.
+
+#### One-time setup (if not already done)
+
+- `@vercel/microfrontends` installed: `npm install @vercel/microfrontends`
+- `next.config.mjs` using `withMicrofrontends()`:
+  ```js
+  import { withMicrofrontends } from '@vercel/microfrontends/next/config';
+  const nextConfig = {};
+  export default withMicrofrontends(nextConfig);
+  ```
+
+#### When a new child app is added later
+
+The senior dev updates core's `microfrontends.json` and pushes. All developers rebase core-main to get the updated file automatically.
+
+> *In simple terms:* You run `add-mfe` on your repo, send the file to the senior, they merge it into core and push, then everyone rebases to sync.
 
 ### What It Generates
 
@@ -331,6 +403,51 @@ src/modules/<module-name>/
 It also auto-runs `generate-routes.js` to create the `src/app/` page entry.
 
 Every generated file includes documentation comments explaining what goes there.
+
+### Built-In Checklist
+
+The generated `index.js` includes a full setup checklist as a comment block at the top. It lists:
+
+- **All file paths** your module needs (so you can verify they exist)
+- **Auto-generated files** that you must NOT edit
+- **Database tables** you need to set up (with the exact `route_path` value)
+- **How to verify** everything works (URL to visit, what to look for, troubleshooting)
+- **How to update routes** (change path → run build → update DB)
+
+This means your devs can open `index.js` and follow the checklist top to bottom — no need to reference external docs for the basic setup.
+
+### Terminal Output
+
+After running the command, you'll see a summary with ✅/❌ status for every file:
+
+```
+════════════════════════════════════════════════════════════
+  SETUP COMPLETE: Item Inventory
+════════════════════════════════════════════════════════════
+
+  Module files:
+    ✅ src/modules/item-inventory/index.js
+    ✅ src/modules/item-inventory/pages/ItemInventoryPage.js
+    ✅ src/modules/item-inventory/pages/ItemInventoryView.jsx
+    ✅ src/modules/item-inventory/data/itemInventory.actions.js
+    ✅ src/modules/item-inventory/data/itemInventory.data.js
+
+  Auto-generated (do NOT edit):
+    ✅ src/app/item-inventory/page.js
+    ✅ src/app/rewrites.json
+
+  Manual steps remaining:
+    ☐ Open index.js — set module_key, icon, group_name, order
+    ☐ DB: psb_s_application → ensure your app exists
+    ☐ DB: psb_s_appcard → add card with route_path = "/item-inventory"
+    ☐ DB: psb_m_appcardroleaccess → assign roles
+    ☐ Run `npm run dev` → visit http://localhost:3000/item-inventory
+    ☐ Verify: page loads with "Item Inventory" heading
+    ☐ Verify: unauthorized user sees "No Access"
+════════════════════════════════════════════════════════════
+```
+
+If you run the command on an **existing** module, it shows `UPDATE COMPLETE` and skips files that already exist.
 
 ### Group Prefixes
 
@@ -364,7 +481,7 @@ Add rows in `psb_m_userapproleaccess` to link users → roles → your app. This
 
 ### 5. Scaffold the Module
 
-Run the scaffolding command:
+Run the scaffolding command (see [Getting Started — Part 5](../01-getting-started/getting-started-v2.md#part-5-the-module-system) for a full walkthrough):
 
 ```bash
 npm run create-module -- my-module
@@ -399,6 +516,79 @@ Use `hasCardAccess()` to hide/disable features the user shouldn't see.
 6. Define route handlers that bypass core routing.
 7. Create API routes (`src/app/api/...`) — use Server Actions instead.
 8. Import `getSupabaseAdmin` outside of `"use server"` files.
+
+---
+
+## Updating a Module Path
+
+When you change a route path (e.g. renaming `/metal-buildings` to `/metal`), multiple layers need to stay in sync. Here's what happens automatically and what you need to do manually.
+
+### Step 1 — Change the path in `index.js`
+
+This is the source of truth. Update the `routes` array:
+
+```js
+// Before
+routes: [{ path: "/metal-buildings", page: "MetalBuildingsPage" }]
+
+// After
+routes: [{ path: "/metal", page: "MetalBuildingsPage" }]
+```
+
+### Step 2 — Run dev or build
+
+```bash
+npm run dev
+# or
+npm run build
+```
+
+This triggers `generate-routes.js`, which auto-fixes three things:
+
+| What | What happens |
+|------|-------------|
+| Old `src/app/metal-buildings/page.js` | ✅ Deleted automatically |
+| New `src/app/metal/page.js` | ✅ Created automatically |
+| `src/app/rewrites.json` | ✅ Regenerated with new paths |
+| `microfrontends.json` paths | ✅ Updated if module has `microfrontend` field |
+
+### Step 3 — Update the database (manual)
+
+The build will print a reminder like:
+
+```
+Layer 4 reminder: If you changed route paths, update psb_s_appcard.route_path in the DB:
+  - "Metal Buildings" → route_path = '/metal'
+```
+
+Update `psb_s_appcard`:
+
+```sql
+UPDATE psb_s_appcard
+SET route_path = '/metal'
+WHERE route_path = '/metal-buildings';
+```
+
+> ⚠️ **If you skip this step**, the dashboard card will link to the old URL and users will get a 404.
+
+### Step 4 — Update the child repo (external apps only)
+
+If this is an external modular app, the **child repo's** `microfrontends.json` is NOT auto-updated (it's in a different repo). Open it and update the paths manually:
+
+```json
+"paths": ["/metal", "/metal/:path*"]
+```
+
+### Quick Reference
+
+| Layer | Auto-fixed on build? | Manual action needed? |
+|-------|---------------------|----------------------|
+| Module `index.js` | — | You change it (Step 1) |
+| App `page.js` wrappers | ✅ Yes | None |
+| Rewrites (`rewrites.json`) | ✅ Yes | None |
+| `microfrontends.json` (host) | ✅ Yes (if `microfrontend` field set) | None |
+| `microfrontends.json` (child repo) | ❌ No | Update manually |
+| Database `psb_s_appcard` | ❌ No | Update `route_path` |
 
 ---
 

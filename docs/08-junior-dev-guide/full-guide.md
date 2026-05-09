@@ -1,6 +1,6 @@
 # Full Guide
 
-This is a rulebook, not a tutorial. If you need to learn how to build your first module, start with [quickstart.md](quickstart.md). Come back here for the rules you must follow.
+This is a rulebook, not a tutorial. If you need to learn how to build your first module, start with the [Getting Started Guide](../01-getting-started/getting-started-v2.md) or the [Quick Start](quickstart.md). Come back here for the rules you must follow.
 
 Breaking these rules can break RBAC, module consistency, and platform stability.
 
@@ -252,7 +252,7 @@ Use the built-in examples as your primary reference:
 
 ## Building a Module (Step by Step)
 
-1. Run `npm run create-module -- my-module` to scaffold the module (see [quickstart.md](quickstart.md)).
+1. Run `npm run create-module -- my-module` to scaffold the module (see [Getting Started](../01-getting-started/getting-started-v2.md#part-5-the-module-system)).
 2. Register the app in `psb_s_application` (if it doesn't exist).
 3. Create groups in `psb_m_appcardgroup`.
 4. Create cards in `psb_s_appcard`.
@@ -315,6 +315,7 @@ All items must pass before submitting:
 - [ ] Authorized user flow works
 - [ ] Unauthorized cards are hidden/disabled
 - [ ] Unauthorized route is blocked by core gate
+- [ ] If microfrontend: ran `npm run add-mfe`, sent file to senior, rebased after core push
 - [ ] Build passes (`npm run build`)
 - [ ] Lint passes (`npm run lint`)
 

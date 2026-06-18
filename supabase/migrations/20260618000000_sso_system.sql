@@ -82,38 +82,6 @@ CREATE POLICY "Admins can view all token invalidations"
     )
   );
 
--- ── User-Module Mapping Table ────────────────────────────────────────────
--- Stores which modules each user can access
--- Note: We use the existing psb_m_userapproleaccess table which already maps
--- users to roles and roles to apps/modules, so this table is optional for
--- direct user->module mapping if needed for optimization
-CREATE TABLE IF NOT EXISTS public.psb_user_module_access (
-  id BIGSERIAL PRIMARY KEY,
-  user_id INTEGER NOT NULL,
-  app_id BIGINT NOT NULL,
-  granted_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-  granted_by UUID,
-  expires_at TIMESTAMP WITH TIME ZONE,
-  is_active BOOLEAN NOT NULL DEFAULT TRUE,
-
-  -- Foreign keys
-  CONSTRAINT fk_user_id FOREIGN KEY (user_id)
-    REFERENCES psb_s_user (user_id) ON DELETE CASCADE,
-  CONSTRAINT fk_app_id FOREIGN KEY (app_id)
-    REFERENCES psb_s_application (app_id) ON DELETE CASCADE,
-
-  -- Unique constraint
-  UNIQUE (user_id, app_id)
-);
-
--- Indexes
-CREATE INDEX IF NOT EXISTS idx_psb_user_module_access_user_id ON public.psb_user_module_access (user_id);
-CREATE INDEX IF NOT EXISTS idx_psb_user_module_access_app_id ON public.psb_user_module_access (app_id);
-CREATE INDEX IF NOT EXISTS idx_psb_user_module_access_is_active ON public.psb_user_module_access (is_active);
-
--- Enable RLS
-ALTER TABLE public.psb_user_module_access ENABLE ROW LEVEL SECURITY;
-
 -- ── Session Cleanup Function ────────────────────────────────────────────
 -- Automatically clean up expired sessions
 CREATE OR REPLACE FUNCTION public.cleanup_expired_sessions()
@@ -170,5 +138,4 @@ GRANT SELECT ON public.psb_active_sessions TO authenticated;
 -- Comments
 COMMENT ON TABLE public.psb_sessions IS 'SSO session records for PSBUniverse - stores active and historical sessions';
 COMMENT ON TABLE public.psb_session_tokens IS 'Audit trail for invalidated tokens (logout events)';
-COMMENT ON TABLE public.psb_user_module_access IS 'Direct user-to-module access mappings for optimized permission checks';
 COMMENT ON FUNCTION public.cleanup_expired_sessions() IS 'Removes expired sessions and old token audit records - run periodically';

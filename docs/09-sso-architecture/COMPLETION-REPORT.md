@@ -73,10 +73,9 @@ A centralized authentication system has been successfully implemented for PSBUni
 ### Database & Infrastructure (2 files)
 
 9. **`supabase/migrations/20260618000000_sso_system.sql`** (183 lines)
-   - `psb_sessions` table for session tracking
-   - `psb_session_tokens` table for audit trail
-   - `psb_user_module_access` table for permissions
-   - Indexes, RLS policies, and cleanup functions
+    - `psb_sessions` table for session tracking
+    - `psb_session_tokens` table for audit trail
+    - Indexes, RLS policies, and cleanup functions
 
 10. **`src/proxy.js`** (MODIFIED)
     - Updated middleware for SSO token validation

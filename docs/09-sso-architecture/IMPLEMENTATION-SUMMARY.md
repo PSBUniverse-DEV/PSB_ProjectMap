@@ -94,11 +94,6 @@ This document summarizes the complete implementation of the PSBUniverse Single S
 - Records all logout events
 - Enables session history reporting
 
-**`psb_user_module_access`** (optional)
-- Direct user-to-module mapping
-- Can optimize permission checks
-- Alternative to role-based mapping
-
 #### Indexes & Functions
 - Efficient queries on auth_user_id, user_id, expiration
 - Cleanup function for expired sessions
@@ -370,7 +365,6 @@ NEXT_PUBLIC_ENV=prod
 
 1. **psb_sessions**: Active and historical session records
 2. **psb_session_tokens**: Audit trail for token invalidations
-3. **psb_user_module_access**: Optional direct user-module mapping
 
 ### New Indexes
 

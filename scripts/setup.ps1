@@ -128,7 +128,7 @@ Write-Host "`n[4/5] Validating SSO configuration..." -ForegroundColor Green
 $ssoIssues = @()
 
 # Check JWT_SECRET
-$jwtSecret = (Select-String -Path ".env.local" -Pattern "^JWT_SECRET=" -SimpleMatch 2>$null)
+$jwtSecret = (Select-String -Path ".env.local" -Pattern "^JWT_SECRET=" 2>$null)
 if (-not $jwtSecret) {
     $ssoIssues += "JWT_SECRET is missing from .env.local"
 } elseif ($jwtSecret -match "your-secret-key-change-this-in-production") {
@@ -136,15 +136,15 @@ if (-not $jwtSecret) {
 }
 
 # Check NEXT_PUBLIC_COOKIE_DOMAIN
-$cookieDomain = (Select-String -Path ".env.local" -Pattern "^NEXT_PUBLIC_COOKIE_DOMAIN=" -SimpleMatch 2>$null)
+$cookieDomain = (Select-String -Path ".env.local" -Pattern "^NEXT_PUBLIC_COOKIE_DOMAIN=" 2>$null)
 if (-not $cookieDomain) {
     $ssoIssues += "NEXT_PUBLIC_COOKIE_DOMAIN is missing from .env.local"
 }
 
 # Check Supabase keys
-$supabaseUrl = (Select-String -Path ".env.local" -Pattern "^NEXT_PUBLIC_SUPABASE_URL=" -SimpleMatch 2>$null)
-$supabaseKey = (Select-String -Path ".env.local" -Pattern "^NEXT_PUBLIC_SUPABASE_ANON_KEY=" -SimpleMatch 2>$null)
-$serviceKey = (Select-String -Path ".env.local" -Pattern "^SUPABASE_SERVICE_ROLE_KEY=" -SimpleMatch 2>$null)
+$supabaseUrl = (Select-String -Path ".env.local" -Pattern "^NEXT_PUBLIC_SUPABASE_URL=" 2>$null)
+$supabaseKey = (Select-String -Path ".env.local" -Pattern "^NEXT_PUBLIC_SUPABASE_ANON_KEY=" 2>$null)
+$serviceKey = (Select-String -Path ".env.local" -Pattern "^SUPABASE_SERVICE_ROLE_KEY=" 2>$null)
 
 if (-not $supabaseUrl) { $ssoIssues += "NEXT_PUBLIC_SUPABASE_URL is missing" }
 if (-not $supabaseKey) { $ssoIssues += "NEXT_PUBLIC_SUPABASE_ANON_KEY is missing" }

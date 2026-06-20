@@ -232,12 +232,14 @@ export default function AppLayout({ children }) {
     }
   }, [isAuthenticated, isLoginPage, loading, router, startLoader]);
 
+  // Redirect already-authenticated users away from the login page.
+  // Uses a ref to fire only once on initial mount, avoiding a race with
+  // LoginView.jsx's own redirect after form submission.
+  const loginRedirectFiredRef = useRef(false);
   useEffect(() => {
-    if (!loading && isAuthenticated && isLoginPage) {
+    if (!loading && isAuthenticated && isLoginPage && !loginRedirectFiredRef.current) {
+      loginRedirectFiredRef.current = true;
       startLoader();
-      // If a redirect param was provided (e.g. from proxy middleware),
-      // go there instead of the default Core Portal dashboard.
-      // This allows users to log in and be sent back to their original destination.
       const params = new URLSearchParams(window.location.search);
       const redirectParam = params.get("redirect");
       if (redirectParam) {

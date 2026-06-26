@@ -7,7 +7,6 @@
  * locally via the psb_user_payload cookie (scoped to .psbuniverse.com).
  */
 
-import { NextResponse } from 'next/server';
 import { invalidateSession } from '@/core/auth/session.service';
 import { getClearPSBSessionCookieHeader, getClearPSBUserPayloadCookieHeader, getPSBSessionCookieFromRequest } from '@/core/auth/cookies.utils';
 
@@ -21,33 +20,32 @@ export async function POST(request) {
       await invalidateSession(token);
     }
 
-    // Create response with cleared cookie
-    const response = NextResponse.json(
-      { success: true, message: 'Logged out successfully' },
-      { status: 200 }
-    );
+    const responseBody = JSON.stringify({ success: true, message: 'Logged out successfully' });
 
-    // Clear session cookie
-    response.headers.set('Set-Cookie', getClearPSBSessionCookieHeader());
-
-    // Clear shared payload cookie (use append to avoid overwriting)
-    response.headers.append('Set-Cookie', getClearPSBUserPayloadCookieHeader());
-
-    return response;
+    // Use new Response() with array-based headers to reliably produce TWO separate Set-Cookie headers.
+    // NextResponse.headers.set() + .append() does NOT reliably handle multiple Set-Cookie headers
+    // in Node.js runtime — the Headers API may merge them with commas which is invalid for Set-Cookie.
+    return new Response(responseBody, {
+      status: 200,
+      headers: [
+        ['Content-Type', 'application/json'],
+        ['Set-Cookie', getClearPSBSessionCookieHeader()],
+        ['Set-Cookie', getClearPSBUserPayloadCookieHeader()],
+      ],
+    });
   } catch (error) {
     console.error('Logout endpoint error:', error);
 
     // Still clear the cookie even if database operation fails
-    const response = NextResponse.json(
-      { success: true, message: 'Logout complete' },
-      { status: 200 }
-    );
+    const responseBody = JSON.stringify({ success: true, message: 'Logout complete' });
 
-    response.headers.set('Set-Cookie', getClearPSBSessionCookieHeader());
-
-    // Clear shared payload cookie (use append to avoid overwriting)
-    response.headers.append('Set-Cookie', getClearPSBUserPayloadCookieHeader());
-
-    return response;
+    return new Response(responseBody, {
+      status: 200,
+      headers: [
+        ['Content-Type', 'application/json'],
+        ['Set-Cookie', getClearPSBSessionCookieHeader()],
+        ['Set-Cookie', getClearPSBUserPayloadCookieHeader()],
+      ],
+    });
   }
 }

@@ -7,11 +7,8 @@
  * locally via the psb_user_payload cookie (scoped to .psbuniverse.com).
  */
 
-import { NextResponse } from 'next/server';
 import { verifyToken, getTokenTimeRemaining, generateToken } from '@/core/auth/jwt.utils';
-import { getPSBSessionCookieFromRequest, getPSBSessionCookieHeader } from '@/core/auth/cookies.utils';
-import { createUserSession } from '@/core/auth/session.service';
-import { getSupabaseAdmin } from '@/core/supabase/admin';
+import { getPSBSessionCookieFromRequest, getPSBSessionCookieHeader, getPSBUserPayloadCookieHeader } from '@/core/auth/cookies.utils';
 
 // Refresh token if less than 2 hours remaining
 const REFRESH_THRESHOLD = 2 * 60 * 60 * 1000;
@@ -23,15 +20,15 @@ export async function POST(request) {
 
     // Fallback: check request body
     if (!token) {
-      const body = await request.json();
-      token = body?.token;
+      const requestBody = await request.json();
+      token = requestBody?.token;
     }
 
     if (!token) {
-      return NextResponse.json(
-        { success: false, error: 'No session token found' },
-        { status: 401 }
-      );
+      return new Response(JSON.stringify({ success: false, error: 'No session token found' }), {
+        status: 401,
+        headers: [['Content-Type', 'application/json']],
+      });
     }
 
     // Verify token
@@ -39,10 +36,10 @@ export async function POST(request) {
     try {
       payload = await verifyToken(token);
     } catch (error) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid or expired token' },
-        { status: 401 }
-      );
+      return new Response(JSON.stringify({ success: false, error: 'Invalid or expired token' }), {
+        status: 401,
+        headers: [['Content-Type', 'application/json']],
+      });
     }
 
     // Check time remaining
@@ -50,15 +47,15 @@ export async function POST(request) {
 
     // If more than threshold remaining, return existing token
     if (timeRemaining > REFRESH_THRESHOLD) {
-      return NextResponse.json(
-        {
-          success: true,
-          token,
-          refreshed: false,
-          expiresAt: payload.expiresAt,
-        },
-        { status: 200 }
-      );
+      return new Response(JSON.stringify({
+        success: true,
+        token,
+        refreshed: false,
+        expiresAt: payload.expiresAt,
+      }), {
+        status: 200,
+        headers: [['Content-Type', 'application/json']],
+      });
     }
 
     // Refresh token - generate new token with same data
@@ -74,26 +71,34 @@ export async function POST(request) {
       '24h'
     );
 
-    // Create response with new Set-Cookie header
-    const response = NextResponse.json(
-      {
-        success: true,
-        token: newToken,
-        refreshed: true,
-        expiresAt: Date.now() + 24 * 60 * 60 * 1000,
-      },
-      { status: 200 }
-    );
+    const responseBody = JSON.stringify({
+      success: true,
+      token: newToken,
+      refreshed: true,
+      expiresAt: Date.now() + 24 * 60 * 60 * 1000,
+    });
 
-    // Set new session cookie
-    response.headers.set('Set-Cookie', getPSBSessionCookieHeader(newToken));
-
-    return response;
+    // Use new Response() with array-based headers to reliably produce TWO separate Set-Cookie headers.
+    // When refreshing the session, we must also refresh the user payload cookie so both stay in sync.
+    return new Response(responseBody, {
+      status: 200,
+      headers: [
+        ['Content-Type', 'application/json'],
+        ['Set-Cookie', getPSBSessionCookieHeader(newToken)],
+        ['Set-Cookie', getPSBUserPayloadCookieHeader({
+          userId: payload.userId,
+          email: payload.email,
+          fullName: payload.fullName,
+          modules: payload.modules || [],
+          roles: payload.roles || [],
+        })],
+      ],
+    });
   } catch (error) {
     console.error('Token refresh error:', error);
-    return NextResponse.json(
-      { success: false, error: 'Internal server error' },
-      { status: 500 }
-    );
+    return new Response(JSON.stringify({ success: false, error: 'Internal server error' }), {
+      status: 500,
+      headers: [['Content-Type', 'application/json']],
+    });
   }
 }

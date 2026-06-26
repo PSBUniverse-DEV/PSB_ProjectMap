@@ -7,21 +7,20 @@
  * locally via the psb_user_payload cookie (scoped to .psbuniverse.com).
  */
 
-import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/core/supabase/admin';
 import { createUserSession } from '@/core/auth/session.service';
 import { getPSBSessionCookieHeader, getPSBUserPayloadCookieHeader } from '@/core/auth/cookies.utils';
 
 export async function POST(request) {
   try {
-    const body = await request.json();
-    const { accessToken } = body;
+    const requestBody = await request.json();
+    const { accessToken } = requestBody;
 
     if (!accessToken) {
-      return NextResponse.json(
-        { error: 'Access token is required' },
-        { status: 400 }
-      );
+      return new Response(JSON.stringify({ error: 'Access token is required' }), {
+        status: 400,
+        headers: [['Content-Type', 'application/json']],
+      });
     }
 
     // Verify the token with Supabase
@@ -29,10 +28,10 @@ export async function POST(request) {
     const { data: authData, error: authError } = await supabaseAdmin.auth.getUser(accessToken);
 
     if (authError || !authData?.user) {
-      return NextResponse.json(
-        { error: 'Invalid or expired access token' },
-        { status: 401 }
-      );
+      return new Response(JSON.stringify({ error: 'Invalid or expired access token' }), {
+        status: 401,
+        headers: [['Content-Type', 'application/json']],
+      });
     }
 
     const authUser = authData.user;
@@ -92,49 +91,48 @@ export async function POST(request) {
     }
 
     if (!dbUser) {
-      return NextResponse.json(
-        { error: 'User not found in system' },
-        { status: 404 }
-      );
+      return new Response(JSON.stringify({ error: 'User not found in system' }), {
+        status: 404,
+        headers: [['Content-Type', 'application/json']],
+      });
     }
 
     // Create session
     const session = await createUserSession(authUser, dbUser, roles);
 
-    // Create response with Set-Cookie header
-    const response = NextResponse.json(
-      {
-        success: true,
-        token: session.token,
-        expiresAt: session.expiresAt,
-        user: {
-          id: dbUser.user_id,
-          email: authUser.email,
-          name: `${dbUser.first_name || ''} ${dbUser.last_name || ''}`.trim(),
-        },
+    const responseBody = JSON.stringify({
+      success: true,
+      token: session.token,
+      expiresAt: session.expiresAt,
+      user: {
+        id: dbUser.user_id,
+        email: authUser.email,
+        name: `${dbUser.first_name || ''} ${dbUser.last_name || ''}`.trim(),
       },
-      { status: 200 }
-    );
+    });
 
-    // Set secure session cookie (HttpOnly — not readable by JS, used for API auth)
-    response.headers.set('Set-Cookie', getPSBSessionCookieHeader(session.token));
-
-    // Set shared payload cookie (readable by JS on all subdomains — enables local JWT validation)
-    // Use append() to avoid overwriting the previous Set-Cookie header
-    response.headers.append('Set-Cookie', getPSBUserPayloadCookieHeader({
-      userId: dbUser.user_id,
-      email: authUser.email,
-      fullName: `${dbUser.first_name || ''} ${dbUser.last_name || ''}`.trim(),
-      modules: moduleIds,
-      roles: roleIds,
-    }));
-
-    return response;
+    // Use new Response() with array-based headers to reliably produce TWO separate Set-Cookie headers.
+    // NextResponse.headers.set() + .append() does NOT reliably handle multiple Set-Cookie headers
+    // in Node.js runtime — the Headers API may merge them with commas which is invalid for Set-Cookie.
+    return new Response(responseBody, {
+      status: 200,
+      headers: [
+        ['Content-Type', 'application/json'],
+        ['Set-Cookie', getPSBSessionCookieHeader(session.token)],
+        ['Set-Cookie', getPSBUserPayloadCookieHeader({
+          userId: dbUser.user_id,
+          email: authUser.email,
+          fullName: `${dbUser.first_name || ''} ${dbUser.last_name || ''}`.trim(),
+          modules: moduleIds,
+          roles: roleIds,
+        })],
+      ],
+    });
   } catch (error) {
     console.error('Login endpoint error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return new Response(JSON.stringify({ error: 'Internal server error' }), {
+      status: 500,
+      headers: [['Content-Type', 'application/json']],
+    });
   }
 }

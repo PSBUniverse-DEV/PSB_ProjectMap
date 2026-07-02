@@ -9,7 +9,7 @@ const CORE_PORTAL_URL = process.env.NEXT_PUBLIC_CORE_PORTAL_URL || "https://www.
 // ── Configuration ───────────────────────────────────────────
 const ALLOWED_HOST_SUFFIXES = [
   ".psbuniverse.com",
-  ".psbuniverse.vercel.app", // Vercel preview deployments
+  ".vercel.app", // All Vercel deployments (preview, dev, etc.)
 ];
 
 // ── Public API ──────────────────────────────────────────────

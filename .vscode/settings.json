@@ -16,5 +16,11 @@
     "Move-Item": true,
     "ForEach-Object": true,
     "Set-Content": true
+  },
+  "files.readonlyInclude": {
+    "**": true
+  },
+  "files.readonlyExclude": {
+    "**/.env*": true
   }
 }

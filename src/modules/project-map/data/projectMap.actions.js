@@ -1,38 +1,136 @@
-/**
- * Server Actions — projectMap.actions.js
- *
- * Runs on the server. This is the ONLY place you talk to the database.
- *
- * WHAT TO DO:
- *   1. Import getSupabaseAdmin from "@/core/supabase/admin"
- *   2. Write one async function per operation:
- *        load___()   → SELECT
- *        create___() → INSERT
- *        update___() → UPDATE
- *        delete___() → DELETE or soft-delete
- *   3. Return clean objects — no raw DB internals.
- *
- * SSO AUTHENTICATION:
- *   - Use getCurrentSession() from "@/core/auth/session.service" to
- *     validate the caller's session and get user/module info
- *   - Example:
- *       const session = await getCurrentSession();
- *       if (!session) throw new Error("Unauthorized");
- *       if (!session.modules.includes("PROJECT_MAP"))
- *         throw new Error("Forbidden");
- *
- * EXAMPLE:
- *   export async function loadProjectMapData() {
- *     const supabase = getSupabaseAdmin();
- *     const { data, error } = await supabase
- *       .from("your_table_name")
- *       .select("*")
- *       .order("created_at", { ascending: false });
- *     if (error) throw new Error(error.message);
- *     return { items: data ?? [] };
- *   }
- */
 "use server";
 
-// import { getSupabaseAdmin } from "@/core/supabase/admin";
-// import { getCurrentSession } from "@/core/auth/session.service";
+import { createClient } from "@supabase/supabase-js";
+
+function getSupabaseAdmin() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error("Missing Supabase admin configuration");
+  }
+  return createClient(supabaseUrl, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+}
+
+// ─── Helpers ───────────────────────────────────────────────
+
+function hasValue(v) {
+  return v !== undefined && v !== null && String(v).trim() !== "";
+}
+
+function toIntOrNull(v) {
+  if (!hasValue(v)) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.trunc(n) : null;
+}
+
+// ─── Setup Table CRUD ──────────────────────────────────────
+
+const SETUP_TABLES = {
+  projectStatuses: { table: "proj_s_project_status", pk: "status_id" },
+};
+
+function resolveSetupTable(key) {
+  const entry = SETUP_TABLES[key];
+  if (!entry) throw new Error(`Unknown setup table key: "${key}"`);
+  return entry;
+}
+
+export async function createSetupRow(tableKey, row) {
+  const { table, pk } = resolveSetupTable(tableKey);
+  if (!row || typeof row !== "object") throw new Error("Row data is required.");
+
+  const supabase = getSupabaseAdmin();
+  const payload = { ...row };
+  delete payload[pk];
+
+  const { data, error } = await supabase.from(table).insert(payload).select("*").single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function updateSetupRow(tableKey, id, updates) {
+  const { table, pk } = resolveSetupTable(tableKey);
+  const rowId = toIntOrNull(id);
+  if (rowId === null) throw new Error(`${pk} is required.`);
+  if (!updates || typeof updates !== "object") throw new Error("Update data is required.");
+
+  const supabase = getSupabaseAdmin();
+  const payload = { ...updates };
+  delete payload[pk];
+
+  const { data, error } = await supabase.from(table).update(payload).eq(pk, rowId).select("*").single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function deleteSetupRow(tableKey, id) {
+  const { table, pk } = resolveSetupTable(tableKey);
+  const rowId = toIntOrNull(id);
+  if (rowId === null) throw new Error(`${pk} is required.`);
+
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from(table).delete().eq(pk, rowId);
+  if (error) throw new Error(error.message);
+  return { success: true };
+}
+
+// ─── Project CRUD ──────────────────────────────────────────
+
+export async function createProject(project) {
+  const supabase = getSupabaseAdmin();
+  const now = new Date().toISOString();
+
+  const payload = {
+    client_name: String(project.client_name || "").trim(),
+    formatted_address: hasValue(project.formatted_address) ? String(project.formatted_address).trim() : null,
+    address_line_1: hasValue(project.address_line_1) ? String(project.address_line_1).trim() : null,
+    city: hasValue(project.city) ? String(project.city).trim() : null,
+    state: hasValue(project.state) ? String(project.state).trim() : null,
+    state_code: hasValue(project.state_code) ? String(project.state_code).trim() : null,
+    postal_code: hasValue(project.postal_code) ? String(project.postal_code).trim() : null,
+    country: hasValue(project.country) ? String(project.country).trim() : null,
+    address_latitude: project.address_latitude != null ? Number(project.address_latitude) : null,
+    address_longitude: project.address_longitude != null ? Number(project.address_longitude) : null,
+    site_latitude: project.site_latitude != null ? Number(project.site_latitude) : null,
+    site_longitude: project.site_longitude != null ? Number(project.site_longitude) : null,
+    location_source: hasValue(project.location_source) ? String(project.location_source).trim() : null,
+    location_confirmed: Boolean(project.location_confirmed),
+    status_id: toIntOrNull(project.status_id),
+    dealer: hasValue(project.dealer) ? String(project.dealer).trim() : null,
+    order_received_date: hasValue(project.order_received_date) ? String(project.order_received_date) : null,
+    scheduled_project_date: hasValue(project.scheduled_project_date) ? String(project.scheduled_project_date) : null,
+    install_date: hasValue(project.install_date) ? String(project.install_date) : null,
+    created_at: now,
+    updated_at: now,
+  };
+
+  const { data, error } = await supabase.from("proj_t_projects").insert(payload).select("*").single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function updateProject(projectId, updates) {
+  const id = toIntOrNull(projectId);
+  if (id === null) throw new Error("projectId is required.");
+
+  const supabase = getSupabaseAdmin();
+  const now = new Date().toISOString();
+
+  const payload = { ...updates, updated_at: now };
+
+  const { data, error } = await supabase.from("proj_t_projects").update(payload).eq("id", id).select("*").single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function deleteProject(projectId) {
+  const id = toIntOrNull(projectId);
+  if (id === null) throw new Error("projectId is required.");
+
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("proj_t_projects").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  return { success: true };
+}

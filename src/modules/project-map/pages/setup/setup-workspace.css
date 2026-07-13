@@ -1,0 +1,382 @@
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Project Map Setup — Enterprise Admin Workspace Styles
+   Supabase-inspired, dense, professional layout
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* ─── Workspace Root ──────────────────────────────────────────────────────── */
+
+.setup-workspace-root {
+  height: calc(100vh - 70px);
+  overflow: hidden;
+  margin: -1.25rem -1.5rem -1.75rem;
+}
+
+.setup-workspace {
+  display: flex;
+  height: 100%;
+  background: var(--psb-surface);
+  border: 1px solid var(--psb-border);
+  border-radius: 0;
+  overflow: hidden;
+}
+
+.setup-workspace__sidebar {
+  width: 220px;
+  min-width: 220px;
+  border-right: 1px solid var(--psb-border);
+  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.setup-workspace__main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.setup-workspace__toolbar {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--psb-border);
+}
+
+.setup-workspace__content {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ─── Sidebar ─────────────────────────────────────────────────────────────── */
+
+.setup-sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.setup-sidebar__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px 8px;
+  border-bottom: 1px solid var(--psb-border);
+}
+
+.setup-sidebar__title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--psb-muted);
+}
+
+.setup-sidebar__count {
+  font-size: 10px;
+  background: var(--psb-border);
+  color: var(--psb-muted);
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-weight: 500;
+}
+
+.setup-sidebar__search {
+  position: relative;
+  padding: 8px 10px;
+}
+
+.setup-sidebar__search-icon {
+  position: absolute;
+  left: 18px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  color: var(--psb-muted);
+  pointer-events: none;
+}
+
+.setup-sidebar__search-input {
+  width: 100%;
+  border: 1px solid var(--psb-border);
+  border-radius: 4px;
+  padding: 5px 8px 5px 28px;
+  font-size: 12px;
+  background: var(--psb-surface);
+  color: var(--psb-text);
+  outline: none;
+  transition: border-color var(--psb-transition-150);
+}
+
+.setup-sidebar__search-input:focus {
+  border-color: var(--psb-brand);
+  box-shadow: 0 0 0 2px rgba(29, 89, 127, 0.08);
+}
+
+.setup-sidebar__search-input::placeholder {
+  color: #94a3b8;
+}
+
+.setup-sidebar__nav {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 6px;
+}
+
+.setup-sidebar__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  background: none;
+  padding: 7px 10px;
+  border-radius: 4px;
+  font-size: 13px;
+  color: var(--psb-text);
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--psb-transition-150);
+}
+
+.setup-sidebar__item:hover {
+  background: #e8eef4;
+}
+
+.setup-sidebar__item--active {
+  background: #dce8f2;
+  font-weight: 500;
+  color: var(--psb-brand);
+}
+
+.setup-sidebar__item--active:hover {
+  background: #d0e2f0;
+}
+
+.setup-sidebar__item-icon {
+  font-size: 12px;
+  width: 14px;
+  text-align: center;
+  opacity: 0.7;
+}
+
+.setup-sidebar__item--active .setup-sidebar__item-icon {
+  opacity: 1;
+  color: var(--psb-brand);
+}
+
+.setup-sidebar__item-label {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.setup-sidebar__item-badge {
+  font-size: 11px;
+  color: var(--psb-muted);
+  min-width: 18px;
+  text-align: right;
+}
+
+.setup-sidebar__empty {
+  padding: 12px 10px;
+  font-size: 12px;
+  color: var(--psb-muted);
+  text-align: center;
+}
+
+/* ─── Toolbar ─────────────────────────────────────────────────────────────── */
+
+.setup-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  gap: 12px;
+  min-height: 44px;
+  background: var(--psb-surface);
+}
+
+.setup-toolbar__left {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.setup-toolbar__title {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--psb-text);
+  white-space: nowrap;
+}
+
+.setup-toolbar__count {
+  font-size: 12px;
+  color: var(--psb-muted);
+  white-space: nowrap;
+}
+
+.setup-toolbar__right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.setup-toolbar__search {
+  position: relative;
+}
+
+.setup-toolbar__search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  color: var(--psb-muted);
+  pointer-events: none;
+}
+
+.setup-toolbar__search-input {
+  border: 1px solid var(--psb-border);
+  border-radius: 4px;
+  padding: 5px 10px 5px 28px;
+  font-size: 12px;
+  width: 200px;
+  background: var(--psb-surface);
+  color: var(--psb-text);
+  outline: none;
+  transition: border-color var(--psb-transition-150), width var(--psb-transition-200);
+}
+
+.setup-toolbar__search-input:focus {
+  border-color: var(--psb-brand);
+  width: 260px;
+  box-shadow: 0 0 0 2px rgba(29, 89, 127, 0.08);
+}
+
+.setup-toolbar__search-input::placeholder {
+  color: #94a3b8;
+}
+
+/* ─── TableZ Wrapper (compact density overrides) ──────────────────────────── */
+
+.setup-grid-wrap {
+  flex: 1;
+  overflow: auto;
+  padding: 0;
+}
+
+.setup-grid-wrap .table {
+  font-size: 13px;
+  margin-bottom: 0;
+}
+
+.setup-grid-wrap .table th {
+  font-size: 11px;
+  padding: 6px 10px;
+  white-space: nowrap;
+}
+
+.setup-grid-wrap .table td {
+  padding: 5px 10px;
+  vertical-align: middle;
+}
+
+.setup-grid-wrap .table tbody tr:hover {
+  background: #f8fafc;
+}
+
+/* ─── Form Modal ──────────────────────────────────────────────────────────── */
+
+.setup-form-modal__field {
+  margin-bottom: 12px;
+}
+
+.setup-form-modal__label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--psb-text);
+  margin-bottom: 4px;
+  display: block;
+}
+
+.setup-form-modal__required {
+  color: var(--psb-action-delete);
+  margin-left: 2px;
+}
+
+.setup-form-modal__input {
+  font-size: 13px !important;
+}
+
+.setup-form-modal__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--psb-border);
+}
+
+/* ─── Delete Dialog ───────────────────────────────────────────────────────── */
+
+.setup-delete-msg {
+  font-size: 13px;
+  color: var(--psb-text);
+  margin: 0 0 16px;
+}
+
+.setup-delete-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* ─── Responsive ──────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .setup-workspace__sidebar {
+    width: 180px;
+    min-width: 180px;
+  }
+
+  .setup-toolbar__search-input {
+    width: 140px;
+  }
+
+  .setup-toolbar__search-input:focus {
+    width: 180px;
+  }
+}
+
+@media (max-width: 600px) {
+  .setup-workspace__sidebar {
+    width: 48px;
+    min-width: 48px;
+  }
+
+  .setup-sidebar__header,
+  .setup-sidebar__search {
+    display: none;
+  }
+
+  .setup-sidebar__item-label,
+  .setup-sidebar__item-badge {
+    display: none;
+  }
+
+  .setup-sidebar__item {
+    justify-content: center;
+    padding: 10px 6px;
+  }
+
+  .setup-sidebar__item-icon {
+    font-size: 14px;
+  }
+}

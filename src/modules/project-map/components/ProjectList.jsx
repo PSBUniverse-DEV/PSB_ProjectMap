@@ -1,0 +1,94 @@
+"use client";
+
+import { useMemo } from "react";
+import { StatusBadge } from "@/shared/components/ui";
+
+const STATUS_COLORS = {
+  "Pre-Processing": "secondary",
+  "Processing": "info",
+  "Waiting": "warning",
+  "Scheduled": "primary",
+  "Active": "success",
+  "Financial": "warning",
+  "Installed": "success",
+  "Issue": "danger",
+  "Completed": "success",
+};
+
+function getStatusTone(statusName) {
+  if (!statusName) return "secondary";
+  return STATUS_COLORS[statusName] || "secondary";
+}
+
+export default function ProjectList({ projects = [], selectedProjectId, onSelectProject, filters = {} }) {
+  const filteredProjects = useMemo(() => {
+    return projects.filter((p) => {
+      if (filters.status && String(p.status_id) !== String(filters.status)) return false;
+      if (filters.dealer && p.dealer !== filters.dealer) return false;
+      if (filters.state && p.state_code !== filters.state) return false;
+      if (filters.search) {
+        const q = filters.search.toLowerCase();
+        const match =
+          (p.client_name && p.client_name.toLowerCase().includes(q)) ||
+          (p.formatted_address && p.formatted_address.toLowerCase().includes(q)) ||
+          (p.city && p.city.toLowerCase().includes(q)) ||
+          (p.state && p.state.toLowerCase().includes(q));
+        if (!match) return false;
+      }
+      return true;
+    });
+  }, [projects, filters]);
+
+  return (
+    <div style={{ height: "100%", overflow: "auto", background: "#f8fafc", borderRight: "1px solid #e2e8f0" }}>
+      <div style={{ padding: "12px 16px", borderBottom: "1px solid #e2e8f0", background: "#fff" }}>
+        <h6 style={{ margin: 0, fontSize: "13px", fontWeight: 600, color: "#64748b" }}>
+          {filteredProjects.length} Project{filteredProjects.length !== 1 ? "s" : ""}
+        </h6>
+      </div>
+      <div style={{ padding: "8px" }}>
+        {filteredProjects.length === 0 ? (
+          <p style={{ padding: "16px", fontSize: "13px", color: "#94a3b8", textAlign: "center" }}>
+            No projects found.
+          </p>
+        ) : (
+          filteredProjects.map((project) => {
+            const statusName = project.proj_s_project_status?.status_name || "";
+            const isSelected = project.id === selectedProjectId;
+
+            return (
+              <div
+                key={project.id}
+                onClick={() => onSelectProject?.(project.id)}
+                style={{
+                  padding: "10px 12px",
+                  marginBottom: "6px",
+                  background: isSelected ? "#dce8f2" : "#fff",
+                  border: `1px solid ${isSelected ? "#93c5fd" : "#e2e8f0"}`,
+                  borderRadius: "6px",
+                  cursor: "pointer",
+                  transition: "all 0.15s",
+                }}
+              >
+                <div style={{ fontWeight: 600, fontSize: "13px", marginBottom: "4px", color: "#1e293b" }}>
+                  {project.client_name || "Untitled"}
+                </div>
+                <div style={{ marginBottom: "6px" }}>
+                  <StatusBadge tone={getStatusTone(statusName)}>{statusName || "No Status"}</StatusBadge>
+                </div>
+                <div style={{ fontSize: "12px", color: "#64748b" }}>
+                  {project.city && project.state ? `${project.city}, ${project.state}` : project.formatted_address || "No location"}
+                </div>
+                {project.dealer && (
+                  <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: "2px" }}>
+                    {project.dealer}
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}

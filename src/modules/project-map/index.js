@@ -58,13 +58,14 @@ const projectMapModule = {
   key: "project-map",
   module_key: "project-map",          // ← change to your app key from Application Setup
   name: "Project Map",
-  description: "TODO: Describe what this module does.",
-  icon: "box",                        // ← pick from https://fontawesome.com/search?o=r&m=free
-  group_name: "TODO: Pick a sidebar group",
-  group_desc: "TODO: Describe this group",
+  description: "Interactive map for tracking PSB building project locations and installation sites.",
+  icon: "map-location-dot",           // FontAwesome icon
+  group_name: "Operations",
+  group_desc: "Operational tools and tracking",
   order: 200,                         // ← adjust to control sidebar position
   routes: [
     { path: "/project-map", page: "ProjectMapPage" },
+    { path: "/project-map/setup", page: "ProjectMapSetupPage" },
   ],
 };
 

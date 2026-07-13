@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import MapLibreGL from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 
@@ -43,13 +43,35 @@ export default function ProjectMap({ projects = [], selectedProjectId, onSelectP
     return true;
   });
 
+  // Street-level OSM style for MapLibre
+  const osmStyle = useMemo(() => ({
+    version: 8,
+    sources: {
+      osm: {
+        type: "raster",
+        tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+        tileSize: 256,
+        attribution: "© OpenStreetMap contributors",
+      },
+    },
+    layers: [
+      {
+        id: "osm-tiles",
+        type: "raster",
+        source: "osm",
+        minzoom: 0,
+        maxzoom: 19,
+      },
+    ],
+  }), []);
+
   // Initialize map
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
     const map = new MapLibreGL.Map({
       container: mapContainerRef.current,
-      style: "https://demotiles.maplibre.org/style.json",
+      style: osmStyle,
       center: [-98.5795, 39.8283],
       zoom: 3,
     });
@@ -61,7 +83,7 @@ export default function ProjectMap({ projects = [], selectedProjectId, onSelectP
       map.remove();
       mapRef.current = null;
     };
-  }, []);
+  }, [osmStyle]);
 
   // Update markers
   useEffect(() => {

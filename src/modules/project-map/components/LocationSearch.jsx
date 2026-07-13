@@ -37,6 +37,12 @@ export default function LocationSearch({ onSelect, selectedLocation }) {
       return;
     }
 
+    if (!GEOAPIFY_API_KEY) {
+      setSuggestions([]);
+      setShowDropdown(false);
+      return;
+    }
+
     const timer = setTimeout(async () => {
       setLoading(true);
       try {
@@ -46,7 +52,9 @@ export default function LocationSearch({ onSelect, selectedLocation }) {
         url.searchParams.set("limit", "5");
 
         const res = await fetch(url.toString());
-        if (!res.ok) throw new Error("Geocoding failed");
+        if (!res.ok) {
+          throw new Error(`Geocoding failed: ${res.status}`);
+        }
         const data = await res.json();
 
         const features = (data.features || []).map((f) => ({
@@ -64,8 +72,9 @@ export default function LocationSearch({ onSelect, selectedLocation }) {
         setSuggestions(features);
         setShowDropdown(features.length > 0);
       } catch (err) {
-        console.error("Location search error:", err);
+        // Silently fail — geocoding is optional
         setSuggestions([]);
+        setShowDropdown(false);
       } finally {
         setLoading(false);
       }

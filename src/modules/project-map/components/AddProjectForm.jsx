@@ -29,9 +29,14 @@ export default function AddProjectForm({ show, mode, project, statuses = [], onC
     location_confirmed: false,
   });
 
+  // Separate query state for LocationSearch so it can be controlled independently
+  const [locationQuery, setLocationQuery] = useState("");
+
   // Populate form when editing
   useEffect(() => {
     if (project) {
+      // Build display address from available fields if formatted_address is missing
+      const address = project.formatted_address || [project.address_line_1, project.city, project.state, project.postal_code, project.country].filter(Boolean).join(", ") || "";
       setForm({
         client_name: project.client_name || "",
         status_id: project.status_id ? String(project.status_id) : "",
@@ -39,7 +44,7 @@ export default function AddProjectForm({ show, mode, project, statuses = [], onC
         order_received_date: project.order_received_date || "",
         scheduled_project_date: project.scheduled_project_date || "",
         install_date: project.install_date || "",
-        formatted_address: project.formatted_address || "",
+        formatted_address: address,
         address_line_1: project.address_line_1 || "",
         city: project.city || "",
         state: project.state || "",
@@ -53,6 +58,7 @@ export default function AddProjectForm({ show, mode, project, statuses = [], onC
         location_source: project.location_source || "geoapify",
         location_confirmed: Boolean(project.location_confirmed),
       });
+      setLocationQuery(address);
     } else {
       setForm({
         client_name: "",
@@ -75,6 +81,7 @@ export default function AddProjectForm({ show, mode, project, statuses = [], onC
         location_source: "geoapify",
         location_confirmed: false,
       });
+      setLocationQuery("");
     }
   }, [project, show]);
 
@@ -90,7 +97,7 @@ export default function AddProjectForm({ show, mode, project, statuses = [], onC
       city: location.city || f.city,
       state: location.state || f.state,
       state_code: location.state_code || f.state_code,
-      postal_code: location.postal_code || f.postal_code,
+      postal_code: location.postcode || f.postal_code,
       country: location.country || f.country,
       address_latitude: location.latitude ?? f.address_latitude,
       address_longitude: location.longitude ?? f.address_longitude,
@@ -175,7 +182,12 @@ export default function AddProjectForm({ show, mode, project, statuses = [], onC
 
         <div>
           <label style={{ fontSize: "12px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "4px" }}>Location</label>
-          <LocationSearch onSelect={handleLocationSelect} selectedLocation={form} />
+          <LocationSearch
+            onSelect={handleLocationSelect}
+            selectedLocation={form}
+            query={locationQuery}
+            onQueryChange={setLocationQuery}
+          />
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px" }}>

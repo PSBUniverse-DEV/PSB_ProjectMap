@@ -19,6 +19,11 @@ function hasValue(v) {
   return v !== undefined && v !== null && String(v).trim() !== "";
 }
 
+function toDateOrNull(v) {
+  if (!hasValue(v)) return null;
+  return String(v).trim();
+}
+
 function toIntOrNull(v) {
   if (!hasValue(v)) return null;
   const n = Number(v);
@@ -99,9 +104,9 @@ export async function createProject(project) {
     location_confirmed: Boolean(project.location_confirmed),
     status_id: toIntOrNull(project.status_id),
     dealer: hasValue(project.dealer) ? String(project.dealer).trim() : null,
-    order_received_date: hasValue(project.order_received_date) ? String(project.order_received_date) : null,
-    scheduled_project_date: hasValue(project.scheduled_project_date) ? String(project.scheduled_project_date) : null,
-    install_date: hasValue(project.install_date) ? String(project.install_date) : null,
+    order_received_date: toDateOrNull(project.order_received_date),
+    scheduled_project_date: toDateOrNull(project.scheduled_project_date),
+    install_date: toDateOrNull(project.install_date),
     created_at: now,
     updated_at: now,
   };
@@ -118,7 +123,13 @@ export async function updateProject(projectId, updates) {
   const supabase = getSupabaseAdmin();
   const now = new Date().toISOString();
 
-  const payload = { ...updates, updated_at: now };
+  const payload = {
+    ...updates,
+    updated_at: now,
+    order_received_date: toDateOrNull(updates.order_received_date),
+    scheduled_project_date: toDateOrNull(updates.scheduled_project_date),
+    install_date: toDateOrNull(updates.install_date),
+  };
 
   const { data, error } = await supabase.from("proj_t_projects").update(payload).eq("id", id).select("*").single();
   if (error) throw new Error(error.message);

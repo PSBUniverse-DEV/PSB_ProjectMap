@@ -1,22 +1,25 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 
 const GEOAPIFY_API_KEY = process.env.NEXT_PUBLIC_GEOAPIFY_API_KEY || "";
 
-export default function LocationSearch({ onSelect, selectedLocation }) {
-  const [query, setQuery] = useState("");
+export default function LocationSearch({ onSelect, selectedLocation, query: externalQuery, onQueryChange }) {
   const [suggestions, setSuggestions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const wrapperRef = useRef(null);
 
-  // Sync external selected location into input
+  // Use external query if provided, otherwise internal state
+  const query = externalQuery ?? "";
+
+  // Sync external selected location into input only when the address actually changes
   useEffect(() => {
-    if (selectedLocation?.formatted_address) {
-      setQuery(selectedLocation.formatted_address);
+    if (selectedLocation?.formatted_address && onQueryChange) {
+      onQueryChange(selectedLocation.formatted_address);
     }
-  }, [selectedLocation]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedLocation?.formatted_address]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -84,7 +87,7 @@ export default function LocationSearch({ onSelect, selectedLocation }) {
   }, [query]);
 
   const handleSelect = (suggestion) => {
-    setQuery(suggestion.label);
+    onQueryChange?.(suggestion.label);
     setShowDropdown(false);
     onSelect?.(suggestion);
   };
@@ -95,7 +98,9 @@ export default function LocationSearch({ onSelect, selectedLocation }) {
         type="text"
         placeholder="Search address, road, city, or location..."
         value={query}
-        onChange={(e) => setQuery(e.target.value)}
+        onChange={(e) => {
+          onQueryChange?.(e.target.value);
+        }}
         onFocus={() => suggestions.length > 0 && setShowDropdown(true)}
         style={{
           width: "100%",

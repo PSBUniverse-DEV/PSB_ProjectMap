@@ -118,8 +118,9 @@ export default function ProjectMap({ projects = [], selectedProjectId, onSelectP
       const statusName = project.proj_s_project_status?.status_name || "";
       const color = getStatusColor(statusName);
 
-      const el = document.createElement("div");
-      el.style.cssText = `
+      // Create marker with label
+      const markerEl = document.createElement("div");
+      markerEl.style.cssText = `
         width: 20px;
         height: 20px;
         background: ${color};
@@ -129,34 +130,73 @@ export default function ProjectMap({ projects = [], selectedProjectId, onSelectP
         box-shadow: 0 1px 4px rgba(0,0,0,0.3);
       `;
 
-      const marker = new MapLibreGL.Marker({ element: el })
+      // Create label element
+      const labelEl = document.createElement("div");
+      labelEl.style.cssText = `
+        position: absolute;
+        top: -18px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(255, 255, 255, 0.95);
+        border: 1px solid #e2e8f0;
+        border-radius: 3px;
+        padding: 1px 4px;
+        font-size: 10px;
+        font-weight: 600;
+        color: #1e293b;
+        white-space: nowrap;
+        pointer-events: none;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+      `;
+      labelEl.textContent = project.client_name || "Untitled";
+
+      // Wrap marker and label
+      const wrapper = document.createElement("div");
+      wrapper.style.cssText = "position: relative; display: inline-block;";
+      wrapper.appendChild(markerEl);
+      wrapper.appendChild(labelEl);
+
+      const marker = new MapLibreGL.Marker({ element: wrapper })
         .setLngLat([lng, lat])
         .addTo(map);
 
-      el.addEventListener("click", () => {
-        onSelectProject?.(project.id);
-      });
-
-      // Popup
-      const popupContent = document.createElement("div");
-      popupContent.innerHTML = `
-        <div style="padding: 4px; min-width: 180px;">
-          <strong>${project.client_name || "Untitled"}</strong>
-          <br/>
-          <span style="color: ${color}; font-size: 12px;">${statusName || "No Status"}</span>
-          <br/>
-          <small>${project.formatted_address || project.city || ""}</small>
-          <br/>
-          <button id="pm-popup-view" style="margin-top: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer;">View Project</button>
-        </div>
+      // Hover tooltip
+      const tooltip = document.createElement("div");
+      tooltip.style.cssText = `
+        background: rgba(255, 255, 255, 0.98);
+        border: 1px solid #e2e8f0;
+        border-radius: 4px;
+        padding: 6px 8px;
+        font-size: 11px;
+        color: #1e293b;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        pointer-events: none;
+        min-width: 150px;
+      `;
+      tooltip.innerHTML = `
+        <div style="font-weight: 600; margin-bottom: 2px;">${project.client_name || "Untitled"}</div>
+        <div style="color: ${color}; font-size: 10px; margin-bottom: 2px;">${statusName || "No Status"}</div>
+        <div style="font-size: 10px; color: #64748b;">${project.formatted_address || project.city || "No address"}</div>
       `;
 
-      const popup = new MapLibreGL.Popup({ offset: 25 }).setDOMContent(popupContent);
-      marker.setPopup(popup);
+      const popup = new MapLibreGL.Popup({ 
+        offset: 20,
+        closeButton: false,
+        closeOnClick: false,
+        className: "project-map-tooltip"
+      }).setDOMContent(tooltip);
 
-      popupContent.querySelector("#pm-popup-view")?.addEventListener("click", () => {
-        onSelectProject?.(project.id);
+      markerEl.addEventListener("mouseenter", () => {
+        popup.setLngLat([lng, lat]).addTo(map);
+      });
+
+      markerEl.addEventListener("mouseleave", () => {
         popup.remove();
+      });
+
+      markerEl.addEventListener("click", () => {
+        popup.remove();
+        onSelectProject?.(project.id);
       });
 
       markersRef.current.push(marker);

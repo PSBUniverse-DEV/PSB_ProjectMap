@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Modal, toastError, toastSuccess } from "@/shared/components/ui";
 import { deleteProject } from "../data/projectMap.actions";
@@ -18,6 +18,11 @@ export default function ProjectMapView({ projects = [], statuses = [] }) {
   const [editingProject, setEditingProject] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [busy, setBusy] = useState(false);
+
+  // Scroll to top on mount
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
 
   // Derived lists for filter dropdowns
   const dealers = useMemo(() => projects.map((p) => p.dealer).filter(Boolean), [projects]);
@@ -73,20 +78,19 @@ export default function ProjectMapView({ projects = [], statuses = [] }) {
   };
 
   return (
-    <div style={{ height: "calc(100vh - 70px)", display: "flex", flexDirection: "column", background: "#f8fafc" }}>
+    <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: "#f8fafc", overflow: "hidden" }}>
       {/* Header */}
       <div style={{
-        padding: "12px 16px",
+        padding: "1px 10px",
         background: "#fff",
         borderBottom: "1px solid #e2e8f0",
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
+        flexShrink: 0,
+        minHeight: "22px",
       }}>
-        <div>
-          <h2 style={{ margin: 0, fontSize: "18px", fontWeight: 700, color: "#1e293b" }}>PSB Project Map</h2>
-          <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#64748b" }}>Interactive map of building project locations</p>
-        </div>
+        <h2 style={{ margin: 0, fontSize: "11px", fontWeight: 600, color: "#1e293b", lineHeight: "1.1" }}>PSB Project Map</h2>
       </div>
 
       {/* Filter Bar */}
@@ -100,9 +104,9 @@ export default function ProjectMapView({ projects = [], statuses = [] }) {
       />
 
       {/* Main Content: List + Map */}
-      <div style={{ flex: 1, display: "flex", position: "relative", overflow: "hidden" }}>
+      <div style={{ flex: 1, display: "flex", position: "relative", overflow: "hidden", minHeight: 0 }}>
         {/* Left: Project List */}
-        <div style={{ width: "320px", minWidth: "320px", flexShrink: 0, zIndex: 10 }}>
+        <div style={{ width: "240px", minWidth: "240px", flexShrink: 0, zIndex: 10, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           <ProjectList
             projects={projects}
             selectedProjectId={selectedProjectId}

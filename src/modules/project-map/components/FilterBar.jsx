@@ -23,33 +23,33 @@ export default function FilterBar({ statuses = [], dealers = [], states = [], fi
     <div style={{
       display: "flex",
       alignItems: "center",
-      gap: "8px",
-      padding: "8px 16px",
+      gap: "6px",
+      padding: "4px 10px",
       borderBottom: "1px solid #e2e8f0",
       background: "#fff",
       flexWrap: "wrap",
     }}>
-      <div style={{ position: "relative", flex: "1 1 220px", minWidth: "180px" }}>
+      <div style={{ position: "relative", flex: "1 1 180px", minWidth: "140px" }}>
         <FontAwesomeIcon icon={faMagnifyingGlass} style={{
           position: "absolute",
-          left: "10px",
+          left: "8px",
           top: "50%",
           transform: "translateY(-50%)",
-          fontSize: "12px",
+          fontSize: "11px",
           color: "#94a3b8",
           pointerEvents: "none",
         }} />
         <input
           type="text"
-          placeholder="Search projects..."
+          placeholder="Search..."
           value={filters.search || ""}
           onChange={(e) => onFilterChange?.({ ...filters, search: e.target.value })}
           style={{
             width: "100%",
             border: "1px solid #e2e8f0",
-            borderRadius: "4px",
-            padding: "5px 10px 5px 28px",
-            fontSize: "13px",
+            borderRadius: "3px",
+            padding: "3px 8px 3px 24px",
+            fontSize: "12px",
             outline: "none",
           }}
         />
@@ -60,11 +60,11 @@ export default function FilterBar({ statuses = [], dealers = [], states = [], fi
         onChange={(e) => onFilterChange?.({ ...filters, status: e.target.value })}
         style={{
           border: "1px solid #e2e8f0",
-          borderRadius: "4px",
-          padding: "5px 10px",
-          fontSize: "13px",
+          borderRadius: "3px",
+          padding: "3px 8px",
+          fontSize: "12px",
           background: "#fff",
-          minWidth: "140px",
+          minWidth: "120px",
         }}
       >
         <option value="">All Statuses</option>
@@ -78,11 +78,11 @@ export default function FilterBar({ statuses = [], dealers = [], states = [], fi
         onChange={(e) => onFilterChange?.({ ...filters, dealer: e.target.value })}
         style={{
           border: "1px solid #e2e8f0",
-          borderRadius: "4px",
-          padding: "5px 10px",
-          fontSize: "13px",
+          borderRadius: "3px",
+          padding: "3px 8px",
+          fontSize: "12px",
           background: "#fff",
-          minWidth: "140px",
+          minWidth: "120px",
         }}
       >
         <option value="">All Dealers</option>
@@ -96,11 +96,11 @@ export default function FilterBar({ statuses = [], dealers = [], states = [], fi
         onChange={(e) => onFilterChange?.({ ...filters, state: e.target.value })}
         style={{
           border: "1px solid #e2e8f0",
-          borderRadius: "4px",
-          padding: "5px 10px",
-          fontSize: "13px",
+          borderRadius: "3px",
+          padding: "3px 8px",
+          fontSize: "12px",
           background: "#fff",
-          minWidth: "140px",
+          minWidth: "120px",
         }}
       >
         <option value="">All States</option>
@@ -112,9 +112,9 @@ export default function FilterBar({ statuses = [], dealers = [], states = [], fi
       <button
         onClick={onAddClick}
         style={{
-          padding: "5px 14px",
-          fontSize: "13px",
-          borderRadius: "4px",
+          padding: "3px 10px",
+          fontSize: "12px",
+          borderRadius: "3px",
           border: "none",
           background: "#16a34a",
           color: "#fff",
@@ -122,7 +122,7 @@ export default function FilterBar({ statuses = [], dealers = [], states = [], fi
           whiteSpace: "nowrap",
         }}
       >
-        + Add Project
+        + Add
       </button>
     </div>
   );

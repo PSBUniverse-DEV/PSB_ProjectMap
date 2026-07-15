@@ -140,27 +140,27 @@ export default function AddProjectForm({ show, mode, project, statuses = [], onC
 
   return (
     <Modal show={show} onHide={onClose} title={title} size="lg">
-      <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
         <div>
-          <label style={{ fontSize: "12px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "4px" }}>
+          <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>
             Client Name <span style={{ color: "#dc2626" }}>*</span>
           </label>
           <input
             type="text"
             value={form.client_name}
             onChange={(e) => handleChange("client_name", e.target.value)}
-            style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "4px", padding: "6px 10px", fontSize: "13px" }}
+            style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px" }}
             placeholder="Enter client name"
           />
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
           <div>
-            <label style={{ fontSize: "12px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "4px" }}>Status</label>
+            <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Status</label>
             <select
               value={form.status_id}
               onChange={(e) => handleChange("status_id", e.target.value)}
-              style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "4px", padding: "6px 10px", fontSize: "13px", background: "#fff" }}
+              style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px", background: "#fff" }}
             >
               <option value="">Select status...</option>
               {statuses.map((s) => (
@@ -169,19 +169,19 @@ export default function AddProjectForm({ show, mode, project, statuses = [], onC
             </select>
           </div>
           <div>
-            <label style={{ fontSize: "12px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "4px" }}>Dealer</label>
+            <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Dealer</label>
             <input
               type="text"
               value={form.dealer}
               onChange={(e) => handleChange("dealer", e.target.value)}
-              style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "4px", padding: "6px 10px", fontSize: "13px" }}
+              style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px" }}
               placeholder="Dealer name"
             />
           </div>
         </div>
 
         <div>
-          <label style={{ fontSize: "12px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "4px" }}>Location</label>
+          <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Location</label>
           <LocationSearch
             onSelect={handleLocationSelect}
             selectedLocation={form}
@@ -190,37 +190,37 @@ export default function AddProjectForm({ show, mode, project, statuses = [], onC
           />
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px" }}>
           <div>
-            <label style={{ fontSize: "12px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "4px" }}>Order Received</label>
+            <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Order Received</label>
             <input
               type="date"
               value={form.order_received_date}
               onChange={(e) => handleChange("order_received_date", e.target.value)}
-              style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "4px", padding: "6px 10px", fontSize: "13px" }}
+              style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px" }}
             />
           </div>
           <div>
-            <label style={{ fontSize: "12px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "4px" }}>Scheduled Date</label>
+            <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Scheduled Date</label>
             <input
               type="date"
               value={form.scheduled_project_date}
               onChange={(e) => handleChange("scheduled_project_date", e.target.value)}
-              style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "4px", padding: "6px 10px", fontSize: "13px" }}
+              style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px" }}
             />
           </div>
           <div>
-            <label style={{ fontSize: "12px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "4px" }}>Install Date</label>
+            <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Install Date</label>
             <input
               type="date"
               value={form.install_date}
               onChange={(e) => handleChange("install_date", e.target.value)}
-              style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "4px", padding: "6px 10px", fontSize: "13px" }}
+              style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px" }}
             />
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", marginTop: "8px" }}>
+        <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end", marginTop: "6px" }}>
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
           <Button variant="primary" loading={busy} onClick={handleSave}>
             {mode === "edit" ? "Save Changes" : "Create Project"}

@@ -4,6 +4,21 @@ import { useEffect, useRef, useState, useMemo } from "react";
 import MapLibreGL from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 
+// Constrain MapLibre to parent container
+const mapStyles = `
+  .maplibregl-canvas-container,
+  .maplibregl-interactive,
+  .maplibregl-touch-drag-pan,
+  .maplibregl-touch-zoom-rotate {
+    width: 100% !important;
+    height: 100% !important;
+  }
+  .maplibregl-canvas {
+    width: 100% !important;
+    height: 100% !important;
+  }
+`;
+
 const STATUS_COLORS = {
   "Pre-Processing": "#6b7280",
   "Processing": "#3b82f6",
@@ -105,13 +120,13 @@ export default function ProjectMap({ projects = [], selectedProjectId, onSelectP
 
       const el = document.createElement("div");
       el.style.cssText = `
-        width: 24px;
-        height: 24px;
+        width: 20px;
+        height: 20px;
         background: ${color};
-        border: 3px solid #fff;
+        border: 2px solid #fff;
         border-radius: 50%;
         cursor: pointer;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        box-shadow: 0 1px 4px rgba(0,0,0,0.3);
       `;
 
       const marker = new MapLibreGL.Marker({ element: el })
@@ -181,6 +196,9 @@ export default function ProjectMap({ projects = [], selectedProjectId, onSelectP
   }, [selectedProjectId, projects]);
 
   return (
-    <div ref={mapContainerRef} style={{ width: "100%", height: "100%" }} />
+    <>
+      <style>{mapStyles}</style>
+      <div ref={mapContainerRef} style={{ width: "100%", height: "100%", position: "relative" }} />
+    </>
   );
 }

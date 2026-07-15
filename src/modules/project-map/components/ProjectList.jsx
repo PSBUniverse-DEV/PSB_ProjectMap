@@ -41,14 +41,14 @@ export default function ProjectList({ projects = [], selectedProjectId, onSelect
 
   return (
     <div style={{ height: "100%", overflow: "auto", background: "#f8fafc", borderRight: "1px solid #e2e8f0" }}>
-      <div style={{ padding: "12px 16px", borderBottom: "1px solid #e2e8f0", background: "#fff" }}>
-        <h6 style={{ margin: 0, fontSize: "13px", fontWeight: 600, color: "#64748b" }}>
+      <div style={{ padding: "6px 10px", borderBottom: "1px solid #e2e8f0", background: "#fff" }}>
+        <h6 style={{ margin: 0, fontSize: "11px", fontWeight: 600, color: "#64748b" }}>
           {filteredProjects.length} Project{filteredProjects.length !== 1 ? "s" : ""}
         </h6>
       </div>
-      <div style={{ padding: "8px" }}>
+      <div style={{ padding: "4px" }}>
         {filteredProjects.length === 0 ? (
-          <p style={{ padding: "16px", fontSize: "13px", color: "#94a3b8", textAlign: "center" }}>
+          <p style={{ padding: "10px", fontSize: "11px", color: "#94a3b8", textAlign: "center" }}>
             No projects found.
           </p>
         ) : (
@@ -61,26 +61,26 @@ export default function ProjectList({ projects = [], selectedProjectId, onSelect
                 key={project.id}
                 onClick={() => onSelectProject?.(project.id)}
                 style={{
-                  padding: "10px 12px",
-                  marginBottom: "6px",
+                  padding: "6px 8px",
+                  marginBottom: "3px",
                   background: isSelected ? "#dce8f2" : "#fff",
                   border: `1px solid ${isSelected ? "#93c5fd" : "#e2e8f0"}`,
-                  borderRadius: "6px",
+                  borderRadius: "4px",
                   cursor: "pointer",
                   transition: "all 0.15s",
                 }}
               >
-                <div style={{ fontWeight: 600, fontSize: "13px", marginBottom: "4px", color: "#1e293b" }}>
+                <div style={{ fontWeight: 600, fontSize: "11px", marginBottom: "1px", color: "#1e293b" }}>
                   {project.client_name || "Untitled"}
                 </div>
-                <div style={{ marginBottom: "6px" }}>
+                <div style={{ marginBottom: "2px" }}>
                   <StatusBadge tone={getStatusTone(statusName)}>{statusName || "No Status"}</StatusBadge>
                 </div>
-                <div style={{ fontSize: "12px", color: "#64748b" }}>
+                <div style={{ fontSize: "10px", color: "#64748b" }}>
                   {project.city && project.state ? `${project.city}, ${project.state}` : project.formatted_address || "No location"}
                 </div>
                 {project.dealer && (
-                  <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: "2px" }}>
+                  <div style={{ fontSize: "9px", color: "#94a3b8", marginTop: "1px" }}>
                     {project.dealer}
                   </div>
                 )}

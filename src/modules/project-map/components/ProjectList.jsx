@@ -15,9 +15,26 @@ const STATUS_COLORS = {
   "Completed": "success",
 };
 
+const STATUS_HEX_COLORS = {
+  "Pre-Processing": "#6b7280",
+  "Processing": "#3b82f6",
+  "Waiting": "#eab308",
+  "Scheduled": "#a855f7",
+  "Active": "#f97316",
+  "Financial": "#f59e0b",
+  "Installed": "#22c55e",
+  "Issue": "#ef4444",
+  "Completed": "#15803d",
+};
+
 function getStatusTone(statusName) {
   if (!statusName) return "secondary";
   return STATUS_COLORS[statusName] || "secondary";
+}
+
+function getStatusColor(statusName) {
+  if (!statusName) return "#6b7280";
+  return STATUS_HEX_COLORS[statusName] || "#6b7280";
 }
 
 export default function ProjectList({ projects = [], selectedProjectId, onSelectProject, filters = {} }) {
@@ -70,8 +87,17 @@ export default function ProjectList({ projects = [], selectedProjectId, onSelect
                   transition: "all 0.15s",
                 }}
               >
-                <div style={{ fontWeight: 600, fontSize: "11px", marginBottom: "1px", color: "#1e293b" }}>
-                  {project.client_name || "Untitled"}
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "1px" }}>
+                  <span style={{
+                    width: "8px",
+                    height: "8px",
+                    borderRadius: "50%",
+                    background: getStatusColor(statusName),
+                    flexShrink: 0,
+                  }} />
+                  <span style={{ fontWeight: 600, fontSize: "11px", color: "#1e293b" }}>
+                    {project.client_name || "Untitled"}
+                  </span>
                 </div>
                 <div style={{ marginBottom: "2px" }}>
                   <StatusBadge tone={getStatusTone(statusName)}>{statusName || "No Status"}</StatusBadge>

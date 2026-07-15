@@ -8,6 +8,22 @@ export default function ProjectDetailDrawer({ project, statuses = [], onClose, o
     return project.proj_s_project_status?.status_name || statuses.find((s) => s.status_id === project.status_id)?.status_name || "";
   }, [project, statuses]);
 
+  function getStatusColor(statusName) {
+    const STATUS_COLORS = {
+      "Pre-Processing": "#6b7280",
+      "Processing": "#3b82f6",
+      "Waiting": "#eab308",
+      "Scheduled": "#a855f7",
+      "Active": "#f97316",
+      "Financial": "#f59e0b",
+      "Installed": "#22c55e",
+      "Issue": "#ef4444",
+      "Completed": "#15803d",
+    };
+    if (!statusName) return "#6b7280";
+    return STATUS_COLORS[statusName] || "#6b7280";
+  }
+
   if (!project) return null;
 
   return (
@@ -43,7 +59,16 @@ export default function ProjectDetailDrawer({ project, statuses = [], onClose, o
       </div>
 
       <div style={{ flex: 1, overflow: "auto", padding: "12px" }}>
-        <h5 style={{ margin: "0 0 2px", fontSize: "14px", fontWeight: 600 }}>{project.client_name || "Untitled"}</h5>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "2px" }}>
+          <span style={{
+            width: "10px",
+            height: "10px",
+            borderRadius: "50%",
+            background: getStatusColor(statusName),
+            flexShrink: 0,
+          }} />
+          <h5 style={{ margin: 0, fontSize: "14px", fontWeight: 600 }}>{project.client_name || "Untitled"}</h5>
+        </div>
         {statusName && (
           <span style={{
             display: "inline-block",

@@ -37,9 +37,6 @@ create index IF not exists idx_proj_t_projects_state_code on public.proj_t_proje
 create index IF not exists idx_proj_t_projects_dealer on public.proj_t_projects using btree (dealer) TABLESPACE pg_default;
 
 
--- ====================================================
--- Migration 008 & 009: Added display_color and display_order to statuses table
--- ====================================================
 
 create table public.proj_s_project_status (
   status_id serial not null,
@@ -56,9 +53,6 @@ create table public.proj_s_project_status (
 -- Colors retrieved from display_color column, not hardcoded.
 
 
--- ====================================================
--- Migration 006: New table - Company Origin Addresses
--- ====================================================
 
 create table public.proj_s_origin_addresses (
   id uuid not null default gen_random_uuid(),
@@ -81,9 +75,6 @@ create table public.proj_s_origin_addresses (
 ) TABLESPACE pg_default;
 
 
--- ====================================================
--- Migration 007: New table - State Configuration
--- ====================================================
 
 create table public.proj_s_states (
   id uuid not null default gen_random_uuid(),
@@ -97,6 +88,3 @@ create table public.proj_s_states (
   constraint proj_s_states_state_name_key unique (state_name),
   constraint proj_s_states_state_code_key unique (state_code)
 ) TABLESPACE pg_default;
-
--- Seeded with all 50 US states and their display colors.
--- Colors retrieved from this table, not hardcoded.

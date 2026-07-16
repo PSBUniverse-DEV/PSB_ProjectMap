@@ -34,6 +34,7 @@ export default function ProjectMap({
   routeData = null,
   stateColorLookup = {},
   statuses = [],
+  searchResults = null,
 }) {
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
@@ -199,10 +200,14 @@ export default function ProjectMap({
         pointer-events: none;
         min-width: 150px;
       `;
+      const subtotalStr = project.project_subtotal != null
+        ? `$${Number(project.project_subtotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+        : "";
       tooltip.innerHTML = `
         <div style="font-weight: 600; margin-bottom: 2px;">${project.client_name || "Untitled"}</div>
         <div style="color: ${statusColor}; font-size: 10px; margin-bottom: 2px;">${statusName || "No Status"}</div>
         <div style="font-size: 10px; color: #64748b;">${project.formatted_address || project.city || "No address"}</div>
+        ${subtotalStr ? `<div style="font-size: 10px; color: #16a34a; margin-top: 2px;">${subtotalStr}</div>` : ""}
       `;
 
       const popup = new MapLibreGL.Popup({ 
@@ -228,11 +233,12 @@ export default function ProjectMap({
       markersRef.current.push(marker);
     });
 
-    // Fit bounds if we have markers
-    if (filteredProjects.length > 0) {
+    // Fit bounds: prefer searchResults, then filteredProjects
+    const targetProjects = searchResults || filteredProjects;
+    if (targetProjects.length > 0) {
       const bounds = new MapLibreGL.LngLatBounds();
       let hasValid = false;
-      filteredProjects.forEach((p) => {
+      targetProjects.forEach((p) => {
         const lat = p.site_latitude || p.address_latitude;
         const lng = p.site_longitude || p.address_longitude;
         if (lat != null && lng != null) {
@@ -244,7 +250,7 @@ export default function ProjectMap({
         map.fitBounds(bounds, { padding: 50, maxZoom: 14 });
       }
     }
-  }, [filteredProjects, onSelectProject, stateColorLookup]);
+  }, [filteredProjects, onSelectProject, stateColorLookup, searchResults]);
 
   // Update origin marker and route line
   useEffect(() => {

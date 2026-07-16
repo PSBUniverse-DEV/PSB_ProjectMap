@@ -87,6 +87,13 @@ export default function ProjectDetailDrawer({ project, statuses = [], onClose, o
           </div>
         )}
 
+        {project.project_subtotal != null && (
+          <div style={{ marginBottom: "10px" }}>
+            <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "2px" }}>Subtotal</div>
+            <div style={{ fontSize: "12px", color: "#1e293b" }}>${Number(project.project_subtotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+          </div>
+        )}
+
         <div style={{ marginBottom: "10px" }}>
           <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "2px" }}>Order Received</div>
           <div style={{ fontSize: "12px", color: "#1e293b" }}>{project.order_received_date || "—"}</div>

@@ -109,6 +109,23 @@ export default function FilterBar({ statuses = [], dealers = [], states = [], fi
         ))}
       </select>
 
+      <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+        <label style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", whiteSpace: "nowrap" }}>From:</label>
+        <input
+          type="date"
+          value={filters.dateFrom || ""}
+          onChange={(e) => onFilterChange?.({ ...filters, dateFrom: e.target.value })}
+          style={{ border: "1px solid #e2e8f0", borderRadius: "3px", padding: "3px 4px", fontSize: "11px", width: "120px" }}
+        />
+        <label style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", whiteSpace: "nowrap" }}>To:</label>
+        <input
+          type="date"
+          value={filters.dateTo || ""}
+          onChange={(e) => onFilterChange?.({ ...filters, dateTo: e.target.value })}
+          style={{ border: "1px solid #e2e8f0", borderRadius: "3px", padding: "3px 4px", fontSize: "11px", width: "120px" }}
+        />
+      </div>
+
       <button
         onClick={onAddClick}
         style={{

@@ -19,10 +19,59 @@ const TABLE_DEFS = [
     columns: [
       { key: "status_name", label: "Status Name", sortable: true },
       { key: "status_description", label: "Description", sortable: true },
+      { key: "display_color", label: "Color", sortable: false },
     ],
     fields: [
       { key: "status_name", label: "Status Name", required: true },
       { key: "status_description", label: "Description" },
+      { key: "display_color", label: "Display Color (hex)" },
+    ],
+  },
+  {
+    key: "originAddresses",
+    label: "Origin Addresses",
+    pk: "id",
+    columns: [
+      { key: "origin_name", label: "Origin Name", sortable: true },
+      { key: "origin_code", label: "Code", sortable: true },
+      { key: "city", label: "City", sortable: true },
+      { key: "state", label: "State", sortable: true },
+      { key: "is_default", label: "Default", sortable: true },
+      { key: "is_active", label: "Active", sortable: true },
+    ],
+    fields: [
+      { key: "origin_name", label: "Origin Name", required: true },
+      { key: "origin_code", label: "Origin Code" },
+      { key: "formatted_address", label: "Formatted Address" },
+      { key: "address_line_1", label: "Address Line 1" },
+      { key: "city", label: "City" },
+      { key: "state", label: "State" },
+      { key: "state_code", label: "State Code" },
+      { key: "postal_code", label: "Postal Code" },
+      { key: "country", label: "Country" },
+      { key: "latitude", label: "Latitude", type: "number" },
+      { key: "longitude", label: "Longitude", type: "number" },
+      { key: "is_default", label: "Is Default", type: "boolean" },
+      { key: "is_active", label: "Is Active", type: "boolean" },
+    ],
+  },
+  {
+    key: "states",
+    label: "States",
+    pk: "id",
+    columns: [
+      { key: "state_name", label: "State Name", sortable: true },
+      { key: "state_code", label: "Code", sortable: true },
+      { key: "display_color", label: "Color", sortable: false },
+      { key: "display_order", label: "Order", sortable: true },
+      { key: "is_active", label: "Active", sortable: true },
+    ],
+    fields: [
+      { key: "state_name", label: "State Name", required: true },
+      { key: "state_code", label: "State Code", required: true },
+      { key: "display_color", label: "Display Color (hex)", required: true },
+      { key: "display_order", label: "Display Order", type: "number" },
+      { key: "is_active", label: "Is Active", type: "boolean" },
     ],
   },
 ];
@@ -126,7 +175,9 @@ export default function ProjectMapSetupView({ setup = {} }) {
       const payload = {};
       tableDef.fields.forEach((f) => {
         const val = draft[f.key];
-        if (f.type === "number") {
+        if (f.type === "boolean") {
+          payload[f.key] = val === true || val === "true" || val === "1";
+        } else if (f.type === "number") {
           payload[f.key] = val === "" || val == null ? null : Number(val);
         } else if (f.type === "select") {
           payload[f.key] = val === "" || val == null ? null : Number(val);

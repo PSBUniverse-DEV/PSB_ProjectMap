@@ -16,10 +16,20 @@ export default function SetupFormModal({ show, mode, tableName, fields, draft, b
       <div className="setup-form-modal">
         {fields?.map((f) => (
           <Form.Group key={f.key} className="setup-form-modal__field">
-            <Form.Label className="setup-form-modal__label">
-              {f.label}{f.required ? <span className="setup-form-modal__required">*</span> : ""}
-            </Form.Label>
-            {f.type === "select" ? (
+            {f.type !== "boolean" && (
+              <Form.Label className="setup-form-modal__label">
+                {f.label}{f.required ? <span className="setup-form-modal__required">*</span> : ""}
+              </Form.Label>
+            )}
+            {f.type === "boolean" ? (
+              <Form.Check
+                type="switch"
+                id={`field-${f.key}`}
+                label={f.label}
+                checked={draft[f.key] === true || draft[f.key] === "true" || draft[f.key] === "1"}
+                onChange={(e) => onDraftChange(f.key, e.target.checked)}
+              />
+            ) : f.type === "select" ? (
               <Form.Select
                 size="sm"
                 value={draft[f.key] ?? ""}

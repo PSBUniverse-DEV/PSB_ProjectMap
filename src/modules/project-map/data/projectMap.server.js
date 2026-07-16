@@ -18,6 +18,8 @@ export async function loadProjectMapSetup() {
 
   const queries = {
     projectStatuses: supabase.from("proj_s_project_status").select("*").order("status_id"),
+    originAddresses: supabase.from("proj_s_origin_addresses").select("*").order("origin_name"),
+    states: supabase.from("proj_s_states").select("*").order("display_order"),
   };
 
   const keys = Object.keys(queries);
@@ -50,7 +52,7 @@ export async function loadProjectMapProjects() {
         "id, client_name, formatted_address, address_line_1, city, state, state_code, " +
         "postal_code, country, address_latitude, address_longitude, site_latitude, site_longitude, " +
         "location_source, location_confirmed, status_id, dealer, " +
-        "order_received_date, scheduled_project_date, install_date, " +
+        "order_received_date, scheduled_project_date, install_date, project_subtotal, " +
         "created_at, updated_at, created_by, updated_by, " +
         "proj_s_project_status(status_id, status_name, status_description)"
       )

@@ -34,6 +34,8 @@ function toIntOrNull(v) {
 
 const SETUP_TABLES = {
   projectStatuses: { table: "proj_s_project_status", pk: "status_id" },
+  originAddresses: { table: "proj_s_origin_addresses", pk: "id" },
+  states: { table: "proj_s_states", pk: "id" },
 };
 
 function resolveSetupTable(key) {
@@ -57,26 +59,24 @@ export async function createSetupRow(tableKey, row) {
 
 export async function updateSetupRow(tableKey, id, updates) {
   const { table, pk } = resolveSetupTable(tableKey);
-  const rowId = toIntOrNull(id);
-  if (rowId === null) throw new Error(`${pk} is required.`);
+  if (id == null) throw new Error(`${pk} is required.`);
   if (!updates || typeof updates !== "object") throw new Error("Update data is required.");
 
   const supabase = getSupabaseAdmin();
   const payload = { ...updates };
   delete payload[pk];
 
-  const { data, error } = await supabase.from(table).update(payload).eq(pk, rowId).select("*").single();
+  const { data, error } = await supabase.from(table).update(payload).eq(pk, id).select("*").single();
   if (error) throw new Error(error.message);
   return data;
 }
 
 export async function deleteSetupRow(tableKey, id) {
   const { table, pk } = resolveSetupTable(tableKey);
-  const rowId = toIntOrNull(id);
-  if (rowId === null) throw new Error(`${pk} is required.`);
+  if (id == null) throw new Error(`${pk} is required.`);
 
   const supabase = getSupabaseAdmin();
-  const { error } = await supabase.from(table).delete().eq(pk, rowId);
+  const { error } = await supabase.from(table).delete().eq(pk, id);
   if (error) throw new Error(error.message);
   return { success: true };
 }

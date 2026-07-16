@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Modal, toastError, toastSuccess } from "@/shared/components/ui";
 import { deleteProject, calculateRoute } from "../data/projectMap.actions";
@@ -21,6 +21,8 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
   const [selectedOriginId, setSelectedOriginId] = useState(null);
   const [routeData, setRouteData] = useState(null);
   const [routeLoading, setRouteLoading] = useState(false);
+  const [searchResults, setSearchResults] = useState(null);
+  const prevSearchRef = useRef("");
 
   // Scroll to top on mount
   useEffect(() => {
@@ -30,6 +32,68 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
   // Derived lists for filter dropdowns
   const dealers = useMemo(() => projects.map((p) => p.dealer).filter(Boolean), [projects]);
   const projectStates = useMemo(() => projects.map((p) => p.state_code).filter(Boolean), [projects]);
+
+  // Apply filters including date range
+  const filteredProjects = useMemo(() => {
+    return projects.filter((p) => {
+      if (filters.status && String(p.status_id) !== String(filters.status)) return false;
+      if (filters.dealer && p.dealer !== filters.dealer) return false;
+      if (filters.state && p.state_code !== filters.state) return false;
+      // Date range filter: check scheduled_project_date or install_date
+      if (filters.dateFrom) {
+        const from = new Date(filters.dateFrom);
+        const sched = p.scheduled_project_date ? new Date(p.scheduled_project_date) : null;
+        const install = p.install_date ? new Date(p.install_date) : null;
+        if (!sched && !install) return false;
+        if (sched && sched < from && (!install || install < from)) return false;
+        if (install && install < from && (!sched || sched < from)) return false;
+      }
+      if (filters.dateTo) {
+        const to = new Date(filters.dateTo);
+        to.setHours(23, 59, 59, 999);
+        const sched = p.scheduled_project_date ? new Date(p.scheduled_project_date) : null;
+        const install = p.install_date ? new Date(p.install_date) : null;
+        if (!sched && !install) return false;
+        if (sched && sched > to && (!install || install > to)) return false;
+        if (install && install > to && (!sched || sched > to)) return false;
+      }
+      if (filters.search) {
+        const q = filters.search.toLowerCase();
+        const match =
+          (p.client_name && p.client_name.toLowerCase().includes(q)) ||
+          (p.formatted_address && p.formatted_address.toLowerCase().includes(q)) ||
+          (p.city && p.city.toLowerCase().includes(q)) ||
+          (p.state && p.state.toLowerCase().includes(q));
+        if (!match) return false;
+      }
+      return true;
+    });
+  }, [projects, filters]);
+
+  // Detect search changes to center map
+  useEffect(() => {
+    const currentSearch = filters.search || "";
+    const prevSearch = prevSearchRef.current;
+    prevSearchRef.current = currentSearch;
+
+    // When search changes (user types), find matching projects
+    if (currentSearch && currentSearch.length >= 2) {
+      const q = currentSearch.toLowerCase();
+      const matched = projects.filter((p) => {
+        const match =
+          (p.client_name && p.client_name.toLowerCase().includes(q)) ||
+          (p.formatted_address && p.formatted_address.toLowerCase().includes(q)) ||
+          (p.city && p.city.toLowerCase().includes(q)) ||
+          (p.state && p.state.toLowerCase().includes(q));
+        return match &&
+          (p.site_latitude || p.address_latitude) != null &&
+          (p.site_longitude || p.address_longitude) != null;
+      });
+      setSearchResults(matched.length > 0 ? matched : null);
+    } else {
+      setSearchResults(null);
+    }
+  }, [filters.search, projects]);
 
   const selectedProject = useMemo(() => {
     if (!selectedProjectId) return null;
@@ -227,6 +291,7 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
             routeData={routeData}
             stateColorLookup={stateColorLookup}
             statuses={statuses}
+            searchResults={searchResults}
           />
         </div>
 

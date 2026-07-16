@@ -11,6 +11,7 @@ export default function AddProjectForm({ show, mode, project, statuses = [], onC
     client_name: "",
     status_id: "",
     dealer: "",
+    project_subtotal: "",
     order_received_date: "",
     scheduled_project_date: "",
     install_date: "",
@@ -41,6 +42,7 @@ export default function AddProjectForm({ show, mode, project, statuses = [], onC
         client_name: project.client_name || "",
         status_id: project.status_id ? String(project.status_id) : "",
         dealer: project.dealer || "",
+        project_subtotal: project.project_subtotal != null ? String(project.project_subtotal) : "",
         order_received_date: project.order_received_date || "",
         scheduled_project_date: project.scheduled_project_date || "",
         install_date: project.install_date || "",
@@ -64,6 +66,7 @@ export default function AddProjectForm({ show, mode, project, statuses = [], onC
         client_name: "",
         status_id: "",
         dealer: "",
+        project_subtotal: "",
         order_received_date: "",
         scheduled_project_date: "",
         install_date: "",
@@ -117,6 +120,7 @@ export default function AddProjectForm({ show, mode, project, statuses = [], onC
       const payload = {
         ...form,
         status_id: form.status_id ? Number(form.status_id) : null,
+        project_subtotal: form.project_subtotal !== "" ? Number(form.project_subtotal) : null,
       };
 
       if (mode === "edit" && project?.id) {
@@ -187,6 +191,19 @@ export default function AddProjectForm({ show, mode, project, statuses = [], onC
             selectedLocation={form}
             query={locationQuery}
             onQueryChange={setLocationQuery}
+          />
+        </div>
+
+        <div>
+          <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Project Subtotal ($)</label>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            value={form.project_subtotal}
+            onChange={(e) => handleChange("project_subtotal", e.target.value)}
+            style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px" }}
+            placeholder="0.00"
           />
         </div>
 

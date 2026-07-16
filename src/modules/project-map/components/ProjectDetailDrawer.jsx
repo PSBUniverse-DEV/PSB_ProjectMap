@@ -2,26 +2,16 @@
 
 import { useMemo } from "react";
 
-export default function ProjectDetailDrawer({ project, statuses = [], onClose, onEdit, onDelete }) {
+export default function ProjectDetailDrawer({ project, statuses = [], onClose, onEdit, onDelete, routeInfo = null }) {
   const statusName = useMemo(() => {
     if (!project) return "";
     return project.proj_s_project_status?.status_name || statuses.find((s) => s.status_id === project.status_id)?.status_name || "";
   }, [project, statuses]);
 
   function getStatusColor(statusName) {
-    const STATUS_COLORS = {
-      "Pre-Processing": "#6b7280",
-      "Processing": "#3b82f6",
-      "Waiting": "#eab308",
-      "Scheduled": "#a855f7",
-      "Active": "#f97316",
-      "Financial": "#f59e0b",
-      "Installed": "#22c55e",
-      "Issue": "#ef4444",
-      "Completed": "#15803d",
-    };
     if (!statusName) return "#6b7280";
-    return STATUS_COLORS[statusName] || "#6b7280";
+    const found = statuses.find((s) => s.status_name === statusName);
+    return found?.display_color || "#6b7280";
   }
 
   if (!project) return null;
@@ -36,7 +26,7 @@ export default function ProjectDetailDrawer({ project, statuses = [], onClose, o
       background: "#fff",
       borderLeft: "1px solid #e2e8f0",
       boxShadow: "-4px 0 12px rgba(0,0,0,0.08)",
-      zIndex: 1000,
+      zIndex: 10,
       display: "flex",
       flexDirection: "column",
     }}>
@@ -122,6 +112,14 @@ export default function ProjectDetailDrawer({ project, statuses = [], onClose, o
                 : "No coordinates"}
           </div>
         </div>
+
+        {routeInfo && (
+          <div style={{ marginBottom: "10px" }}>
+            <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "2px" }}>Route from Origin</div>
+            <div style={{ fontSize: "12px", color: "#1e293b" }}>{routeInfo.distance}</div>
+            <div style={{ fontSize: "11px", color: "#64748b" }}>{routeInfo.duration}</div>
+          </div>
+        )}
       </div>
 
       <div style={{

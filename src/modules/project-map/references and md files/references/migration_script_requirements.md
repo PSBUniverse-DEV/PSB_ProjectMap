@@ -1,12 +1,11 @@
-That's actually a better approach for setup/master tables.
-
-Here's the updated standard:
 
 ---
 
 # Database Migration Standards
 
-Going forward, all database migration scripts must follow these standards.
+Going forward, all database migration scripts must follow these standards. EVERY DATABASE CHANGES SHOULD CREATE NEW SQL SCRIPT FILE THAT FOLLOWS THE "Database Migration Standards"
+
+SAVE ALL MIGRATION SCRIPTS INTO "src\modules\project-map\references and md files\migration"
 
 ## 1. Always Use Safe Migrations
 

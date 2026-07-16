@@ -145,3 +145,29 @@ export async function deleteProject(projectId) {
   if (error) throw new Error(error.message);
   return { success: true };
 }
+
+// ─── OSRM Route Calculation ─────────────────────────────────
+
+export async function calculateRoute(originLat, originLng, destLat, destLng) {
+  if (originLat == null || originLng == null || destLat == null || destLng == null) {
+    throw new Error("Origin and destination coordinates are required.");
+  }
+
+  const url = `https://router.project-osrm.org/route/v1/driving/${originLng},${originLat};${destLng},${destLat}?overview=full&geometries=geojson&steps=false`;
+
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`OSRM request failed: ${response.statusText}`);
+
+  const data = await response.json();
+
+  if (!data.routes || data.routes.length === 0) {
+    throw new Error("No route found between the selected points.");
+  }
+
+  const route = data.routes[0];
+  return {
+    distance: route.distance,          // meters
+    duration: route.duration,          // seconds
+    geometry: route.geometry,          // GeoJSON LineString
+  };
+}

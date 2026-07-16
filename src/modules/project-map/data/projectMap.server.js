@@ -43,7 +43,7 @@ export async function loadProjectMapSetup() {
 export async function loadProjectMapProjects() {
   const supabase = getSupabaseAdmin();
 
-  const [projectsResult, statusesResult] = await Promise.all([
+  const [projectsResult, statusesResult, originsResult, statesResult] = await Promise.all([
     supabase
       .from("proj_t_projects")
       .select(
@@ -55,7 +55,9 @@ export async function loadProjectMapProjects() {
         "proj_s_project_status(status_id, status_name, status_description)"
       )
       .order("updated_at", { ascending: false }),
-    supabase.from("proj_s_project_status").select("status_id, status_name, status_description").order("status_id"),
+    supabase.from("proj_s_project_status").select("status_id, status_name, status_description, display_color").order("status_id"),
+    supabase.from("proj_s_origin_addresses").select("*").eq("is_active", true).order("origin_name"),
+    supabase.from("proj_s_states").select("*").eq("is_active", true).order("display_order"),
   ]);
 
   if (projectsResult.error) throw new Error(projectsResult.error.message);
@@ -63,6 +65,8 @@ export async function loadProjectMapProjects() {
 
   const projects = projectsResult.data || [];
   const statuses = statusesResult.data || [];
+  const origins = originsResult.error ? [] : (originsResult.data || []);
+  const states = statesResult.error ? [] : (statesResult.data || []);
 
-  return { projects, statuses };
+  return { projects, statuses, origins, states };
 }

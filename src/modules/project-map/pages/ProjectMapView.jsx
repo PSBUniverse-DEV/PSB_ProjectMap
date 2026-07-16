@@ -1,16 +1,16 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Modal, toastError, toastSuccess } from "@/shared/components/ui";
-import { deleteProject } from "../data/projectMap.actions";
+import { deleteProject, calculateRoute } from "../data/projectMap.actions";
 import ProjectMap from "../components/ProjectMap";
 import ProjectList from "../components/ProjectList";
 import ProjectDetailDrawer from "../components/ProjectDetailDrawer";
 import FilterBar from "../components/FilterBar";
 import AddProjectForm from "../components/AddProjectForm";
 
-export default function ProjectMapView({ projects = [], statuses = [] }) {
+export default function ProjectMapView({ projects = [], statuses = [], origins = [], states = [] }) {
   const router = useRouter();
   const [filters, setFilters] = useState({});
   const [selectedProjectId, setSelectedProjectId] = useState(null);
@@ -18,6 +18,9 @@ export default function ProjectMapView({ projects = [], statuses = [] }) {
   const [editingProject, setEditingProject] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [selectedOriginId, setSelectedOriginId] = useState(null);
+  const [routeData, setRouteData] = useState(null);
+  const [routeLoading, setRouteLoading] = useState(false);
 
   // Scroll to top on mount
   useEffect(() => {
@@ -26,12 +29,26 @@ export default function ProjectMapView({ projects = [], statuses = [] }) {
 
   // Derived lists for filter dropdowns
   const dealers = useMemo(() => projects.map((p) => p.dealer).filter(Boolean), [projects]);
-  const states = useMemo(() => projects.map((p) => p.state_code).filter(Boolean), [projects]);
+  const projectStates = useMemo(() => projects.map((p) => p.state_code).filter(Boolean), [projects]);
 
   const selectedProject = useMemo(() => {
     if (!selectedProjectId) return null;
     return projects.find((p) => p.id === selectedProjectId) || null;
   }, [selectedProjectId, projects]);
+
+  const selectedOrigin = useMemo(() => {
+    if (!selectedOriginId) return null;
+    return origins.find((o) => o.id === selectedOriginId) || null;
+  }, [selectedOriginId, origins]);
+
+  // Build state color lookup from DB
+  const stateColorLookup = useMemo(() => {
+    const map = {};
+    states.forEach((s) => {
+      map[s.state_code] = s.display_color;
+    });
+    return map;
+  }, [states]);
 
   const handleSelectProject = (id) => {
     setSelectedProjectId(id);
@@ -77,31 +94,114 @@ export default function ProjectMapView({ projects = [], statuses = [] }) {
     setEditingProject(null);
   };
 
+  // Calculate route when origin or selected project changes
+  useEffect(() => {
+    if (!selectedOrigin || !selectedProject) {
+      setRouteData(null);
+      return;
+    }
+
+    const destLat = selectedProject.site_latitude || selectedProject.address_latitude;
+    const destLng = selectedProject.site_longitude || selectedProject.address_longitude;
+    if (selectedOrigin.latitude == null || selectedOrigin.longitude == null || destLat == null || destLng == null) {
+      setRouteData(null);
+      return;
+    }
+
+    let cancelled = false;
+    setRouteLoading(true);
+
+    calculateRoute(selectedOrigin.latitude, selectedOrigin.longitude, destLat, destLng)
+      .then((data) => {
+        if (!cancelled) {
+          setRouteData(data);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          toastError(err?.message || "Failed to calculate route.", "Route");
+          setRouteData(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setRouteLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [selectedOrigin, selectedProject]);
+
+  // Format route info for display
+  const routeInfo = useMemo(() => {
+    if (!routeData) return null;
+    const distKm = (routeData.distance / 1000).toFixed(1);
+    const mins = Math.round(routeData.duration / 60);
+    return {
+      distance: `${distKm} km`,
+      duration: `${mins} min${mins !== 1 ? "s" : ""}`,
+    };
+  }, [routeData]);
+
   return (
-    <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: "#f8fafc", overflow: "hidden" }}>
+    <div style={{ display: "flex", flexDirection: "column", background: "#f8fafc", overflow: "hidden", height: "100vh" }}>
       {/* Header */}
       <div style={{
-        padding: "1px 10px",
+        padding: "2px 10px",
         background: "#fff",
         borderBottom: "1px solid #e2e8f0",
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
         flexShrink: 0,
-        minHeight: "22px",
       }}>
-        <h2 style={{ margin: 0, fontSize: "11px", fontWeight: 600, color: "#1e293b", lineHeight: "1.1" }}>PSB Project Map</h2>
+        <h2 style={{ margin: 0, fontSize: "12px", fontWeight: 600, color: "#1e293b", lineHeight: "1.2" }}>Projects Map</h2>
+        <p style={{ margin: "1px 0 0", fontSize: "9px", color: "#64748b", lineHeight: "1.2" }}>View and track project locations, schedules, and statuses on an interactive map.</p>
       </div>
 
       {/* Filter Bar */}
       <FilterBar
         statuses={statuses}
         dealers={dealers}
-        states={states}
+        states={projectStates}
         filters={filters}
         onFilterChange={setFilters}
         onAddClick={() => { setEditingProject(null); setShowAddForm(true); }}
       />
+
+      {/* Origin Selector */}
+      {origins.length > 0 && (
+        <div style={{
+          padding: "2px 10px",
+          background: "#fff",
+          borderBottom: "1px solid #e2e8f0",
+          display: "flex",
+          alignItems: "center",
+          gap: "6px",
+          flexShrink: 0,
+        }}>
+          <label style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", whiteSpace: "nowrap" }}>Origin:</label>
+          <select
+            value={selectedOriginId || ""}
+            onChange={(e) => setSelectedOriginId(e.target.value || null)}
+            style={{
+              fontSize: "11px",
+              padding: "2px 6px",
+              borderRadius: "3px",
+              border: "1px solid #e2e8f0",
+              background: "#fff",
+              color: "#1e293b",
+              maxWidth: "240px",
+            }}
+          >
+            <option value="">Select origin...</option>
+            {origins.map((o) => (
+              <option key={o.id} value={o.id}>{o.origin_name}</option>
+            ))}
+          </select>
+          {routeLoading && <span style={{ fontSize: "10px", color: "#64748b" }}>Calculating route...</span>}
+          {routeInfo && (
+            <span style={{ fontSize: "10px", color: "#1e293b" }}>
+              {routeInfo.distance} · {routeInfo.duration}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Main Content: List + Map */}
       <div style={{ flex: 1, display: "flex", position: "relative", overflow: "hidden", minHeight: 0 }}>
@@ -112,16 +212,21 @@ export default function ProjectMapView({ projects = [], statuses = [] }) {
             selectedProjectId={selectedProjectId}
             onSelectProject={handleSelectProject}
             filters={filters}
+            statuses={statuses}
           />
         </div>
 
         {/* Center: Map */}
-        <div style={{ flex: 1, position: "relative" }}>
+        <div style={{ flex: 1, position: "relative", minHeight: 0, minWidth: 0 }}>
           <ProjectMap
             projects={projects}
             selectedProjectId={selectedProjectId}
             onSelectProject={handleSelectProject}
             filters={filters}
+            selectedOrigin={selectedOrigin}
+            routeData={routeData}
+            stateColorLookup={stateColorLookup}
+            statuses={statuses}
           />
         </div>
 
@@ -133,6 +238,7 @@ export default function ProjectMapView({ projects = [], statuses = [] }) {
             onClose={handleCloseDrawer}
             onEdit={handleEdit}
             onDelete={() => setConfirmDeleteId(selectedProject.id)}
+            routeInfo={routeInfo}
           />
         )}
       </div>

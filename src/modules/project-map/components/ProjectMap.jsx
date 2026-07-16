@@ -19,27 +19,27 @@ const mapStyles = `
   }
 `;
 
-const STATUS_COLORS = {
-  "Pre-Processing": "#6b7280",
-  "Processing": "#3b82f6",
-  "Waiting": "#eab308",
-  "Scheduled": "#a855f7",
-  "Active": "#f97316",
-  "Financial": "#f59e0b",
-  "Installed": "#22c55e",
-  "Issue": "#ef4444",
-  "Completed": "#15803d",
-};
-
-function getStatusColor(statusName) {
+function getStatusColor(statusName, statuses = []) {
   if (!statusName) return "#6b7280";
-  return STATUS_COLORS[statusName] || "#6b7280";
+  const found = statuses.find((s) => s.status_name === statusName);
+  return found?.display_color || "#6b7280";
 }
 
-export default function ProjectMap({ projects = [], selectedProjectId, onSelectProject, filters = {} }) {
+export default function ProjectMap({
+  projects = [],
+  selectedProjectId,
+  onSelectProject,
+  filters = {},
+  selectedOrigin = null,
+  routeData = null,
+  stateColorLookup = {},
+  statuses = [],
+}) {
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
   const markersRef = useRef([]);
+  const originMarkerRef = useRef(null);
+  const routeSourceRef = useRef("route-line");
 
   // Filter projects
   const filteredProjects = projects.filter((p) => {
@@ -92,6 +92,30 @@ export default function ProjectMap({ projects = [], selectedProjectId, onSelectP
     });
 
     map.addControl(new MapLibreGL.NavigationControl(), "top-right");
+
+    // Add route line source and layer after map loads
+    map.on("load", () => {
+      map.addSource("route-line", {
+        type: "geojson",
+        data: { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: [] } },
+      });
+
+      map.addLayer({
+        id: "route-line-layer",
+        type: "line",
+        source: "route-line",
+        layout: {
+          "line-join": "round",
+          "line-cap": "round",
+        },
+        paint: {
+          "line-color": "#1d4ed8",
+          "line-width": 4,
+          "line-opacity": 0.8,
+        },
+      });
+    });
+
     mapRef.current = map;
 
     return () => {
@@ -116,21 +140,23 @@ export default function ProjectMap({ projects = [], selectedProjectId, onSelectP
       if (lat == null || lng == null) return;
 
       const statusName = project.proj_s_project_status?.status_name || "";
-      const color = getStatusColor(statusName);
+      const statusColor = getStatusColor(statusName, statuses);
+      // Use state color from DB for the marker dot, fallback to status color
+      const stateColor = stateColorLookup[project.state_code] || statusColor;
 
-      // Create marker with label
+      // Create marker dot with state color
       const markerEl = document.createElement("div");
       markerEl.style.cssText = `
         width: 20px;
         height: 20px;
-        background: ${color};
+        background: ${stateColor};
         border: 2px solid #fff;
         border-radius: 50%;
         cursor: pointer;
         box-shadow: 0 1px 4px rgba(0,0,0,0.3);
       `;
 
-      // Create label element
+      // Create label element with status color
       const labelEl = document.createElement("div");
       labelEl.style.cssText = `
         position: absolute;
@@ -143,7 +169,7 @@ export default function ProjectMap({ projects = [], selectedProjectId, onSelectP
         padding: 1px 4px;
         font-size: 10px;
         font-weight: 600;
-        color: #1e293b;
+        color: ${statusColor};
         white-space: nowrap;
         pointer-events: none;
         box-shadow: 0 1px 2px rgba(0,0,0,0.15);
@@ -175,7 +201,7 @@ export default function ProjectMap({ projects = [], selectedProjectId, onSelectP
       `;
       tooltip.innerHTML = `
         <div style="font-weight: 600; margin-bottom: 2px;">${project.client_name || "Untitled"}</div>
-        <div style="color: ${color}; font-size: 10px; margin-bottom: 2px;">${statusName || "No Status"}</div>
+        <div style="color: ${statusColor}; font-size: 10px; margin-bottom: 2px;">${statusName || "No Status"}</div>
         <div style="font-size: 10px; color: #64748b;">${project.formatted_address || project.city || "No address"}</div>
       `;
 
@@ -218,12 +244,110 @@ export default function ProjectMap({ projects = [], selectedProjectId, onSelectP
         map.fitBounds(bounds, { padding: 50, maxZoom: 14 });
       }
     }
-  }, [filteredProjects, onSelectProject]);
+  }, [filteredProjects, onSelectProject, stateColorLookup]);
+
+  // Update origin marker and route line
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    // Remove existing origin marker
+    if (originMarkerRef.current) {
+      originMarkerRef.current.remove();
+      originMarkerRef.current = null;
+    }
+
+    if (selectedOrigin && selectedOrigin.latitude != null && selectedOrigin.longitude != null) {
+      // Create origin marker (larger, square-ish, distinct)
+      const originEl = document.createElement("div");
+      originEl.style.cssText = `
+        width: 24px;
+        height: 24px;
+        background: #059669;
+        border: 3px solid #fff;
+        border-radius: 4px;
+        cursor: default;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 1;
+      `;
+      originEl.textContent = "O";
+
+      // Origin label
+      const originLabel = document.createElement("div");
+      originLabel.style.cssText = `
+        position: absolute;
+        top: -16px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(5, 150, 105, 0.9);
+        border-radius: 3px;
+        padding: 1px 4px;
+        font-size: 9px;
+        font-weight: 600;
+        color: #fff;
+        white-space: nowrap;
+        pointer-events: none;
+      `;
+      originLabel.textContent = selectedOrigin.origin_name || "Origin";
+
+      const originWrapper = document.createElement("div");
+      originWrapper.style.cssText = "position: relative; display: inline-block;";
+      originWrapper.appendChild(originEl);
+      originWrapper.appendChild(originLabel);
+
+      originMarkerRef.current = new MapLibreGL.Marker({ element: originWrapper })
+        .setLngLat([selectedOrigin.longitude, selectedOrigin.latitude])
+        .addTo(map);
+    }
+
+    // Update route line
+    if (routeData && routeData.geometry) {
+      const source = map.getSource("route-line");
+      if (source) {
+        source.setData({
+          type: "Feature",
+          properties: {},
+          geometry: routeData.geometry,
+        });
+
+        // Fit bounds to include both origin and destination
+        if (selectedOrigin && selectedProjectId) {
+          const project = projects.find((p) => p.id === selectedProjectId);
+          if (project) {
+            const destLat = project.site_latitude || project.address_latitude;
+            const destLng = project.site_longitude || project.address_longitude;
+            if (selectedOrigin.latitude != null && selectedOrigin.longitude != null && destLat != null && destLng != null) {
+              const bounds = new MapLibreGL.LngLatBounds();
+              bounds.extend([selectedOrigin.longitude, selectedOrigin.latitude]);
+              bounds.extend([destLng, destLat]);
+              map.fitBounds(bounds, { padding: 60, maxZoom: 14 });
+            }
+          }
+        }
+      }
+    } else {
+      // Clear route line
+      const source = map.getSource("route-line");
+      if (source) {
+        source.setData({
+          type: "Feature",
+          properties: {},
+          geometry: { type: "LineString", coordinates: [] },
+        });
+      }
+    }
+  }, [selectedOrigin, routeData, selectedProjectId, projects]);
 
   // Center on selected project
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !selectedProjectId) return;
+    if (!map || !selectedProjectId || routeData) return; // Don't interfere if route is shown
 
     const project = projects.find((p) => p.id === selectedProjectId);
     if (!project) return;
@@ -233,12 +357,21 @@ export default function ProjectMap({ projects = [], selectedProjectId, onSelectP
     if (lat == null || lng == null) return;
 
     map.flyTo({ center: [lng, lat], zoom: 14 });
-  }, [selectedProjectId, projects]);
+  }, [selectedProjectId, projects, routeData]);
+
+  // Resize map when drawer opens/closes
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const timer = setTimeout(() => map.resize(), 350);
+    return () => clearTimeout(timer);
+  }, [selectedProjectId]);
 
   return (
     <>
       <style>{mapStyles}</style>
-      <div ref={mapContainerRef} style={{ width: "100%", height: "100%", position: "relative" }} />
+      <div ref={mapContainerRef} style={{ width: "100%", height: "100%", minHeight: 0, position: "relative" }} />
     </>
   );
 }

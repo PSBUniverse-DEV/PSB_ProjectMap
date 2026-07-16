@@ -3,41 +3,18 @@
 import { useMemo } from "react";
 import { StatusBadge } from "@/shared/components/ui";
 
-const STATUS_COLORS = {
-  "Pre-Processing": "secondary",
-  "Processing": "info",
-  "Waiting": "warning",
-  "Scheduled": "primary",
-  "Active": "success",
-  "Financial": "warning",
-  "Installed": "success",
-  "Issue": "danger",
-  "Completed": "success",
-};
-
-const STATUS_HEX_COLORS = {
-  "Pre-Processing": "#6b7280",
-  "Processing": "#3b82f6",
-  "Waiting": "#eab308",
-  "Scheduled": "#a855f7",
-  "Active": "#f97316",
-  "Financial": "#f59e0b",
-  "Installed": "#22c55e",
-  "Issue": "#ef4444",
-  "Completed": "#15803d",
-};
-
 function getStatusTone(statusName) {
   if (!statusName) return "secondary";
-  return STATUS_COLORS[statusName] || "secondary";
+  return "secondary";
 }
 
-function getStatusColor(statusName) {
+function getStatusColor(statusName, statuses = []) {
   if (!statusName) return "#6b7280";
-  return STATUS_HEX_COLORS[statusName] || "#6b7280";
+  const found = statuses.find((s) => s.status_name === statusName);
+  return found?.display_color || "#6b7280";
 }
 
-export default function ProjectList({ projects = [], selectedProjectId, onSelectProject, filters = {} }) {
+export default function ProjectList({ projects = [], selectedProjectId, onSelectProject, filters = {}, statuses = [] }) {
   const filteredProjects = useMemo(() => {
     return projects.filter((p) => {
       if (filters.status && String(p.status_id) !== String(filters.status)) return false;
@@ -57,7 +34,7 @@ export default function ProjectList({ projects = [], selectedProjectId, onSelect
   }, [projects, filters]);
 
   return (
-    <div style={{ height: "100%", overflow: "auto", background: "#f8fafc", borderRight: "1px solid #e2e8f0" }}>
+    <div style={{ height: "100%", minHeight: 0, overflow: "auto", background: "#f8fafc", borderRight: "1px solid #e2e8f0" }}>
       <div style={{ padding: "6px 10px", borderBottom: "1px solid #e2e8f0", background: "#fff" }}>
         <h6 style={{ margin: 0, fontSize: "11px", fontWeight: 600, color: "#64748b" }}>
           {filteredProjects.length} Project{filteredProjects.length !== 1 ? "s" : ""}
@@ -92,7 +69,7 @@ export default function ProjectList({ projects = [], selectedProjectId, onSelect
                     width: "8px",
                     height: "8px",
                     borderRadius: "50%",
-                    background: getStatusColor(statusName),
+                    background: getStatusColor(statusName, statuses),
                     flexShrink: 0,
                   }} />
                   <span style={{ fontWeight: 600, fontSize: "11px", color: "#1e293b" }}>

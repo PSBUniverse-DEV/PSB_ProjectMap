@@ -88,3 +88,50 @@ create table public.proj_s_states (
   constraint proj_s_states_state_name_key unique (state_name),
   constraint proj_s_states_state_code_key unique (state_code)
 ) TABLESPACE pg_default;
+
+
+
+-- ====================================================
+-- Runs Module Tables
+-- ====================================================
+
+create table public.proj_t_runs (
+  id uuid not null default gen_random_uuid(),
+  run_number serial not null,
+  run_name text not null,
+  origin_id uuid null,
+  run_date date null,
+  status text not null default 'Draft',
+  notes text null,
+  team_assigned text null,
+  vehicle_assigned text null,
+  estimated_distance numeric(10, 2) null,
+  estimated_duration numeric(10, 2) null,
+  estimated_subtotal numeric(12, 2) null,
+  created_by uuid null,
+  updated_by uuid null,
+  created_at timestamp with time zone not null default now(),
+  updated_at timestamp with time zone not null default now(),
+  constraint proj_t_runs_pkey primary key (id),
+  constraint proj_t_runs_origin_id_fkey foreign KEY (origin_id) references proj_s_origin_addresses (id)
+) TABLESPACE pg_default;
+
+create index IF not exists idx_proj_t_runs_run_date on public.proj_t_runs using btree (run_date) TABLESPACE pg_default;
+
+create index IF not exists idx_proj_t_runs_status on public.proj_t_runs using btree (status) TABLESPACE pg_default;
+
+create table public.proj_t_run_projects (
+  id uuid not null default gen_random_uuid(),
+  run_id uuid not null,
+  project_id integer not null,
+  stop_sequence integer not null default 0,
+  notes text null,
+  constraint proj_t_run_projects_pkey primary key (id),
+  constraint proj_t_run_projects_run_id_fkey foreign KEY (run_id) references proj_t_runs (id) on delete cascade,
+  constraint proj_t_run_projects_project_id_fkey foreign KEY (project_id) references proj_t_projects (id),
+  constraint proj_t_run_projects_run_project_unique unique (run_id, project_id)
+) TABLESPACE pg_default;
+
+create index IF not exists idx_proj_t_run_projects_run_id on public.proj_t_run_projects using btree (run_id) TABLESPACE pg_default;
+
+create index IF not exists idx_proj_t_run_projects_project_id on public.proj_t_run_projects using btree (project_id) TABLESPACE pg_default;

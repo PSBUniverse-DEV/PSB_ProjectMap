@@ -35,6 +35,11 @@ export default function ProjectMap({
   stateColorLookup = {},
   statuses = [],
   searchResults = null,
+  mode = "projects",
+  runs = [],
+  selectedRunId = null,
+  runProjects = [],
+  runRouteData = null,
 }) {
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
@@ -263,7 +268,14 @@ export default function ProjectMap({
       originMarkerRef.current = null;
     }
 
-    if (selectedOrigin && selectedOrigin.latitude != null && selectedOrigin.longitude != null) {
+    // Determine which origin to show
+    let origin = selectedOrigin;
+    if (mode === "runs" && selectedRunId) {
+      const run = runs.find((r) => r.id === selectedRunId);
+      origin = run?.proj_s_origin_addresses || null;
+    }
+
+    if (origin && origin.latitude != null && origin.longitude != null) {
       // Create origin marker (larger, square-ish, distinct)
       const originEl = document.createElement("div");
       originEl.style.cssText = `
@@ -300,7 +312,7 @@ export default function ProjectMap({
         white-space: nowrap;
         pointer-events: none;
       `;
-      originLabel.textContent = selectedOrigin.origin_name || "Origin";
+      originLabel.textContent = origin.origin_name || "Origin";
 
       const originWrapper = document.createElement("div");
       originWrapper.style.cssText = "position: relative; display: inline-block;";
@@ -308,33 +320,34 @@ export default function ProjectMap({
       originWrapper.appendChild(originLabel);
 
       originMarkerRef.current = new MapLibreGL.Marker({ element: originWrapper })
-        .setLngLat([selectedOrigin.longitude, selectedOrigin.latitude])
+        .setLngLat([origin.longitude, origin.latitude])
         .addTo(map);
     }
 
     // Update route line
-    if (routeData && routeData.geometry) {
+    const currentRouteData = mode === "runs" ? runRouteData : routeData;
+    if (currentRouteData && currentRouteData.geometry) {
       const source = map.getSource("route-line");
       if (source) {
         source.setData({
           type: "Feature",
           properties: {},
-          geometry: routeData.geometry,
+          geometry: currentRouteData.geometry,
         });
 
-        // Fit bounds to include both origin and destination
-        if (selectedOrigin && selectedProjectId) {
-          const project = projects.find((p) => p.id === selectedProjectId);
-          if (project) {
-            const destLat = project.site_latitude || project.address_latitude;
-            const destLng = project.site_longitude || project.address_longitude;
-            if (selectedOrigin.latitude != null && selectedOrigin.longitude != null && destLat != null && destLng != null) {
-              const bounds = new MapLibreGL.LngLatBounds();
-              bounds.extend([selectedOrigin.longitude, selectedOrigin.latitude]);
-              bounds.extend([destLng, destLat]);
-              map.fitBounds(bounds, { padding: 60, maxZoom: 14 });
+        // Fit bounds to include origin and all stops
+        if (origin && runProjects.length > 0) {
+          const bounds = new MapLibreGL.LngLatBounds();
+          bounds.extend([origin.longitude, origin.latitude]);
+          runProjects.forEach((rp) => {
+            const proj = rp.proj_t_projects || {};
+            const lat = proj.site_latitude || proj.address_latitude;
+            const lng = proj.site_longitude || proj.address_longitude;
+            if (lat != null && lng != null) {
+              bounds.extend([lng, lat]);
             }
-          }
+          });
+          map.fitBounds(bounds, { padding: 60, maxZoom: 14 });
         }
       }
     } else {
@@ -348,7 +361,7 @@ export default function ProjectMap({
         });
       }
     }
-  }, [selectedOrigin, routeData, selectedProjectId, projects]);
+  }, [mode, selectedOrigin, routeData, selectedProjectId, projects, runs, selectedRunId, runProjects, runRouteData]);
 
   // Center on selected project
   useEffect(() => {

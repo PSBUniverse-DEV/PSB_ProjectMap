@@ -146,6 +146,116 @@ export async function deleteProject(projectId) {
   return { success: true };
 }
 
+// ─── Run CRUD ──────────────────────────────────────────────
+
+const RUN_STATUSES = ["Draft", "Planned", "Scheduled", "In Progress", "Completed", "Cancelled"];
+
+export async function createRun(runData) {
+  const supabase = getSupabaseAdmin();
+  const now = new Date().toISOString();
+
+  const payload = {
+    run_name: String(runData.run_name || "").trim(),
+    origin_id: runData.origin_id || null,
+    run_date: runData.run_date || null,
+    status: RUN_STATUSES.includes(runData.status) ? runData.status : "Draft",
+    notes: runData.notes ? String(runData.notes).trim() : null,
+    team_assigned: runData.team_assigned ? String(runData.team_assigned).trim() : null,
+    vehicle_assigned: runData.vehicle_assigned ? String(runData.vehicle_assigned).trim() : null,
+    estimated_distance: runData.estimated_distance != null ? Number(runData.estimated_distance) : null,
+    estimated_duration: runData.estimated_duration != null ? Number(runData.estimated_duration) : null,
+    estimated_subtotal: runData.estimated_subtotal != null ? Number(runData.estimated_subtotal) : null,
+    created_at: now,
+    updated_at: now,
+  };
+
+  const { data, error } = await supabase.from("proj_t_runs").insert(payload).select("*").single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function updateRun(runId, updates) {
+  const supabase = getSupabaseAdmin();
+  const now = new Date().toISOString();
+
+  const payload = { ...updates, updated_at: now };
+  if (payload.status && !RUN_STATUSES.includes(payload.status)) {
+    payload.status = "Draft";
+  }
+
+  const { data, error } = await supabase.from("proj_t_runs").update(payload).eq("id", runId).select("*").single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function deleteRun(runId) {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("proj_t_runs").delete().eq("id", runId);
+  if (error) throw new Error(error.message);
+  return { success: true };
+}
+
+export async function addProjectToRun(runId, projectId, stopSequence = 0) {
+  const supabase = getSupabaseAdmin();
+
+  const payload = {
+    run_id: runId,
+    project_id: Number(projectId),
+    stop_sequence: Number(stopSequence) || 0,
+  };
+
+  const { data, error } = await supabase.from("proj_t_run_projects").insert(payload).select("*").single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function removeProjectFromRun(runProjectId) {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("proj_t_run_projects").delete().eq("id", runProjectId);
+  if (error) throw new Error(error.message);
+  return { success: true };
+}
+
+export async function updateStopSequence(runProjectId, stopSequence) {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase.from("proj_t_run_projects").update({ stop_sequence: Number(stopSequence) }).eq("id", runProjectId).select("*").single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function loadRuns() {
+  const supabase = getSupabaseAdmin();
+
+  const { data, error } = await supabase
+    .from("proj_t_runs")
+    .select("*, proj_s_origin_addresses(*)")
+    .order("run_date", { ascending: false });
+
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+export async function loadRunDetails(runId) {
+  const supabase = getSupabaseAdmin();
+
+  const [runResult, projectsResult] = await Promise.all([
+    supabase.from("proj_t_runs").select("*, proj_s_origin_addresses(*)").eq("id", runId).single(),
+    supabase
+      .from("proj_t_run_projects")
+      .select("*, proj_t_projects(*), proj_s_project_status(*)")
+      .eq("run_id", runId)
+      .order("stop_sequence"),
+  ]);
+
+  if (runResult.error) throw new Error(runResult.error.message);
+  if (projectsResult.error) throw new Error(projectsResult.error.message);
+
+  return {
+    run: runResult.data || null,
+    projects: projectsResult.data || [],
+  };
+}
+
 // ─── OSRM Route Calculation ─────────────────────────────────
 
 export async function calculateRoute(originLat, originLng, destLat, destLng) {

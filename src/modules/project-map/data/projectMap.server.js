@@ -40,6 +40,41 @@ export async function loadProjectMapSetup() {
   return { ...result, sourceErrors: errors };
 }
 
+// ─── Runs Loader ────────────────────────────────────────────
+
+export async function loadRuns() {
+  const supabase = getSupabaseAdmin();
+
+  const { data, error } = await supabase
+    .from("proj_t_runs")
+    .select("*, proj_s_origin_addresses(*)")
+    .order("run_date", { ascending: false });
+
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+export async function loadRunDetails(runId) {
+  const supabase = getSupabaseAdmin();
+
+  const [runResult, projectsResult] = await Promise.all([
+    supabase.from("proj_t_runs").select("*, proj_s_origin_addresses(*)").eq("id", runId).single(),
+    supabase
+      .from("proj_t_run_projects")
+      .select("*, proj_t_projects(*), proj_s_project_status(*)")
+      .eq("run_id", runId)
+      .order("stop_sequence"),
+  ]);
+
+  if (runResult.error) throw new Error(runResult.error.message);
+  if (projectsResult.error) throw new Error(projectsResult.error.message);
+
+  return {
+    run: runResult.data || null,
+    projects: projectsResult.data || [],
+  };
+}
+
 // ─── Project List Loader ────────────────────────────────────
 
 export async function loadProjectMapProjects() {

@@ -207,11 +207,23 @@ export default function ProjectMap({
       const subtotalStr = project.project_subtotal != null
         ? `$${Number(project.project_subtotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
         : "";
+
+      // Build address string: prefer formatted_address, fallback to components
+      let addressDisplay = "";
+      if (project.formatted_address) {
+        addressDisplay = project.formatted_address;
+      } else if (project.address_line_1 || project.city) {
+        const parts = [project.address_line_1, project.city, project.state].filter(Boolean);
+        addressDisplay = parts.join(", ");
+      } else {
+        addressDisplay = "No address";
+      }
+
       tooltip.innerHTML = `
-        <div style="font-weight: 600; margin-bottom: 2px;">${project.client_name || "Untitled"}</div>
-        <div style="color: ${statusColor}; font-size: 10px; margin-bottom: 2px;">${statusName || "No Status"}</div>
-        <div style="font-size: 10px; color: #64748b;">${project.formatted_address || project.city || "No address"}</div>
-        ${subtotalStr ? `<div style="font-size: 10px; color: #16a34a; margin-top: 2px;">${subtotalStr}</div>` : ""}
+        <div style="font-weight: 600; margin-bottom: 4px; font-size: 12px;">${project.client_name || "Untitled"}</div>
+        <div style="color: ${statusColor}; font-size: 11px; margin-bottom: 4px; font-weight: 500;">${statusName || "No Status"}</div>
+        <div style="font-size: 10px; color: #64748b; margin-bottom: 4px; line-height: 1.4;">${addressDisplay}</div>
+        ${subtotalStr ? `<div style="font-size: 11px; color: #16a34a; font-weight: 600; margin-top: 4px;">${subtotalStr}</div>` : ""}
       `;
 
       const popup = new MapLibreGL.Popup({ 

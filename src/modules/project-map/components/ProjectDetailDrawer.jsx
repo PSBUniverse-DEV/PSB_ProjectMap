@@ -49,82 +49,61 @@ export default function ProjectDetailDrawer({ project, statuses = [], onClose, o
       </div>
 
       <div style={{ flex: 1, overflow: "auto", padding: "12px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "2px" }}>
-          <span style={{
-            width: "10px",
-            height: "10px",
-            borderRadius: "50%",
-            background: getStatusColor(statusName),
-            flexShrink: 0,
-          }} />
-          <h5 style={{ margin: 0, fontSize: "14px", fontWeight: 600 }}>{project.client_name || "Untitled"}</h5>
-        </div>
-        {statusName && (
-          <span style={{
-            display: "inline-block",
-            padding: "1px 8px",
-            borderRadius: "10px",
-            fontSize: "11px",
-            fontWeight: 500,
-            background: "#e0e7ff",
-            color: "#3730a3",
-            marginBottom: "10px",
-          }}>{statusName}</span>
-        )}
-
-        <div style={{ marginBottom: "10px" }}>
-          <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "2px" }}>Location</div>
-          <div style={{ fontSize: "12px", color: "#1e293b" }}>{project.formatted_address || project.address_line_1 || "—"}</div>
-          <div style={{ fontSize: "11px", color: "#64748b" }}>
-            {project.city && project.state ? `${project.city}, ${project.state} ${project.postal_code || ""}` : ""}
-          </div>
+        {/* General */}
+        <div style={{ marginBottom: "12px" }}>
+          <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>General</div>
+          <div style={{ fontSize: "12px", color: "#1e293b", marginBottom: "4px" }}><strong>Client Name:</strong> {project.client_name || "—"}</div>
+          <div style={{ fontSize: "12px", color: "#1e293b", marginBottom: "4px" }}><strong>Status:</strong> {statusName || "—"}</div>
+          <div style={{ fontSize: "12px", color: "#1e293b", marginBottom: "4px" }}><strong>Dealer:</strong> {project.dealer || "—"}</div>
         </div>
 
-        {project.dealer && (
-          <div style={{ marginBottom: "10px" }}>
-            <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "2px" }}>Dealer</div>
-            <div style={{ fontSize: "12px", color: "#1e293b" }}>{project.dealer}</div>
-          </div>
-        )}
-
-        {project.project_subtotal != null && (
-          <div style={{ marginBottom: "10px" }}>
-            <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "2px" }}>Subtotal</div>
-            <div style={{ fontSize: "12px", color: "#1e293b" }}>${Number(project.project_subtotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-          </div>
-        )}
-
-        <div style={{ marginBottom: "10px" }}>
-          <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "2px" }}>Order Received</div>
-          <div style={{ fontSize: "12px", color: "#1e293b" }}>{project.order_received_date || "—"}</div>
+        {/* Address */}
+        <div style={{ marginBottom: "12px" }}>
+          <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>Address</div>
+          <div style={{ fontSize: "12px", color: "#1e293b", marginBottom: "4px" }}><strong>Formatted Address:</strong> {project.formatted_address || "—"}</div>
+          <div style={{ fontSize: "12px", color: "#1e293b", marginBottom: "4px" }}><strong>Address Line 1:</strong> {project.address_line_1 || "—"}</div>
+          <div style={{ fontSize: "12px", color: "#1e293b", marginBottom: "4px" }}><strong>City:</strong> {project.city || "—"}</div>
+          <div style={{ fontSize: "12px", color: "#1e293b", marginBottom: "4px" }}><strong>State:</strong> {project.state || "—"}</div>
+          <div style={{ fontSize: "12px", color: "#1e293b", marginBottom: "4px" }}><strong>State Code:</strong> {project.state_code || "—"}</div>
+          <div style={{ fontSize: "12px", color: "#1e293b", marginBottom: "4px" }}><strong>Postal Code:</strong> {project.postal_code || "—"}</div>
+          <div style={{ fontSize: "12px", color: "#1e293b", marginBottom: "4px" }}><strong>Country:</strong> {project.country || "—"}</div>
         </div>
 
-        <div style={{ marginBottom: "10px" }}>
-          <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "2px" }}>Scheduled Project Date</div>
-          <div style={{ fontSize: "12px", color: "#1e293b" }}>{project.scheduled_project_date || "—"}</div>
+        {/* Location */}
+        <div style={{ marginBottom: "12px" }}>
+          <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>Location</div>
+          <div style={{ fontSize: "12px", color: "#1e293b", marginBottom: "4px" }}><strong>Latitude:</strong> {project.address_latitude != null ? project.address_latitude.toFixed(6) : "—"}</div>
+          <div style={{ fontSize: "12px", color: "#1e293b", marginBottom: "4px" }}><strong>Longitude:</strong> {project.address_longitude != null ? project.address_longitude.toFixed(6) : "—"}</div>
+          <div style={{ fontSize: "12px", color: "#1e293b", marginBottom: "4px" }}><strong>Location Source:</strong> {project.location_source || "—"}</div>
+          <div style={{ fontSize: "12px", color: "#1e293b", marginBottom: "4px" }}><strong>Location Confirmed:</strong> {project.location_confirmed ? "Yes" : "No"}</div>
         </div>
 
-        <div style={{ marginBottom: "10px" }}>
-          <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "2px" }}>Install Date</div>
-          <div style={{ fontSize: "12px", color: "#1e293b" }}>{project.install_date || "—"}</div>
+        {/* Financial */}
+        <div style={{ marginBottom: "12px" }}>
+          <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>Financial</div>
+          <div style={{ fontSize: "12px", color: "#1e293b", marginBottom: "4px" }}><strong>Project Subtotal:</strong> {project.project_subtotal != null ? `$${Number(project.project_subtotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}</div>
         </div>
 
-        <div style={{ marginBottom: "10px" }}>
-          <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "2px" }}>Coordinates</div>
-          <div style={{ fontSize: "11px", color: "#64748b" }}>
-            {project.site_latitude != null && project.site_longitude != null
-              ? `Site: ${project.site_latitude.toFixed(6)}, ${project.site_longitude.toFixed(6)}`
-              : project.address_latitude != null && project.address_longitude != null
-                ? `Address: ${project.address_latitude.toFixed(6)}, ${project.address_longitude.toFixed(6)}`
-                : "No coordinates"}
-          </div>
+        {/* Schedule */}
+        <div style={{ marginBottom: "12px" }}>
+          <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>Schedule</div>
+          <div style={{ fontSize: "12px", color: "#1e293b", marginBottom: "4px" }}><strong>Order Received:</strong> {project.order_received_date || "—"}</div>
+          <div style={{ fontSize: "12px", color: "#1e293b", marginBottom: "4px" }}><strong>Scheduled Project Date:</strong> {project.scheduled_project_date || "—"}</div>
+          <div style={{ fontSize: "12px", color: "#1e293b", marginBottom: "4px" }}><strong>Install Date:</strong> {project.install_date || "—"}</div>
+        </div>
+
+        {/* System Information */}
+        <div style={{ marginBottom: "12px" }}>
+          <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>System Information</div>
+          <div style={{ fontSize: "11px", color: "#64748b", marginBottom: "4px" }}><strong>Created At:</strong> {project.created_at ? new Date(project.created_at).toLocaleString() : "—"}</div>
+          <div style={{ fontSize: "11px", color: "#64748b", marginBottom: "4px" }}><strong>Updated At:</strong> {project.updated_at ? new Date(project.updated_at).toLocaleString() : "—"}</div>
         </div>
 
         {routeInfo && (
           <div style={{ marginBottom: "10px" }}>
-            <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "2px" }}>Route from Origin</div>
-            <div style={{ fontSize: "12px", color: "#1e293b" }}>{routeInfo.distance}</div>
-            <div style={{ fontSize: "11px", color: "#64748b" }}>{routeInfo.duration}</div>
+            <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>Route from Origin</div>
+            <div style={{ fontSize: "12px", color: "#1e293b", marginBottom: "4px" }}><strong>Distance:</strong> {routeInfo.distance}</div>
+            <div style={{ fontSize: "12px", color: "#64748b" }}><strong>Duration:</strong> {routeInfo.duration}</div>
           </div>
         )}
       </div>

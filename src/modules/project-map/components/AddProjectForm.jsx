@@ -124,10 +124,10 @@ export default function AddProjectForm({ show, mode, project, statuses = [], onC
       };
 
       if (mode === "edit" && project?.id) {
-        await updateProject(project.id, payload);
+        await updateProject(project.id, { ...payload, updated_by: null });
         toastSuccess("Project updated.", "Project Map");
       } else {
-        await createProject(payload);
+        await createProject({ ...payload, created_by: null, updated_by: null });
         toastSuccess("Project created.", "Project Map");
       }
 

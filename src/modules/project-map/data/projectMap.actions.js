@@ -107,6 +107,9 @@ export async function createProject(project) {
     order_received_date: toDateOrNull(project.order_received_date),
     scheduled_project_date: toDateOrNull(project.scheduled_project_date),
     install_date: toDateOrNull(project.install_date),
+    project_subtotal: project.project_subtotal != null ? Number(project.project_subtotal) : null,
+    created_by: toIntOrNull(project.created_by),
+    updated_by: toIntOrNull(project.updated_by),
     created_at: now,
     updated_at: now,
   };
@@ -129,6 +132,7 @@ export async function updateProject(projectId, updates) {
     order_received_date: toDateOrNull(updates.order_received_date),
     scheduled_project_date: toDateOrNull(updates.scheduled_project_date),
     install_date: toDateOrNull(updates.install_date),
+    updated_by: toIntOrNull(updates.updated_by),
   };
 
   const { data, error } = await supabase.from("proj_t_projects").update(payload).eq("id", id).select("*").single();

@@ -22,8 +22,8 @@ create table public.proj_t_projects (
   project_subtotal numeric(12, 2) null,
   created_at timestamp with time zone not null default now(),
   updated_at timestamp with time zone not null default now(),
-  created_by uuid null,
-  updated_by uuid null,
+  created_by integer null,
+  updated_by integer null,
   constraint proj_t_projects_pkey primary key (id),
   constraint proj_t_projects_status_id_fkey foreign KEY (status_id) references proj_s_project_status (status_id)
 ) TABLESPACE pg_default;
@@ -55,7 +55,7 @@ create table public.proj_s_project_status (
 
 
 create table public.proj_s_origin_addresses (
-  id uuid not null default gen_random_uuid(),
+  id serial not null,
   origin_name text not null,
   origin_code text null,
   formatted_address text null,
@@ -77,7 +77,7 @@ create table public.proj_s_origin_addresses (
 
 
 create table public.proj_s_states (
-  id uuid not null default gen_random_uuid(),
+  id serial not null,
   state_name text not null,
   state_code text not null,
   display_color text not null,
@@ -96,10 +96,10 @@ create table public.proj_s_states (
 -- ====================================================
 
 create table public.proj_t_runs (
-  id uuid not null default gen_random_uuid(),
+  id serial not null,
   run_number serial not null,
   run_name text not null,
-  origin_id uuid null,
+  origin_id integer null,
   run_date date null,
   status text not null default 'Draft',
   notes text null,
@@ -108,8 +108,8 @@ create table public.proj_t_runs (
   estimated_distance numeric(10, 2) null,
   estimated_duration numeric(10, 2) null,
   estimated_subtotal numeric(12, 2) null,
-  created_by uuid null,
-  updated_by uuid null,
+  created_by integer null,
+  updated_by integer null,
   created_at timestamp with time zone not null default now(),
   updated_at timestamp with time zone not null default now(),
   constraint proj_t_runs_pkey primary key (id),
@@ -121,8 +121,8 @@ create index IF not exists idx_proj_t_runs_run_date on public.proj_t_runs using 
 create index IF not exists idx_proj_t_runs_status on public.proj_t_runs using btree (status) TABLESPACE pg_default;
 
 create table public.proj_t_run_projects (
-  id uuid not null default gen_random_uuid(),
-  run_id uuid not null,
+  id serial not null,
+  run_id integer not null,
   project_id integer not null,
   stop_sequence integer not null default 0,
   notes text null,

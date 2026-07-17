@@ -5,6 +5,8 @@
 
 Going forward, all database migration scripts must follow these standards. EVERY DATABASE CHANGES SHOULD CREATE NEW SQL SCRIPT FILE THAT FOLLOWS THE "Database Migration Standards"
 
+do not use uuid on the tables, the primary keys are int.
+
 SAVE ALL MIGRATION SCRIPTS INTO "src\modules\project-map\references and md files\migration"
 
 ## 1. Always Use Safe Migrations

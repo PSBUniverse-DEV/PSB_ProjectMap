@@ -4,21 +4,6 @@ import { useEffect, useRef, useState, useMemo } from "react";
 import MapLibreGL from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 
-// Constrain MapLibre to parent container
-const mapStyles = `
-  .maplibregl-canvas-container,
-  .maplibregl-interactive,
-  .maplibregl-touch-drag-pan,
-  .maplibregl-touch-zoom-rotate {
-    width: 100% !important;
-    height: 100% !important;
-  }
-  .maplibregl-canvas {
-    width: 100% !important;
-    height: 100% !important;
-  }
-`;
-
 function getStatusColor(statusName, statuses = []) {
   if (!statusName) return "#6b7280";
   const found = statuses.find((s) => s.status_name === statusName);
@@ -44,11 +29,13 @@ export default function ProjectMap({
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
   const markersRef = useRef([]);
+  const markersMapRef = useRef({});
   const originMarkerRef = useRef(null);
   const routeSourceRef = useRef("route-line");
+  const initialFitDone = useRef(false);
 
-  // Filter projects
-  const filteredProjects = projects.filter((p) => {
+  // Filter projects (memoized to avoid recreating on every render)
+  const filteredProjects = useMemo(() => projects.filter((p) => {
     if (filters.status && String(p.status_id) !== String(filters.status)) return false;
     if (filters.dealer && p.dealer !== filters.dealer) return false;
     if (filters.state && p.state_code !== filters.state) return false;
@@ -62,7 +49,7 @@ export default function ProjectMap({
       if (!match) return false;
     }
     return true;
-  });
+  }), [projects, filters]);
 
   // Street-level OSM style for MapLibre
   const osmStyle = useMemo(() => ({
@@ -125,8 +112,14 @@ export default function ProjectMap({
     mapRef.current = map;
 
     return () => {
+      // Clean up all markers when map is destroyed
+      Object.values(markersMapRef.current).forEach((m) => m.remove());
+      markersMapRef.current = {};
+      markersRef.current = [];
+      originMarkerRef.current = null;
       map.remove();
       mapRef.current = null;
+      initialFitDone.current = false;
     };
   }, [osmStyle]);
 
@@ -135,20 +128,29 @@ export default function ProjectMap({
     const map = mapRef.current;
     if (!map) return;
 
-    // Clear existing markers
-    markersRef.current.forEach((m) => m.remove());
-    markersRef.current = [];
+    const newMarkersMap = {};
+    const projectIds = new Set();
 
-    // Add markers for projects with coordinates
     filteredProjects.forEach((project) => {
+      const id = project.id;
+      projectIds.add(id);
+
       const lat = project.site_latitude || project.address_latitude;
       const lng = project.site_longitude || project.address_longitude;
       if (lat == null || lng == null) return;
 
       const statusName = project.proj_s_project_status?.status_name || "";
       const statusColor = getStatusColor(statusName, statuses);
-      // Use state color from DB for the marker dot, fallback to status color
       const stateColor = stateColorLookup[project.state_code] || statusColor;
+
+      // Reuse existing marker if it exists
+      let marker = markersMapRef.current[id];
+      if (marker) {
+        // Update position in case coordinates changed
+        marker.setLngLat([lng, lat]);
+        newMarkersMap[id] = marker;
+        return;
+      }
 
       // Create marker dot with state color
       const markerEl = document.createElement("div");
@@ -165,10 +167,6 @@ export default function ProjectMap({
       // Create label element with status color
       const labelEl = document.createElement("div");
       labelEl.style.cssText = `
-        position: absolute;
-        top: -18px;
-        left: 50%;
-        transform: translateX(-50%);
         background: rgba(255, 255, 255, 0.95);
         border: 1px solid #e2e8f0;
         border-radius: 3px;
@@ -179,16 +177,17 @@ export default function ProjectMap({
         white-space: nowrap;
         pointer-events: none;
         box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+        margin-bottom: 2px;
       `;
       labelEl.textContent = project.client_name || "Untitled";
 
-      // Wrap marker and label
+      // Wrap marker and label using flexbox (no absolute positioning)
       const wrapper = document.createElement("div");
-      wrapper.style.cssText = "position: relative; display: inline-block;";
-      wrapper.appendChild(markerEl);
+      wrapper.style.cssText = "display: inline-flex; flex-direction: column; align-items: center;";
       wrapper.appendChild(labelEl);
+      wrapper.appendChild(markerEl);
 
-      const marker = new MapLibreGL.Marker({ element: wrapper })
+      marker = new MapLibreGL.Marker({ element: wrapper, anchor: "bottom" })
         .setLngLat([lng, lat])
         .addTo(map);
 
@@ -235,27 +234,42 @@ export default function ProjectMap({
         onSelectProject?.(project.id);
       });
 
-      markersRef.current.push(marker);
+      newMarkersMap[id] = marker;
     });
 
-    // Fit bounds: prefer searchResults, then filteredProjects
-    const targetProjects = searchResults || filteredProjects;
-    if (targetProjects.length > 0) {
-      const bounds = new MapLibreGL.LngLatBounds();
-      let hasValid = false;
-      targetProjects.forEach((p) => {
-        const lat = p.site_latitude || p.address_latitude;
-        const lng = p.site_longitude || p.address_longitude;
-        if (lat != null && lng != null) {
-          bounds.extend([lng, lat]);
-          hasValid = true;
-        }
-      });
-      if (hasValid) {
-        map.fitBounds(bounds, { padding: 50, maxZoom: 14 });
+    // Remove markers for projects no longer in the filtered list
+    Object.keys(markersMapRef.current).forEach((id) => {
+      if (!projectIds.has(Number(id))) {
+        markersMapRef.current[id].remove();
+        delete markersMapRef.current[id];
       }
+    });
+
+    // Update the ref
+    markersMapRef.current = newMarkersMap;
+    markersRef.current = Object.values(newMarkersMap);
+
+    // Fit bounds only on initial load
+    if (!initialFitDone.current) {
+      const targetProjects = searchResults || filteredProjects;
+      if (targetProjects.length > 0) {
+        const bounds = new MapLibreGL.LngLatBounds();
+        let hasValid = false;
+        targetProjects.forEach((p) => {
+          const lat = p.site_latitude || p.address_latitude;
+          const lng = p.site_longitude || p.address_longitude;
+          if (lat != null && lng != null) {
+            bounds.extend([lng, lat]);
+            hasValid = true;
+          }
+        });
+        if (hasValid) {
+          map.fitBounds(bounds, { padding: 50, maxZoom: 14 });
+        }
+      }
+      initialFitDone.current = true;
     }
-  }, [filteredProjects, onSelectProject, stateColorLookup, searchResults]);
+  }, [filteredProjects, stateColorLookup, searchResults]);
 
   // Update origin marker and route line
   useEffect(() => {
@@ -388,9 +402,6 @@ export default function ProjectMap({
   }, [selectedProjectId]);
 
   return (
-    <>
-      <style>{mapStyles}</style>
-      <div ref={mapContainerRef} style={{ width: "100%", height: "100%", minHeight: 0, position: "relative" }} />
-    </>
+    <div ref={mapContainerRef} style={{ width: "100%", height: "100%", minHeight: 0, position: "relative" }} />
   );
 }

@@ -134,9 +134,9 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
     return map;
   }, [states]);
 
-  const handleSelectProject = (id) => {
+  const handleSelectProject = useCallback((id) => {
     setSelectedProjectId(id);
-  };
+  }, []);
 
   const handleCloseDrawer = () => {
     setSelectedProjectId(null);

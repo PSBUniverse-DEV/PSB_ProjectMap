@@ -9,17 +9,10 @@ export default function LocationSearch({ onSelect, selectedLocation, query: exte
   const [loading, setLoading] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const wrapperRef = useRef(null);
+  const justSelectedRef = useRef(false);
 
   // Use external query if provided, otherwise internal state
   const query = externalQuery ?? "";
-
-  // Sync external selected location into input only when the address actually changes
-  useEffect(() => {
-    if (selectedLocation?.formatted_address && onQueryChange) {
-      onQueryChange(selectedLocation.formatted_address);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedLocation?.formatted_address]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -28,12 +21,18 @@ export default function LocationSearch({ onSelect, selectedLocation, query: exte
         setShowDropdown(false);
       }
     }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener("click", handleClickOutside);
+    return () => document.removeEventListener("click", handleClickOutside);
   }, []);
 
   // Debounced search
   useEffect(() => {
+    // Skip search if user just selected a suggestion
+    if (justSelectedRef.current) {
+      justSelectedRef.current = false;
+      return;
+    }
+
     if (!query || query.length < 3) {
       setSuggestions([]);
       setShowDropdown(false);
@@ -61,7 +60,7 @@ export default function LocationSearch({ onSelect, selectedLocation, query: exte
         const data = await res.json();
 
         const features = (data.features || []).map((f) => ({
-          label: f.properties.formatted || "",
+          formatted_address: f.properties.formatted || "",
           address_line_1: f.properties.address_line1 || "",
           city: f.properties.city || "",
           state: f.properties.state || "",
@@ -87,7 +86,9 @@ export default function LocationSearch({ onSelect, selectedLocation, query: exte
   }, [query]);
 
   const handleSelect = (suggestion) => {
-    onQueryChange?.(suggestion.label);
+    console.log("[LocationSearch] handleSelect called with:", suggestion);
+    justSelectedRef.current = true;
+    onQueryChange?.(suggestion.formatted_address);
     setShowDropdown(false);
     onSelect?.(suggestion);
   };

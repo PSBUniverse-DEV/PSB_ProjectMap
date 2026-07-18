@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Modal, toastError, toastSuccess } from "@/shared/components/ui";
-import { deleteProject, calculateRoute, deleteRun, removeProjectFromRun, loadRunDetails, updateStopSequence } from "../data/projectMap.actions";
+import { deleteProject, calculateRoute, calculateMultiStopRoute, deleteRun, removeProjectFromRun, loadRunDetails, updateStopSequence, addProjectToRun } from "../data/projectMap.actions";
 import ProjectMap from "../components/ProjectMap";
 import ProjectList from "../components/ProjectList";
 import ProjectDetailDrawer from "../components/ProjectDetailDrawer";
@@ -226,8 +226,22 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
     setEditingRun(null);
   };
 
-  const handleAddProjectToRun = () => {
-    setShowProjectSelector(true);
+  const handleAddProjectToRun = async (projectId) => {
+    if (!selectedRunId) return;
+    setBusy(true);
+    try {
+      const currentMax = runProjects.length;
+      await addProjectToRun(selectedRunId, projectId, currentMax);
+      toastSuccess("Project added to run.", "Runs");
+      // Refresh run projects
+      const details = await loadRunDetails(selectedRunId);
+      setRunProjects(details.projects || []);
+      router.refresh();
+    } catch (err) {
+      toastError(err?.message || "Failed to add project to run.", "Runs");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const handleProjectSelectorClose = () => {
@@ -328,41 +342,27 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
     setRunRouteLoading(true);
 
     // Build OSRM coordinates: origin -> stop1 -> stop2 -> ... -> stopN
-    const coordinates = [ `${origin.longitude},${origin.latitude}` ];
+    const coords = [];
+    coords.push({ lat: origin.latitude, lng: origin.longitude });
     runProjects.forEach((rp) => {
       const proj = rp.proj_t_projects || {};
       const lat = proj.site_latitude || proj.address_latitude;
       const lng = proj.site_longitude || proj.address_longitude;
       if (lat != null && lng != null) {
-        coordinates.push(`${lng},${lat}`);
+        coords.push({ lat, lng });
       }
     });
 
-    if (coordinates.length < 2) {
+    if (coords.length < 2) {
       setRunRouteData(null);
       setRunRouteLoading(false);
       return;
     }
 
-    const url = `https://router.project-osrm.org/route/v1/driving/${coordinates.join(";")}?overview=full&geometries=geojson&steps=false`;
-
-    fetch(url)
-      .then((res) => {
-        if (!res.ok) throw new Error(`OSRM request failed: ${res.statusText}`);
-        return res.json();
-      })
+    calculateMultiStopRoute(coords)
       .then((data) => {
         if (!cancelled) {
-          if (data.routes && data.routes.length > 0) {
-            const route = data.routes[0];
-            setRunRouteData({
-              distance: route.distance,
-              duration: route.duration,
-              geometry: route.geometry,
-            });
-          } else {
-            setRunRouteData(null);
-          }
+          setRunRouteData(data);
         }
       })
       .catch((err) => {
@@ -595,6 +595,8 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
             selectedRunId={selectedRunId}
             runProjects={runProjects}
             runRouteData={runRouteData}
+            onAddToRun={handleAddProjectToRun}
+            onRemoveFromRun={handleRemoveProjectFromRun}
           />
         </div>
 
@@ -616,7 +618,6 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
             onClose={handleCloseRunDetail}
             onEdit={handleEditRun}
             onDelete={() => setConfirmDeleteRunId(selectedRun.id)}
-            onAddProject={handleAddProjectToRun}
             onRemoveProject={handleRemoveProjectFromRun}
             onReorderStops={handleReorderStops}
           />

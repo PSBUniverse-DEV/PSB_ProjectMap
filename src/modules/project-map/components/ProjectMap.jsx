@@ -25,6 +25,8 @@ export default function ProjectMap({
   selectedRunId = null,
   runProjects = [],
   runRouteData = null,
+  onAddToRun = null,
+  onRemoveFromRun = null,
 }) {
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
@@ -33,6 +35,20 @@ export default function ProjectMap({
   const originMarkerRef = useRef(null);
   const routeSourceRef = useRef("route-line");
   const initialFitDone = useRef(false);
+  
+  // Refs for closure-dependent values used in marker event handlers
+  const modeRef = useRef(mode);
+  const selectedRunIdRef = useRef(selectedRunId);
+  const runProjectsRef = useRef(runProjects);
+  const onAddToRunRef = useRef(onAddToRun);
+  const onRemoveFromRunRef = useRef(onRemoveFromRun);
+  
+  // Keep refs in sync with props
+  modeRef.current = mode;
+  selectedRunIdRef.current = selectedRunId;
+  runProjectsRef.current = runProjects;
+  onAddToRunRef.current = onAddToRun;
+  onRemoveFromRunRef.current = onRemoveFromRun;
 
   // Filter projects (memoized to avoid recreating on every render)
   const filteredProjects = useMemo(() => projects.filter((p) => {
@@ -88,6 +104,10 @@ export default function ProjectMap({
 
     // Add route line source and layer after map loads
     map.on("load", () => {
+      // Prevent browser right-click menu on the map canvas
+      const canvas = map.getCanvas();
+      if (canvas) canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+
       map.addSource("route-line", {
         type: "geojson",
         data: { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: [] } },
@@ -108,6 +128,9 @@ export default function ProjectMap({
         },
       });
     });
+
+    // Prevent browser's default right-click menu on the map
+    mapContainerRef.current.addEventListener("contextmenu", (e) => e.preventDefault());
 
     mapRef.current = map;
 
@@ -191,19 +214,6 @@ export default function ProjectMap({
         .setLngLat([lng, lat])
         .addTo(map);
 
-      // Hover tooltip
-      const tooltip = document.createElement("div");
-      tooltip.style.cssText = `
-        background: rgba(255, 255, 255, 0.98);
-        border: 1px solid #e2e8f0;
-        border-radius: 4px;
-        padding: 6px 8px;
-        font-size: 11px;
-        color: #1e293b;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-        pointer-events: none;
-        min-width: 150px;
-      `;
       const subtotalStr = project.project_subtotal != null
         ? `$${Number(project.project_subtotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
         : "";
@@ -219,11 +229,23 @@ export default function ProjectMap({
         addressDisplay = "No address";
       }
 
+      const tooltip = document.createElement("div");
+      tooltip.style.cssText = `
+        background: rgba(255, 255, 255, 0.98);
+        border: 1px solid #e2e8f0;
+        border-radius: 4px;
+        padding: 6px 8px;
+        font-size: 11px;
+        color: #1e293b;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        pointer-events: none;
+        min-width: 150px;
+      `;
       tooltip.innerHTML = `
         <div style="font-weight: 600; margin-bottom: 4px; font-size: 12px;">${project.client_name || "Untitled"}</div>
-        <div style="color: ${statusColor}; font-size: 11px; margin-bottom: 4px; font-weight: 500;">${statusName || "No Status"}</div>
-        <div style="font-size: 10px; color: #64748b; margin-bottom: 4px; line-height: 1.4;">${addressDisplay}</div>
-        ${subtotalStr ? `<div style="font-size: 11px; color: #16a34a; font-weight: 600; margin-top: 4px;">${subtotalStr}</div>` : ""}
+        <div style="color: ${statusColor}; font-size: 11px; margin-bottom: 2px; font-weight: 500;">${statusName || "No Status"}</div>
+        <div style="font-size: 10px; color: #64748b; margin-bottom: 2px; line-height: 1.4;">${addressDisplay}</div>
+        ${subtotalStr ? `<div style="font-size: 11px; color: #16a34a; font-weight: 600; margin-bottom: 4px;">${subtotalStr}</div>` : ""}
       `;
 
       const popup = new MapLibreGL.Popup({ 
@@ -245,6 +267,75 @@ export default function ProjectMap({
       markerEl.addEventListener("click", () => {
         popup.remove();
         onSelectProject?.(project.id);
+      });
+
+      // Prevent browser context menu on marker
+      markerEl.addEventListener("contextmenu", (e) => e.preventDefault());
+
+      // Right-click context menu for "Add to Run" / "Remove from Run" using MapLibre Popup
+      markerEl.addEventListener("mousedown", (e) => {
+        if (e.button !== 2) return; // Only handle right-click
+        e.preventDefault();
+        e.stopPropagation();
+        popup.remove();
+
+        // Use refs to get latest values, avoiding stale closures
+        const currentMode = modeRef.current;
+        const currentSelectedRunId = selectedRunIdRef.current;
+        const currentRunProjects = runProjectsRef.current;
+        const currentOnAddToRun = onAddToRunRef.current;
+        const currentOnRemoveFromRun = onRemoveFromRunRef.current;
+
+        console.log("[ProjectMap] right-click handler:", { currentMode, currentSelectedRunId, currentRunProjects: currentRunProjects.length, hasAdd: !!currentOnAddToRun, hasRemove: !!currentOnRemoveFromRun });
+
+        if (currentMode !== "runs") return;
+        if (!currentOnAddToRun && !currentOnRemoveFromRun) return;
+
+        const alreadyInRun = currentRunProjects.some((rp) => rp.project_id === id);
+        const runProject = alreadyInRun ? currentRunProjects.find((rp) => rp.project_id === id) : null;
+
+        // Build popup content
+        let popupHtml = `
+          <div style="font-weight: 600; margin-bottom: 6px; font-size: 12px;">${project.client_name || "Untitled"}</div>
+          <div style="color: ${statusColor}; font-size: 11px; margin-bottom: 6px; font-weight: 500;">${statusName || "No Status"}</div>
+        `;
+
+        if (!currentSelectedRunId) {
+          popupHtml += `<div style="font-size: 11px; color: #94a3b8; font-style: italic; padding: 4px 0;">Select a run first</div>`;
+        } else if (alreadyInRun) {
+          popupHtml += `<button data-remove-from-run="${id}" style="width: 100%; padding: 6px 12px; font-size: 11px; font-weight: 600; border-radius: 4px; border: 1px solid #dc2626; background: #fef2f2; color: #dc2626; cursor: pointer;">− Remove from Run</button>`;
+        } else {
+          popupHtml += `<button data-add-to-run="${id}" style="width: 100%; padding: 6px 12px; font-size: 11px; font-weight: 600; border-radius: 4px; border: 1px solid #16a34a; background: #16a34a; color: #fff; cursor: pointer;">+ Add to Run</button>`;
+        }
+
+        const contextPopup = new MapLibreGL.Popup({
+          offset: 20,
+          closeButton: true,
+          closeOnClick: false,
+          className: "project-map-tooltip",
+          maxWidth: "200px",
+        }).setHTML(popupHtml);
+
+        const pos = marker.getLngLat();
+        contextPopup.setLngLat(pos).addTo(map);
+
+        // Handle "Add to Run" button click
+        const addBtn = contextPopup.getElement()?.querySelector(`[data-add-to-run="${id}"]`);
+        if (addBtn) {
+          addBtn.addEventListener("click", () => {
+            contextPopup.remove();
+            currentOnAddToRun?.(id);
+          });
+        }
+
+        // Handle "Remove from Run" button click
+        const removeBtn = contextPopup.getElement()?.querySelector(`[data-remove-from-run="${id}"]`);
+        if (removeBtn && runProject) {
+          removeBtn.addEventListener("click", () => {
+            contextPopup.remove();
+            currentOnRemoveFromRun?.(runProject.id);
+          });
+        }
       });
 
       newMarkersMap[id] = marker;

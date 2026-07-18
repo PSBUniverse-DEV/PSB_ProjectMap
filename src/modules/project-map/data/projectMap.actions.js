@@ -246,7 +246,7 @@ export async function loadRunDetails(runId) {
     supabase.from("proj_t_runs").select("*, proj_s_origin_addresses(*)").eq("id", runId).single(),
     supabase
       .from("proj_t_run_projects")
-      .select("*, proj_t_projects(*), proj_s_project_status(*)")
+      .select("*, proj_t_projects(*, proj_s_project_status(*))")
       .eq("run_id", runId)
       .order("stop_sequence"),
   ]);
@@ -283,5 +283,30 @@ export async function calculateRoute(originLat, originLng, destLat, destLng) {
     distance: route.distance,          // meters
     duration: route.duration,          // seconds
     geometry: route.geometry,          // GeoJSON LineString
+  };
+}
+
+export async function calculateMultiStopRoute(coordinates) {
+  if (!coordinates || coordinates.length < 2) {
+    throw new Error("At least 2 coordinates are required (origin + at least one stop).");
+  }
+
+  const coordsStr = coordinates.map((c) => `${c.lng},${c.lat}`).join(";");
+  const url = `https://router.project-osrm.org/route/v1/driving/${coordsStr}?overview=full&geometries=geojson&steps=false`;
+
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`OSRM request failed: ${response.statusText}`);
+
+  const data = await response.json();
+
+  if (!data.routes || data.routes.length === 0) {
+    throw new Error("No route found between the selected points.");
+  }
+
+  const route = data.routes[0];
+  return {
+    distance: route.distance,
+    duration: route.duration,
+    geometry: route.geometry,
   };
 }

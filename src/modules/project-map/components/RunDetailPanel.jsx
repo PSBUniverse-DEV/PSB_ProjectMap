@@ -16,7 +16,7 @@ function getStatusTone(status) {
   return map[status] || "secondary";
 }
 
-export default function RunDetailPanel({ run, runProjects = [], onClose, onEdit, onDelete, onAddProject, onRemoveProject, onReorderStops }) {
+export default function RunDetailPanel({ run, runProjects = [], onClose, onEdit, onDelete, onRemoveProject, onReorderStops }) {
   if (!run) return null;
 
   const [dragIndex, setDragIndex] = useState(null);
@@ -191,23 +191,6 @@ export default function RunDetailPanel({ run, runProjects = [], onClose, onEdit,
                   </div>
                 );
               })}
-              {onAddProject && (
-                <button
-                  onClick={onAddProject}
-                  style={{
-                    padding: "4px 8px",
-                    fontSize: "11px",
-                    borderRadius: "3px",
-                    border: "1px dashed #94a3b8",
-                    background: "#fff",
-                    color: "#64748b",
-                    cursor: "pointer",
-                    width: "100%",
-                  }}
-                >
-                  + Add Project
-                </button>
-              )}
             </div>
           )}
         </div>

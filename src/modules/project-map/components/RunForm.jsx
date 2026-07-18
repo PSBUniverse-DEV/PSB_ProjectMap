@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Button, Modal, toastError, toastSuccess } from "@/shared/components/ui";
 import { createRun, updateRun } from "../data/projectMap.actions";
 
@@ -18,6 +18,12 @@ export default function RunForm({ show, mode, run, origins = [], statuses = [], 
     estimated_duration: "",
     estimated_subtotal: "",
   });
+
+  // Get selected origin object for address display
+  const selectedOrigin = useMemo(() => {
+    if (!form.origin_id) return null;
+    return origins.find((o) => String(o.id) === String(form.origin_id)) || null;
+  }, [form.origin_id, origins]);
 
   useEffect(() => {
     if (run) {
@@ -61,12 +67,18 @@ export default function RunForm({ show, mode, run, origins = [], statuses = [], 
 
     setBusy(true);
     try {
+      // Estimate fields are auto-calculated after projects are added
       const payload = {
-        ...form,
+        run_name: form.run_name,
         origin_id: form.origin_id || null,
-        estimated_distance: form.estimated_distance !== "" ? Number(form.estimated_distance) : null,
-        estimated_duration: form.estimated_duration !== "" ? Number(form.estimated_duration) : null,
-        estimated_subtotal: form.estimated_subtotal !== "" ? Number(form.estimated_subtotal) : null,
+        run_date: form.run_date || null,
+        status: form.status,
+        notes: form.notes || null,
+        team_assigned: form.team_assigned || null,
+        vehicle_assigned: form.vehicle_assigned || null,
+        estimated_distance: null,
+        estimated_duration: null,
+        estimated_subtotal: null,
       };
 
       if (mode === "edit" && run?.id) {
@@ -119,12 +131,13 @@ export default function RunForm({ show, mode, run, origins = [], statuses = [], 
             </select>
           </div>
           <div>
-            <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Run Date</label>
+            <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Origin Address</label>
             <input
-              type="date"
-              value={form.run_date}
-              onChange={(e) => handleChange("run_date", e.target.value)}
-              style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px" }}
+              type="text"
+              value={selectedOrigin?.formatted_address || selectedOrigin?.address_line_1 || ""}
+              readOnly
+              style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px", background: "#f8fafc", color: "#64748b" }}
+              placeholder="Select an origin above..."
             />
           </div>
         </div>
@@ -146,6 +159,18 @@ export default function RunForm({ show, mode, run, origins = [], statuses = [], 
             </select>
           </div>
           <div>
+            <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Run Date</label>
+            <input
+              type="date"
+              value={form.run_date}
+              onChange={(e) => handleChange("run_date", e.target.value)}
+              style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px" }}
+            />
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+          <div>
             <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Team Assigned</label>
             <input
               type="text"
@@ -155,17 +180,16 @@ export default function RunForm({ show, mode, run, origins = [], statuses = [], 
               placeholder="e.g. Team A"
             />
           </div>
-        </div>
-
-        <div>
-          <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Vehicle Assigned</label>
-          <input
-            type="text"
-            value={form.vehicle_assigned}
-            onChange={(e) => handleChange("vehicle_assigned", e.target.value)}
-            style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px" }}
-            placeholder="e.g. Truck 3"
-          />
+          <div>
+            <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Vehicle Assigned</label>
+            <input
+              type="text"
+              value={form.vehicle_assigned}
+              onChange={(e) => handleChange("vehicle_assigned", e.target.value)}
+              style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px" }}
+              placeholder="e.g. Truck 3"
+            />
+          </div>
         </div>
 
         <div>
@@ -182,37 +206,28 @@ export default function RunForm({ show, mode, run, origins = [], statuses = [], 
           <div>
             <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Est. Distance (m)</label>
             <input
-              type="number"
-              step="1"
-              min="0"
-              value={form.estimated_distance}
-              onChange={(e) => handleChange("estimated_distance", e.target.value)}
-              style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px" }}
-              placeholder="0"
+              type="text"
+              value={form.estimated_distance ? `${Number(form.estimated_distance).toLocaleString()} m` : "—"}
+              readOnly
+              style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px", background: "#f8fafc", color: "#64748b" }}
             />
           </div>
           <div>
-            <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Est. Duration (s)</label>
+            <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Est. Duration</label>
             <input
-              type="number"
-              step="1"
-              min="0"
-              value={form.estimated_duration}
-              onChange={(e) => handleChange("estimated_duration", e.target.value)}
-              style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px" }}
-              placeholder="0"
+              type="text"
+              value={form.estimated_duration ? `${Math.round(Number(form.estimated_duration) / 60)} min` : "—"}
+              readOnly
+              style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px", background: "#f8fafc", color: "#64748b" }}
             />
           </div>
           <div>
             <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Est. Subtotal ($)</label>
             <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={form.estimated_subtotal}
-              onChange={(e) => handleChange("estimated_subtotal", e.target.value)}
-              style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px" }}
-              placeholder="0.00"
+              type="text"
+              value={form.estimated_subtotal ? `$${Number(form.estimated_subtotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}
+              readOnly
+              style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px", background: "#f8fafc", color: "#64748b" }}
             />
           </div>
         </div>

@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faLocationDot, faCalendarDays, faBuilding, faDollarSign } from "@fortawesome/free-solid-svg-icons";
 
 export default function ProjectDetailDrawer({ project, statuses = [], onClose, onEdit, onDelete, routeInfo = null }) {
   const statusName = useMemo(() => {
@@ -16,6 +18,10 @@ export default function ProjectDetailDrawer({ project, statuses = [], onClose, o
 
   if (!project) return null;
 
+  const subtotal = project.project_subtotal != null
+    ? `$${Number(project.project_subtotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    : null;
+
   return (
     <div style={{
       position: "absolute",
@@ -30,103 +36,131 @@ export default function ProjectDetailDrawer({ project, statuses = [], onClose, o
       display: "flex",
       flexDirection: "column",
     }}>
+      {/* Header */}
       <div style={{
-        padding: "8px 12px",
+        padding: "16px",
         borderBottom: "1px solid #e2e8f0",
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
       }}>
-        <h6 style={{ margin: 0, fontSize: "13px", fontWeight: 600 }}>Project Details</h6>
-        <button onClick={onClose} style={{
-          background: "none",
-          border: "none",
-          fontSize: "18px",
-          cursor: "pointer",
-          color: "#64748b",
-          lineHeight: 1,
-        }}>×</button>
+        <h2 style={{ margin: "0 0 8px", fontSize: "22px", fontWeight: 700, color: "#1e293b", lineHeight: 1.2 }}>
+          {project.client_name || "Untitled"}
+        </h2>
+        <span style={{
+          display: "inline-block",
+          padding: "3px 12px",
+          borderRadius: "12px",
+          fontSize: "11px",
+          fontWeight: 600,
+          background: `${statusName ? getStatusColor(statusName, statuses) : "#6b7280"}20`,
+          color: statusName ? getStatusColor(statusName, statuses) : "#6b7280",
+          border: `1px solid ${statusName ? getStatusColor(statusName, statuses) : "#6b7280"}40`,
+        }}>{statusName || "No Status"}</span>
       </div>
 
-      <div style={{ flex: 1, overflow: "auto", padding: "12px" }}>
-        {/* General */}
-        <div style={{ marginBottom: "12px" }}>
-          <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>General</div>
-          <div style={{ fontSize: "12px", color: "#1e293b", marginBottom: "4px" }}><strong>Client Name:</strong> {project.client_name || "—"}</div>
-          <div style={{ fontSize: "12px", color: "#1e293b", marginBottom: "4px" }}><strong>Status:</strong> {statusName || "—"}</div>
-          <div style={{ fontSize: "12px", color: "#1e293b", marginBottom: "4px" }}><strong>Dealer:</strong> {project.dealer || "—"}</div>
+      {/* Scrollable Content */}
+      <div style={{ flex: 1, overflow: "auto", padding: "16px" }}>
+        {/* Project Value KPI Card */}
+        {subtotal && (
+          <div style={{
+            background: "linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)",
+            border: "1px solid #bbf7d0",
+            borderRadius: "8px",
+            padding: "16px",
+            marginBottom: "20px",
+          }}>
+            <div style={{ fontSize: "11px", fontWeight: 600, color: "#166534", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "4px" }}>
+              Project Value
+            </div>
+            <div style={{ fontSize: "26px", fontWeight: 700, color: "#14532d", lineHeight: 1.2 }}>
+              {subtotal}
+            </div>
+          </div>
+        )}
+
+        {/* Project Address */}
+        <div style={{ marginBottom: "20px" }}>
+          <div style={{ fontSize: "11px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: "8px", letterSpacing: "0.5px", display: "flex", alignItems: "center", gap: "6px" }}>
+            <FontAwesomeIcon icon={faLocationDot} style={{ fontSize: "12px" }} />
+            Project Address
+          </div>
+          <div style={{ fontSize: "14px", color: "#1e293b", lineHeight: "1.6" }}>
+            {project.formatted_address || (
+              <>
+                {project.address_line_1}<br />
+                {[project.city, project.state, project.postal_code].filter(Boolean).join(", ")}<br />
+                {project.country || ""}
+              </>
+            ) || "—"}
+          </div>
         </div>
 
-        {/* Address */}
-        <div style={{ marginBottom: "12px" }}>
-          <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>Address</div>
-          <div style={{ fontSize: "12px", color: "#1e293b", marginBottom: "4px" }}><strong>Formatted Address:</strong> {project.formatted_address || "—"}</div>
-          <div style={{ fontSize: "12px", color: "#1e293b", marginBottom: "4px" }}><strong>Address Line 1:</strong> {project.address_line_1 || "—"}</div>
-          <div style={{ fontSize: "12px", color: "#1e293b", marginBottom: "4px" }}><strong>City:</strong> {project.city || "—"}</div>
-          <div style={{ fontSize: "12px", color: "#1e293b", marginBottom: "4px" }}><strong>State:</strong> {project.state || "—"}</div>
-          <div style={{ fontSize: "12px", color: "#1e293b", marginBottom: "4px" }}><strong>State Code:</strong> {project.state_code || "—"}</div>
-          <div style={{ fontSize: "12px", color: "#1e293b", marginBottom: "4px" }}><strong>Postal Code:</strong> {project.postal_code || "—"}</div>
-          <div style={{ fontSize: "12px", color: "#1e293b", marginBottom: "4px" }}><strong>Country:</strong> {project.country || "—"}</div>
-        </div>
-
-        {/* Location */}
-        <div style={{ marginBottom: "12px" }}>
-          <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>Location</div>
-          <div style={{ fontSize: "12px", color: "#1e293b", marginBottom: "4px" }}><strong>Latitude:</strong> {project.address_latitude != null ? project.address_latitude.toFixed(6) : "—"}</div>
-          <div style={{ fontSize: "12px", color: "#1e293b", marginBottom: "4px" }}><strong>Longitude:</strong> {project.address_longitude != null ? project.address_longitude.toFixed(6) : "—"}</div>
-          <div style={{ fontSize: "12px", color: "#1e293b", marginBottom: "4px" }}><strong>Location Source:</strong> {project.location_source || "—"}</div>
-          <div style={{ fontSize: "12px", color: "#1e293b", marginBottom: "4px" }}><strong>Location Confirmed:</strong> {project.location_confirmed ? "Yes" : "No"}</div>
-        </div>
-
-        {/* Financial */}
-        <div style={{ marginBottom: "12px" }}>
-          <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>Financial</div>
-          <div style={{ fontSize: "12px", color: "#1e293b", marginBottom: "4px" }}><strong>Project Subtotal:</strong> {project.project_subtotal != null ? `$${Number(project.project_subtotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}</div>
-        </div>
+        {/* Dealer */}
+        {project.dealer && (
+          <div style={{ marginBottom: "20px" }}>
+            <div style={{ fontSize: "11px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: "8px", letterSpacing: "0.5px", display: "flex", alignItems: "center", gap: "6px" }}>
+              <FontAwesomeIcon icon={faBuilding} style={{ fontSize: "12px" }} />
+              Dealer
+            </div>
+            <div style={{ fontSize: "13px", color: "#1e293b" }}>{project.dealer}</div>
+          </div>
+        )}
 
         {/* Schedule */}
-        <div style={{ marginBottom: "12px" }}>
-          <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>Schedule</div>
-          <div style={{ fontSize: "12px", color: "#1e293b", marginBottom: "4px" }}><strong>Order Received:</strong> {project.order_received_date || "—"}</div>
-          <div style={{ fontSize: "12px", color: "#1e293b", marginBottom: "4px" }}><strong>Scheduled Project Date:</strong> {project.scheduled_project_date || "—"}</div>
-          <div style={{ fontSize: "12px", color: "#1e293b", marginBottom: "4px" }}><strong>Install Date:</strong> {project.install_date || "—"}</div>
-        </div>
-
-        {/* System Information */}
-        <div style={{ marginBottom: "12px" }}>
-          <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>System Information</div>
-          <div style={{ fontSize: "11px", color: "#64748b", marginBottom: "4px" }}><strong>Created At:</strong> {project.created_at ? new Date(project.created_at).toLocaleString() : "—"}</div>
-          <div style={{ fontSize: "11px", color: "#64748b", marginBottom: "4px" }}><strong>Updated At:</strong> {project.updated_at ? new Date(project.updated_at).toLocaleString() : "—"}</div>
+        <div style={{ marginBottom: "20px" }}>
+          <div style={{ fontSize: "11px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: "10px", letterSpacing: "0.5px", display: "flex", alignItems: "center", gap: "6px" }}>
+            <FontAwesomeIcon icon={faCalendarDays} style={{ fontSize: "12px" }} />
+            Schedule
+          </div>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <tbody>
+              <tr style={{ borderBottom: "1px solid #f2f2f2" }}>
+                <td style={{ padding: "5px 0", fontSize: "12px", color: "#64748b", fontWeight: 500 }}>Order Received</td>
+                <td style={{ padding: "5px 0", fontSize: "13px", color: "#1e293b", fontWeight: 600, textAlign: "right" }}>{project.order_received_date || "—"}</td>
+              </tr>
+              <tr style={{ borderBottom: "1px solid #f2f2f2" }}>
+                <td style={{ padding: "5px 0", fontSize: "12px", color: "#64748b", fontWeight: 500 }}>Scheduled Project Date</td>
+                <td style={{ padding: "5px 0", fontSize: "13px", color: "#1e293b", fontWeight: 600, textAlign: "right" }}>{project.scheduled_project_date || "—"}</td>
+              </tr>
+              <tr>
+                <td style={{ padding: "5px 0", fontSize: "12px", color: "#64748b", fontWeight: 500 }}>Install Date</td>
+                <td style={{ padding: "5px 0", fontSize: "13px", color: "#1e293b", fontWeight: 600, textAlign: "right" }}>{project.install_date || "—"}</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
 
         {routeInfo && (
-          <div style={{ marginBottom: "10px" }}>
-            <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>Route from Origin</div>
-            <div style={{ fontSize: "12px", color: "#1e293b", marginBottom: "4px" }}><strong>Distance:</strong> {routeInfo.distance}</div>
+          <div style={{ marginBottom: "10px", padding: "10px", background: "#f8fafc", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
+            <div style={{ fontSize: "11px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>Route from Origin</div>
+            <div style={{ fontSize: "12px", color: "#1e293b", marginBottom: "2px" }}><strong>Distance:</strong> {routeInfo.distance}</div>
             <div style={{ fontSize: "12px", color: "#64748b" }}><strong>Duration:</strong> {routeInfo.duration}</div>
           </div>
         )}
       </div>
 
+      {/* Sticky Footer */}
       <div style={{
-        padding: "8px 12px",
+        padding: "12px 16px",
         borderTop: "1px solid #e2e8f0",
         display: "flex",
-        gap: "6px",
+        gap: "8px",
         justifyContent: "flex-end",
+        background: "#fff",
       }}>
         <button onClick={onEdit} style={{
-          padding: "4px 10px",
+          padding: "6px 14px",
           fontSize: "12px",
-          borderRadius: "3px",
+          fontWeight: 600,
+          borderRadius: "4px",
           border: "1px solid #e2e8f0",
           background: "#fff",
           cursor: "pointer",
+          color: "#1e293b",
         }}>Edit</button>
         <button onClick={onDelete} style={{
-          padding: "4px 10px",
+          padding: "6px 14px",
           fontSize: "12px",
-          borderRadius: "3px",
+          fontWeight: 600,
+          borderRadius: "4px",
           border: "1px solid #fecaca",
           background: "#fef2f2",
           color: "#dc2626",

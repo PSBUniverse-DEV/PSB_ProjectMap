@@ -87,6 +87,11 @@ export default function ProjectList({ projects = [], selectedProjectId, onSelect
                     {project.dealer}
                   </div>
                 )}
+                {project.project_subtotal != null && (
+                  <div style={{ fontSize: "10px", color: "#16a34a", fontWeight: 600, marginTop: "2px" }}>
+                    ${Number(project.project_subtotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                )}
               </div>
             );
           })

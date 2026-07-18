@@ -234,7 +234,8 @@ export default function ProjectMap({
       }).setDOMContent(tooltip);
 
       markerEl.addEventListener("mouseenter", () => {
-        popup.setLngLat([lng, lat]).addTo(map);
+        const pos = marker.getLngLat();
+        popup.setLngLat(pos).addTo(map);
       });
 
       markerEl.addEventListener("mouseleave", () => {

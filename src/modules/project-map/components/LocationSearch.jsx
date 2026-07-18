@@ -140,7 +140,7 @@ export default function LocationSearch({ onSelect, selectedLocation, query: exte
             >
               <div style={{ fontSize: "13px", color: "#1e293b" }}>{s.label}</div>
               <div style={{ fontSize: "11px", color: "#64748b" }}>
-                {[s.address_line_1, s.city, s.state_code].filter(Boolean).join(", ")}
+                {[s.address_line_1, s.city, s.state_code, s.postal_code].filter(Boolean).join(", ")}
               </div>
             </div>
           ))}

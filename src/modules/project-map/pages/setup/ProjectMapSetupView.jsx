@@ -24,7 +24,7 @@ const TABLE_DEFS = [
     fields: [
       { key: "status_name", label: "Status Name", required: true },
       { key: "status_description", label: "Description" },
-      { key: "display_color", label: "Display Color (hex)" },
+      { key: "display_color", label: "Display Color", type: "color" },
     ],
   },
   {
@@ -41,16 +41,7 @@ const TABLE_DEFS = [
     ],
     fields: [
       { key: "origin_name", label: "Origin Name", required: true },
-      { key: "origin_code", label: "Origin Code" },
-      { key: "formatted_address", label: "Formatted Address" },
-      { key: "address_line_1", label: "Address Line 1" },
-      { key: "city", label: "City" },
-      { key: "state", label: "State" },
-      { key: "state_code", label: "State Code" },
-      { key: "postal_code", label: "Postal Code" },
-      { key: "country", label: "Country" },
-      { key: "latitude", label: "Latitude", type: "number" },
-      { key: "longitude", label: "Longitude", type: "number" },
+      { key: "formatted_address", label: "Address", required: true, type: "location" },
       { key: "is_default", label: "Is Default", type: "boolean" },
       { key: "is_active", label: "Is Active", type: "boolean" },
     ],
@@ -69,7 +60,7 @@ const TABLE_DEFS = [
     fields: [
       { key: "state_name", label: "State Name", required: true },
       { key: "state_code", label: "State Code", required: true },
-      { key: "display_color", label: "Display Color (hex)", required: true },
+      { key: "display_color", label: "Display Color", type: "color", required: true },
       { key: "display_order", label: "Display Order", type: "number" },
       { key: "is_active", label: "Is Active", type: "boolean" },
     ],
@@ -144,6 +135,18 @@ export default function ProjectMapSetupView({ setup = {} }) {
   const openEdit = useCallback((row) => {
     const initial = {};
     tableDef.fields.forEach((f) => { initial[f.key] = row[f.key] ?? ""; });
+    // For origin addresses, also populate location sub-fields for the LocationSearch
+    if (tableDef.key === "originAddresses") {
+      initial.formatted_address = row.formatted_address || "";
+      initial.address_line_1 = row.address_line_1 || "";
+      initial.city = row.city || "";
+      initial.state = row.state || "";
+      initial.state_code = row.state_code || "";
+      initial.postal_code = row.postal_code || "";
+      initial.country = row.country || "";
+      initial.latitude = row.latitude ?? "";
+      initial.longitude = row.longitude ?? "";
+    }
     setDraft(initial);
     setModalRow(row);
     setModalMode("edit");
@@ -162,9 +165,15 @@ export default function ProjectMapSetupView({ setup = {} }) {
   const handleSave = useCallback(async () => {
     if (!tableDef) return;
 
+    console.log("[ProjectMapSetupView] handleSave called");
+    console.log("[ProjectMapSetupView] draft:", JSON.stringify(draft));
+    console.log("[ProjectMapSetupView] fields:", JSON.stringify(tableDef.fields));
+
     // Validate required fields
     for (const f of tableDef.fields) {
-      if (f.required && !String(draft[f.key] ?? "").trim()) {
+      const val = draft[f.key];
+      console.log(`[ProjectMapSetupView] Validating ${f.key}:`, val, "trimmed:", String(val ?? "").trim());
+      if (f.required && !String(val ?? "").trim()) {
         toastError(`${f.label} is required.`, "Validation");
         return;
       }
@@ -181,10 +190,23 @@ export default function ProjectMapSetupView({ setup = {} }) {
           payload[f.key] = val === "" || val == null ? null : Number(val);
         } else if (f.type === "select") {
           payload[f.key] = val === "" || val == null ? null : Number(val);
+        } else if (f.type === "location") {
+          // Location sub-fields are stored separately in draft
+          // Include them in the payload for the database
+          payload.formatted_address = draft.formatted_address || "";
+          payload.address_line_1 = draft.address_line_1 || "";
+          payload.city = draft.city || "";
+          payload.state = draft.state || "";
+          payload.state_code = draft.state_code || "";
+          payload.postal_code = draft.postal_code || "";
+          payload.country = draft.country || "";
+          payload.latitude = draft.latitude != null ? Number(draft.latitude) : null;
+          payload.longitude = draft.longitude != null ? Number(draft.longitude) : null;
         } else {
           payload[f.key] = String(val ?? "").trim();
         }
       });
+      console.log("[ProjectMapSetupView] payload:", JSON.stringify(payload));
 
       if (modalMode === "add") {
         await createSetupRow(activeTab, payload);

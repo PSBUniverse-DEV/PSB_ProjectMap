@@ -130,6 +130,11 @@ JWT_EXPIRATION=24h
 # The domain scope for auth cookies. ".psbuniverse.com" allows
 # the cookie to be shared across all subdomains (core + modules).
 NEXT_PUBLIC_COOKIE_DOMAIN=.psbuniverse.com
+
+# ─── Your Module ID ────────────────
+# The ID of the current module. Used for identifying the module
+# in the system.
+NEXT_PUBLIC_MODULE_ID=your-app-module-id-here
 "@
     $template | Set-Content -Path $envLocalPath -Encoding UTF8
     Write-Host "  .env.local created at: $envLocalPath" -ForegroundColor Yellow

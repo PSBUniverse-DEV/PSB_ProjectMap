@@ -194,8 +194,15 @@ export async function updateRun(runId, updates) {
 
 export async function deleteRun(runId) {
   const supabase = getSupabaseAdmin();
+  
+  // First, remove all run-project mappings (unassign projects)
+  const { error: mappingError } = await supabase.from("proj_t_run_projects").delete().eq("run_id", runId);
+  if (mappingError) throw new Error(mappingError.message);
+  
+  // Then delete the run record
   const { error } = await supabase.from("proj_t_runs").delete().eq("id", runId);
   if (error) throw new Error(error.message);
+  
   return { success: true };
 }
 
@@ -270,6 +277,20 @@ export async function updateStopSequence(runProjectId, stopSequence) {
   const { data, error } = await supabase.from("proj_t_run_projects").update({ stop_sequence: Number(stopSequence) }).eq("id", runProjectId).select("*").single();
   if (error) throw new Error(error.message);
   return data;
+}
+
+export async function updateStopNote(runProjectId, notes) {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase.from("proj_t_run_projects").update({ notes: notes || null }).eq("id", runProjectId).select("*").single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function updateRunStopsCount(runId, count) {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("proj_t_runs").update({ stops: count }).eq("id", runId);
+  if (error) throw new Error(error.message);
+  return { success: true };
 }
 
 export async function loadRuns() {

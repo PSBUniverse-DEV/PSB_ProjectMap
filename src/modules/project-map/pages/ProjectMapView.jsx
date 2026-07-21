@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Modal, toastError, toastSuccess } from "@/shared/components/ui";
-import { deleteProject, calculateRoute, calculateMultiStopRoute, calculateSegmentRoutes, deleteRun, removeProjectFromRun, loadRunDetails, updateStopSequence, addProjectToRun, updateRun, getProjectRunAssignment } from "../data/projectMap.actions";
+import { deleteProject, calculateRoute, calculateMultiStopRoute, calculateSegmentRoutes, deleteRun, removeProjectFromRun, loadRunDetails, updateStopSequence, addProjectToRun, updateRun, getProjectRunAssignment, updateStopNote, updateRunStopsCount } from "../data/projectMap.actions";
 import ProjectMap from "../components/ProjectMap";
 import ProjectList from "../components/ProjectList";
 import ProjectDetailDrawer from "../components/ProjectDetailDrawer";
@@ -44,10 +44,12 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
   
   // Route error modal
   const [showRouteErrorModal, setShowRouteErrorModal] = useState(false);
-  
-  // Refs to prevent unnecessary route recalculations
-  const prevCoordStringRef = useRef(null);
-  const justSavedRef = useRef(false);
+
+  // Recalculate state
+  const [recalculating, setRecalculating] = useState(false);
+
+  // Stop note state
+  const [editingStopNote, setEditingStopNote] = useState(null); // { runProjectId, notes, clientName }
 
   // Scroll to top on mount
   useEffect(() => {
@@ -188,20 +190,86 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
     setEditingProject(null);
   };
 
-  // Runs handlers
-  const handleSelectRun = (id) => {
-    const prevRunId = selectedRunId;
-    setSelectedRunId(id);
-    setSelectedProjectId(null);
-    
-    // Clear all route-related state when switching runs to prevent stale waypoints
-    if (prevRunId !== id) {
+  // Recalculate run routes from scratch
+  const handleRecalculate = useCallback(async () => {
+    if (!selectedRunId) return;
+    setRecalculating(true);
+    try {
+      // 1. Reload run + projects from DB
+      const details = await loadRunDetails(selectedRunId);
+      const freshProjects = details.projects || [];
+      setRunProjects(freshProjects);
+
+      // 2. Get origin coordinates
+      const origin = selectedRun?.proj_s_origin_addresses;
+      if (!origin || origin.latitude == null || origin.longitude == null) {
+        toastError("Run has no origin address with valid coordinates.", "Recalculate");
+        return;
+      }
+
+      // 3. Build waypoints from fresh data
+      const coords = [{ lat: Number(origin.latitude), lng: Number(origin.longitude) }];
+      freshProjects.forEach((rp) => {
+        const proj = rp.proj_t_projects || {};
+        const lat = Number(proj.site_latitude ?? proj.address_latitude);
+        const lng = Number(proj.site_longitude ?? proj.address_longitude);
+        if (Number.isFinite(lat) && Number.isFinite(lng)) {
+          coords.push({ lat, lng });
+        }
+      });
+
+      if (coords.length < 2) {
+        toastError("Not enough valid coordinates to calculate a route.", "Recalculate");
+        return;
+      }
+
+      // 4. Calculate all segments from fresh data
+      const data = await calculateSegmentRoutes(coords);
+
+      // 5. Show modal if some segments failed
+      if (data.hasPartialFailure) {
+        setShowRouteErrorModal(true);
+      }
+
+      // 6. Update local state
+      setRunRouteData({
+        distance: data.totalDistance,
+        duration: data.totalDuration,
+        geometry: data.geometry,
+      });
+      setRunSegmentData(data);
+
+      // 7. Save to database
+      const subtotal = freshProjects.reduce((sum, rp) => {
+        const proj = rp.proj_t_projects || {};
+        return sum + (Number(proj.project_subtotal) || 0);
+      }, 0);
+
+      await updateRun(selectedRunId, {
+        estimated_distance: data.totalDistance,
+        estimated_duration: data.totalDuration,
+        estimated_subtotal: subtotal,
+      });
+
+      toastSuccess("Route recalculated successfully.", "Recalculate");
+    } catch (err) {
+      console.error("[ProjectMapView] Recalculate failed:", err);
+      toastError(err?.message || "Failed to recalculate route.", "Recalculate");
       setRunRouteData(null);
       setRunSegmentData(null);
-      setRunRouteLoading(false);
-      prevCoordStringRef.current = null;
-      justSavedRef.current = false;
+    } finally {
+      setRecalculating(false);
     }
+  }, [selectedRunId, selectedRun]);
+
+  // Runs handlers
+  const handleSelectRun = (id) => {
+    setSelectedRunId(id);
+    setSelectedProjectId(null);
+    // Clear route state immediately — will be recalculated from fresh data via useEffect
+    setRunRouteData(null);
+    setRunSegmentData(null);
+    setRunRouteLoading(false);
   };
 
   const handleCloseRunDetail = () => {
@@ -246,15 +314,15 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
     setEditingRun(null);
   };
 
-  // Unified refresh: reload run data and force route recalculation
+  // Unified refresh: reload run data from database and re-render from fresh state
   const refreshRunData = useCallback(async () => {
     if (!selectedRunId) return;
     try {
       const details = await loadRunDetails(selectedRunId);
-      setRunProjects(details.projects || []);
-      // Reset coordinate cache to force route recalculation
-      prevCoordStringRef.current = null;
-      // Refresh parent data (runs list, etc.)
+      const projects = details.projects || [];
+      setRunProjects(projects);
+      // Persist stop count
+      await updateRunStopsCount(selectedRunId, projects.length);
       await router.refresh();
     } catch (err) {
       console.error("[ProjectMapView] Failed to refresh run data:", err);
@@ -292,6 +360,31 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
       await refreshRunData();
     } catch (err) {
       toastError(err?.message || "Failed to remove project.", "Runs");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleEditStopNote = (runProject) => {
+    const proj = runProject.proj_t_projects || {};
+    setEditingStopNote({
+      runProjectId: runProject.id,
+      notes: runProject.notes || "",
+      clientName: proj.client_name || "Untitled",
+    });
+  };
+
+  const handleSaveStopNote = async () => {
+    if (!editingStopNote) return;
+    setBusy(true);
+    try {
+      await updateStopNote(editingStopNote.runProjectId, editingStopNote.notes);
+      toastSuccess("Stop note saved.", "Runs");
+      setEditingStopNote(null);
+      // Refresh to show the note indicator
+      await refreshRunData();
+    } catch (err) {
+      toastError(err?.message || "Failed to save stop note.", "Runs");
     } finally {
       setBusy(false);
     }
@@ -358,31 +451,8 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
       return;
     }
 
-    // Build coordinate string for comparison (detect actual changes)
     const originLat = Number(origin.latitude);
     const originLng = Number(origin.longitude);
-    const coordParts = [ `${originLat},${originLng}` ];
-    runProjects.forEach((rp) => {
-      const proj = rp.proj_t_projects || {};
-      const lat = Number(proj.site_latitude ?? proj.address_latitude);
-      const lng = Number(proj.site_longitude ?? proj.address_longitude);
-      if (Number.isFinite(lat) && Number.isFinite(lng)) {
-        coordParts.push(`${lat},${lng}`);
-      }
-    });
-    const coordString = coordParts.join(";");
-
-    // Skip if coordinates haven't changed (prevents repeated calculations)
-    if (coordString === prevCoordStringRef.current) {
-      return;
-    }
-    prevCoordStringRef.current = coordString;
-
-    // Skip if we just saved (prevents loop from router.refresh())
-    if (justSavedRef.current) {
-      justSavedRef.current = false;
-      return;
-    }
 
     let cancelled = false;
     setRunRouteLoading(true);
@@ -444,7 +514,6 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
             return sum + (Number(proj.project_subtotal) || 0);
           }, 0);
           
-          justSavedRef.current = true;
           updateRun(selectedRunId, {
             estimated_distance: data.totalDistance,
             estimated_duration: data.totalDuration,
@@ -453,7 +522,6 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
             router.refresh();
           }).catch((err) => {
             console.error("[ProjectMapView] Failed to save route estimates:", err);
-            justSavedRef.current = false;
           });
         }
       })
@@ -715,6 +783,9 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
             onDelete={() => setConfirmDeleteRunId(selectedRun.id)}
             onRemoveProject={handleRemoveProjectFromRun}
             onReorderStops={handleReorderStops}
+            onRecalculate={handleRecalculate}
+            recalculating={recalculating}
+            onEditStopNote={handleEditStopNote}
           />
         )}
       </div>
@@ -784,6 +855,39 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
             <Button variant="secondary" onClick={() => setShowRouteErrorModal(false)}>OK</Button>
           </div>
         </div>
+      </Modal>
+
+      {/* Stop Note Modal */}
+      <Modal show={!!editingStopNote} onHide={() => setEditingStopNote(null)} title="Stop Note">
+        {editingStopNote && (
+          <div>
+            <div style={{ marginBottom: "10px" }}>
+              <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Project</label>
+              <div style={{ fontSize: "12px", fontWeight: 600, color: "#1e293b" }}>{editingStopNote.clientName}</div>
+            </div>
+            <div style={{ marginBottom: "12px" }}>
+              <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Notes</label>
+              <textarea
+                value={editingStopNote.notes}
+                onChange={(e) => setEditingStopNote({ ...editingStopNote, notes: e.target.value })}
+                style={{
+                  width: "100%",
+                  minHeight: "80px",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: "3px",
+                  padding: "6px 8px",
+                  fontSize: "12px",
+                  resize: "vertical",
+                }}
+                placeholder="Add notes for this stop..."
+              />
+            </div>
+            <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+              <Button variant="secondary" onClick={() => setEditingStopNote(null)}>Cancel</Button>
+              <Button variant="primary" loading={busy} onClick={handleSaveStopNote}>Save</Button>
+            </div>
+          </div>
+        )}
       </Modal>
 
       {/* Project Selector Modal */}

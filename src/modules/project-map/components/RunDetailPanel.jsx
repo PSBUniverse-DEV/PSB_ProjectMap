@@ -35,7 +35,7 @@ function formatCurrency(value) {
   return `$${Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-export default function RunDetailPanel({ run, runProjects = [], runSegmentData = null, onClose, onEdit, onDelete, onRemoveProject, onReorderStops }) {
+export default function RunDetailPanel({ run, runProjects = [], runSegmentData = null, onClose, onEdit, onDelete, onRemoveProject, onReorderStops, onRecalculate, recalculating = false, onEditStopNote }) {
   if (!run) return null;
 
   const [dragIndex, setDragIndex] = useState(null);
@@ -295,6 +295,23 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
                               <div style={{ fontSize: "10px", color: "#16a34a", fontWeight: 500, marginTop: "2px" }}>
                                 {sub}
                               </div>
+                              <div style={{ marginTop: "3px" }}>
+                                <button
+                                  onClick={() => onEditStopNote?.(rp)}
+                                  style={{
+                                    background: "none",
+                                    border: "none",
+                                    cursor: "pointer",
+                                    fontSize: "10px",
+                                    padding: "0",
+                                    color: rp.notes ? "#6366f1" : "#94a3b8",
+                                    fontWeight: rp.notes ? 600 : 400,
+                                  }}
+                                  title={rp.notes ? "Edit note" : "Add note"}
+                                >
+                                  {rp.notes ? "📝 Note" : "📄 Note"}
+                                </button>
+                              </div>
                             </div>
                             <button
                               onClick={() => onRemoveProject?.(rp.id)}
@@ -399,6 +416,24 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
             {btn.label}
           </button>
         ))}
+        <div style={{ flex: 1 }} />
+        <button
+          onClick={onRecalculate}
+          disabled={recalculating}
+          style={{
+            padding: "4px 10px",
+            fontSize: "11px",
+            borderRadius: "3px",
+            border: "1px solid #6366f1",
+            cursor: recalculating ? "not-allowed" : "pointer",
+            fontWeight: 500,
+            background: recalculating ? "#eef2ff" : "#eef2ff",
+            color: recalculating ? "#94a3b8" : "#6366f1",
+            opacity: recalculating ? 0.7 : 1,
+          }}
+        >
+          {recalculating ? "⟳ Recalculating..." : "⟳ Recalculate Run"}
+        </button>
       </div>
     </div>
   );

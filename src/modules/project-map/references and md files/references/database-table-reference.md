@@ -101,7 +101,7 @@ create table public.proj_t_runs (
   run_name text not null,
   origin_id integer null,
   run_date date null,
-  status text not null default 'Draft',
+  status text not null default 'Draft'::text,
   notes text null,
   team_assigned text null,
   vehicle_assigned text null,
@@ -112,6 +112,7 @@ create table public.proj_t_runs (
   updated_by integer null,
   created_at timestamp with time zone not null default now(),
   updated_at timestamp with time zone not null default now(),
+  stops integer null,
   constraint proj_t_runs_pkey primary key (id),
   constraint proj_t_runs_origin_id_fkey foreign KEY (origin_id) references proj_s_origin_addresses (id)
 ) TABLESPACE pg_default;

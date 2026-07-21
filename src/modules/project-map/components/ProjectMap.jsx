@@ -35,6 +35,7 @@ export default function ProjectMap({
   const originMarkerRef = useRef(null);
   const routeSourceRef = useRef("route-line");
   const initialFitDone = useRef(false);
+  const emptyRouteOverlayRef = useRef(null);
   
   // Refs for closure-dependent values used in marker event handlers
   const modeRef = useRef(mode);
@@ -348,10 +349,10 @@ export default function ProjectMap({
 
         // Handle "Remove from Run" button click
         const removeBtn = contextPopup.getElement()?.querySelector(`[data-remove-from-run="${id}"]`);
-        if (removeBtn && runProject) {
+        if (removeBtn && selectedRunProject) {
           removeBtn.addEventListener("click", () => {
             contextPopup.remove();
-            currentOnRemoveFromRun?.(runProject.id);
+            currentOnRemoveFromRun?.(selectedRunProject.id);
           });
         }
       });
@@ -402,6 +403,12 @@ export default function ProjectMap({
     if (originMarkerRef.current) {
       originMarkerRef.current.remove();
       originMarkerRef.current = null;
+    }
+
+    // Remove existing empty route overlay if present
+    if (emptyRouteOverlayRef.current) {
+      emptyRouteOverlayRef.current.remove();
+      emptyRouteOverlayRef.current = null;
     }
 
     // Determine which origin to show
@@ -491,6 +498,7 @@ export default function ProjectMap({
           </div>
         `;
         map.getContainer().appendChild(overlay);
+        emptyRouteOverlayRef.current = overlay;
       }
     }
 
@@ -531,14 +539,6 @@ export default function ProjectMap({
         });
       }
     }
-
-    // Cleanup overlay on unmount or when not empty run
-    return () => {
-      const existingOverlay = map.getContainer()?.querySelector("div[style*='position: absolute']");
-      if (existingOverlay && existingOverlay.textContent?.includes("No Route Created")) {
-        existingOverlay.remove();
-      }
-    };
   }, [mode, selectedOrigin, routeData, selectedProjectId, projects, runs, selectedRunId, runProjects, runRouteData]);
 
   // Center on selected project

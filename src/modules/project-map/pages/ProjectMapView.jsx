@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Modal, toastError, toastSuccess } from "@/shared/components/ui";
-import { deleteProject, calculateRoute, calculateMultiStopRoute, deleteRun, removeProjectFromRun, loadRunDetails, updateStopSequence, addProjectToRun } from "../data/projectMap.actions";
+import { deleteProject, calculateRoute, calculateMultiStopRoute, calculateSegmentRoutes, deleteRun, removeProjectFromRun, loadRunDetails, updateStopSequence, addProjectToRun, updateRun } from "../data/projectMap.actions";
 import ProjectMap from "../components/ProjectMap";
 import ProjectList from "../components/ProjectList";
 import ProjectDetailDrawer from "../components/ProjectDetailDrawer";
@@ -38,6 +38,13 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
   const [runRouteData, setRunRouteData] = useState(null);
   const [runRouteLoading, setRunRouteLoading] = useState(false);
   const [showProjectSelector, setShowProjectSelector] = useState(false);
+  
+  // Segment route data for individual legs
+  const [runSegmentData, setRunSegmentData] = useState(null);
+  
+  // Refs to prevent unnecessary route recalculations
+  const prevCoordStringRef = useRef(null);
+  const justSavedRef = useRef(false);
 
   // Scroll to top on mount
   useEffect(() => {
@@ -327,14 +334,41 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
 
   // Calculate multi-stop route for runs
   useEffect(() => {
-    if (mode !== "runs" || !selectedRun || runProjects.length === 0) {
+    if (mode !== "runs" || !selectedRunId || runProjects.length === 0) {
+      setRunRouteData(null);
+      setRunSegmentData(null);
+      return;
+    }
+
+    const origin = selectedRun?.proj_s_origin_addresses;
+    if (!origin || origin.latitude == null || origin.longitude == null) {
       setRunRouteData(null);
       return;
     }
 
-    const origin = selectedRun.proj_s_origin_addresses;
-    if (!origin || origin.latitude == null || origin.longitude == null) {
-      setRunRouteData(null);
+    // Build coordinate string for comparison (detect actual changes)
+    const originLat = Number(origin.latitude);
+    const originLng = Number(origin.longitude);
+    const coordParts = [ `${originLat},${originLng}` ];
+    runProjects.forEach((rp) => {
+      const proj = rp.proj_t_projects || {};
+      const lat = Number(proj.site_latitude ?? proj.address_latitude);
+      const lng = Number(proj.site_longitude ?? proj.address_longitude);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        coordParts.push(`${lat},${lng}`);
+      }
+    });
+    const coordString = coordParts.join(";");
+
+    // Skip if coordinates haven't changed (prevents repeated calculations)
+    if (coordString === prevCoordStringRef.current) {
+      return;
+    }
+    prevCoordStringRef.current = coordString;
+
+    // Skip if we just saved (prevents loop from router.refresh())
+    if (justSavedRef.current) {
+      justSavedRef.current = false;
       return;
     }
 
@@ -343,32 +377,66 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
 
     // Build OSRM coordinates: origin -> stop1 -> stop2 -> ... -> stopN
     const coords = [];
-    coords.push({ lat: origin.latitude, lng: origin.longitude });
+    if (Number.isFinite(originLat) && Number.isFinite(originLng)) {
+      coords.push({ lat: originLat, lng: originLng });
+    }
     runProjects.forEach((rp) => {
       const proj = rp.proj_t_projects || {};
-      const lat = proj.site_latitude || proj.address_latitude;
-      const lng = proj.site_longitude || proj.address_longitude;
-      if (lat != null && lng != null) {
+      const lat = Number(proj.site_latitude ?? proj.address_latitude);
+      const lng = Number(proj.site_longitude ?? proj.address_longitude);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) {
         coords.push({ lat, lng });
       }
     });
 
     if (coords.length < 2) {
       setRunRouteData(null);
+      setRunSegmentData(null);
       setRunRouteLoading(false);
       return;
     }
 
-    calculateMultiStopRoute(coords)
+    console.log("[ProjectMapView] Calculating segment routes for", coords.length, "points");
+    
+    // Use calculateSegmentRoutes to get per-leg data + full route
+    calculateSegmentRoutes(coords)
       .then((data) => {
         if (!cancelled) {
-          setRunRouteData(data);
+          // Store full route geometry for map display
+          setRunRouteData({
+            distance: data.totalDistance,
+            duration: data.totalDuration,
+            geometry: data.geometry,
+          });
+          
+          // Store segment data for detailed display
+          setRunSegmentData(data);
+          
+          // Save route estimates to run record
+          const subtotal = runProjects.reduce((sum, rp) => {
+            const proj = rp.proj_t_projects || {};
+            return sum + (Number(proj.project_subtotal) || 0);
+          }, 0);
+          
+          justSavedRef.current = true;
+          updateRun(selectedRunId, {
+            estimated_distance: data.totalDistance,
+            estimated_duration: data.totalDuration,
+            estimated_subtotal: subtotal,
+          }).then(() => {
+            router.refresh();
+          }).catch((err) => {
+            console.error("[ProjectMapView] Failed to save route estimates:", err);
+            justSavedRef.current = false;
+          });
         }
       })
       .catch((err) => {
         if (!cancelled) {
+          console.error("[ProjectMapView] Route calculation failed:", err);
           toastError(err?.message || "Failed to calculate route.", "Route");
           setRunRouteData(null);
+          setRunSegmentData(null);
         }
       })
       .finally(() => {
@@ -376,7 +444,7 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
       });
 
     return () => { cancelled = true; };
-  }, [mode, selectedRun, runProjects]);
+  }, [mode, selectedRunId, runProjects, router]);
 
   // Calculate route when origin or selected project changes
   useEffect(() => {
@@ -615,6 +683,7 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
           <RunDetailPanel
             run={selectedRun}
             runProjects={runProjects}
+            runSegmentData={runSegmentData}
             onClose={handleCloseRunDetail}
             onEdit={handleEditRun}
             onDelete={() => setConfirmDeleteRunId(selectedRun.id)}

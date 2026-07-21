@@ -16,18 +16,78 @@ function getStatusTone(status) {
   return map[status] || "secondary";
 }
 
-export default function RunDetailPanel({ run, runProjects = [], onClose, onEdit, onDelete, onRemoveProject, onReorderStops }) {
+function formatDistance(meters) {
+  if (meters == null) return "—";
+  return `${(meters / 1000).toFixed(1)} km`;
+}
+
+function formatDuration(seconds) {
+  if (seconds == null) return "—";
+  const mins = Math.round(seconds / 60);
+  if (mins < 60) return `${mins} min`;
+  const hrs = Math.floor(mins / 60);
+  const rem = mins % 60;
+  return `${hrs} hr ${rem} min`;
+}
+
+function formatCurrency(value) {
+  if (value == null) return "—";
+  return `$${Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+export default function RunDetailPanel({ run, runProjects = [], runSegmentData = null, onClose, onEdit, onDelete, onRemoveProject, onReorderStops }) {
   if (!run) return null;
 
   const [dragIndex, setDragIndex] = useState(null);
   const [dragOverIndex, setDragOverIndex] = useState(null);
 
   const originName = run.proj_s_origin_addresses?.origin_name || "No Origin";
-  const totalDistance = run.estimated_distance != null ? `${(run.estimated_distance / 1000).toFixed(1)} km` : "—";
-  const totalDuration = run.estimated_duration != null ? `${Math.round(run.estimated_duration / 60)} min` : "—";
-  const totalSubtotal = run.estimated_subtotal != null
-    ? `$${Number(run.estimated_subtotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-    : "—";
+  const totalDistance = formatDistance(run.estimated_distance);
+  const totalDuration = formatDuration(run.estimated_duration);
+  const totalSubtotal = formatCurrency(run.estimated_subtotal);
+
+  // Compute per-stop subtotals (cumulative)
+  const stopSubtotals = useMemo(() => {
+    return runProjects.map((rp) => {
+      const proj = rp.proj_t_projects || {};
+      return Number(proj.project_subtotal) || 0;
+    });
+  }, [runProjects]);
+
+  const totalRevenue = useMemo(() => stopSubtotals.reduce((s, v) => s + v, 0), [stopSubtotals]);
+
+  // Route stats
+  const routeStats = useMemo(() => {
+    if (!runSegmentData?.segments || runSegmentData.segments.length === 0) return null;
+    const segs = runSegmentData.segments;
+    const distances = segs.map((s) => s.distance);
+    return {
+      totalStops: runProjects.length,
+      avgDuration: segs.reduce((s, seg) => s + seg.duration, 0) / segs.length,
+      longestLeg: Math.max(...distances),
+      shortestLeg: Math.min(...distances),
+    };
+  }, [runSegmentData, runProjects]);
+
+  // Status-based actions
+  const status = run.status || "Draft";
+  const actionButtons = useMemo(() => {
+    const btns = [];
+    if (status === "Draft") {
+      btns.push({ label: "Edit", onClick: onEdit, variant: "secondary" });
+      btns.push({ label: "Optimize", onClick: () => {}, variant: "primary" });
+      btns.push({ label: "Delete", onClick: onDelete, variant: "danger" });
+    } else if (status === "Planned") {
+      btns.push({ label: "Edit", onClick: onEdit, variant: "secondary" });
+      btns.push({ label: "Start", onClick: () => {}, variant: "primary" });
+    } else if (status === "In Progress") {
+      btns.push({ label: "Complete", onClick: () => {}, variant: "success" });
+    } else if (status === "Completed") {
+      btns.push({ label: "Duplicate", onClick: () => {}, variant: "secondary" });
+      btns.push({ label: "Print", onClick: () => {}, variant: "secondary" });
+    }
+    return btns;
+  }, [status, onEdit, onDelete]);
 
   return (
     <div style={{
@@ -43,183 +103,279 @@ export default function RunDetailPanel({ run, runProjects = [], onClose, onEdit,
       display: "flex",
       flexDirection: "column",
     }}>
+      {/* Fixed Header */}
       <div style={{
-        padding: "8px 12px",
+        padding: "10px 12px 8px",
         borderBottom: "1px solid #e2e8f0",
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
+        flexShrink: 0,
       }}>
-        <h6 style={{ margin: 0, fontSize: "13px", fontWeight: 600 }}>Run Details</h6>
-        <button onClick={onClose} style={{
-          background: "none",
-          border: "none",
-          fontSize: "18px",
-          cursor: "pointer",
-          color: "#64748b",
-          lineHeight: 1,
-        }}>×</button>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "2px" }}>
+              <span style={{ fontSize: "13px" }}>🛻</span>
+              <h6 style={{ margin: 0, fontSize: "14px", fontWeight: 600, color: "#1e293b" }}>
+                {run.run_name || `Run #${run.run_number || "?"}`}
+              </h6>
+            </div>
+            <div style={{ fontSize: "10px", color: "#64748b", marginBottom: "3px" }}>
+              {run.run_date || "No date"}
+            </div>
+            <StatusBadge tone={getStatusTone(status)}>{status}</StatusBadge>
+          </div>
+          <button onClick={onClose} style={{
+            background: "none",
+            border: "none",
+            fontSize: "18px",
+            cursor: "pointer",
+            color: "#64748b",
+            lineHeight: 1,
+            padding: "0",
+          }}>×</button>
+        </div>
       </div>
 
-      <div style={{ flex: 1, overflow: "auto", padding: "12px" }}>
-        <div style={{ marginBottom: "10px" }}>
-          <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "2px" }}>Run Name</div>
-          <div style={{ fontSize: "14px", fontWeight: 600, color: "#1e293b" }}>{run.run_name || `Run #${run.run_number || "?"}`}</div>
+      {/* Scrollable Content */}
+      <div style={{ flex: 1, overflow: "auto", padding: "10px 12px" }}>
+        {/* Route Summary Card */}
+        <div style={{
+          background: "linear-gradient(135deg, #1e293b 0%, #334155 100%)",
+          borderRadius: "6px",
+          padding: "10px 12px",
+          marginBottom: "10px",
+          color: "#fff",
+        }}>
+          <div style={{ fontSize: "9px", fontWeight: 700, textTransform: "uppercase", color: "#94a3b8", marginBottom: "6px", letterSpacing: "0.5px" }}>
+            Route Summary
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
+            <div>
+              <div style={{ fontSize: "9px", color: "#94a3b8" }}>Distance</div>
+              <div style={{ fontSize: "16px", fontWeight: 700 }}>{totalDistance}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: "9px", color: "#94a3b8" }}>Duration</div>
+              <div style={{ fontSize: "16px", fontWeight: 700 }}>{totalDuration}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: "9px", color: "#94a3b8" }}>Revenue</div>
+              <div style={{ fontSize: "16px", fontWeight: 700 }}>{totalSubtotal}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: "9px", color: "#94a3b8" }}>Stops</div>
+              <div style={{ fontSize: "16px", fontWeight: 700 }}>{runProjects.length}</div>
+            </div>
+          </div>
         </div>
 
+        {/* Origin */}
         <div style={{ marginBottom: "10px" }}>
-          <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "2px" }}>Status</div>
-          <StatusBadge tone={getStatusTone(run.status)}>{run.status || "Draft"}</StatusBadge>
+          <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "1px" }}>📍 Origin</div>
+          <div style={{ fontSize: "12px", fontWeight: 600, color: "#1e293b" }}>{originName}</div>
         </div>
 
-        <div style={{ marginBottom: "10px" }}>
-          <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "2px" }}>Origin</div>
-          <div style={{ fontSize: "12px", color: "#1e293b" }}>{originName}</div>
-        </div>
-
-        <div style={{ marginBottom: "10px" }}>
-          <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "2px" }}>Run Date</div>
-          <div style={{ fontSize: "12px", color: "#1e293b" }}>{run.run_date || "—"}</div>
-        </div>
-
-        {run.team_assigned && (
-          <div style={{ marginBottom: "10px" }}>
-            <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "2px" }}>Team Assigned</div>
-            <div style={{ fontSize: "12px", color: "#1e293b" }}>{run.team_assigned}</div>
+        {/* Team & Vehicle */}
+        {(run.team_assigned || run.vehicle_assigned) && (
+          <div style={{ display: "flex", gap: "10px", marginBottom: "10px" }}>
+            {run.team_assigned && (
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "1px" }}>👥 Team</div>
+                <div style={{ fontSize: "11px", color: "#1e293b" }}>{run.team_assigned}</div>
+              </div>
+            )}
+            {run.vehicle_assigned && (
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "1px" }}>🚛 Vehicle</div>
+                <div style={{ fontSize: "11px", color: "#1e293b" }}>{run.vehicle_assigned}</div>
+              </div>
+            )}
           </div>
         )}
 
-        {run.vehicle_assigned && (
-          <div style={{ marginBottom: "10px" }}>
-            <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "2px" }}>Vehicle Assigned</div>
-            <div style={{ fontSize: "12px", color: "#1e293b" }}>{run.vehicle_assigned}</div>
+        {/* Route Timeline */}
+        <div style={{ marginBottom: "10px" }}>
+          <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "6px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span>🛣 Route Timeline ({runProjects.length} stops)</span>
           </div>
-        )}
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px", marginBottom: "10px" }}>
-          <div>
-            <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "2px" }}>Distance</div>
-            <div style={{ fontSize: "12px", color: "#1e293b" }}>{totalDistance}</div>
-          </div>
-          <div>
-            <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "2px" }}>Duration</div>
-            <div style={{ fontSize: "12px", color: "#1e293b" }}>{totalDuration}</div>
-          </div>
-          <div>
-            <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "2px" }}>Subtotal</div>
-            <div style={{ fontSize: "12px", color: "#1e293b" }}>{totalSubtotal}</div>
-          </div>
-        </div>
-
-        {run.notes && (
-          <div style={{ marginBottom: "10px" }}>
-            <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "2px" }}>Notes</div>
-            <div style={{ fontSize: "11px", color: "#64748b" }}>{run.notes}</div>
-          </div>
-        )}
-
-        <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "8px", marginTop: "8px" }}>
-          <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "4px" }}>
-            Projects ({runProjects.length})
-          </div>
           {runProjects.length === 0 ? (
-            <p style={{ fontSize: "11px", color: "#94a3b8" }}>No projects assigned.</p>
+            <p style={{ fontSize: "11px", color: "#94a3b8", padding: "10px 0" }}>No stops added yet.</p>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+            <div style={{ position: "relative" }}>
+              {/* Origin dot and label */}
+              <div style={{ display: "flex", alignItems: "flex-start", marginBottom: "2px" }}>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "20px", flexShrink: 0, marginRight: "8px" }}>
+                  <div style={{ width: "10px", height: "10px", borderRadius: "50%", background: "#1e293b", border: "2px solid #1e293b" }} />
+                </div>
+                <div style={{ fontSize: "11px", fontWeight: 600, color: "#1e293b", paddingTop: "0" }}>
+                  Origin: {originName}
+                </div>
+              </div>
+
               {runProjects.map((rp, idx) => {
                 const proj = rp.proj_t_projects || {};
-                const statusName = proj.proj_s_project_status?.status_name || "";
+                const segment = runSegmentData?.segments?.[idx];
+                const segDistance = formatDistance(segment?.distance);
+                const segDuration = formatDuration(segment?.duration);
+                const sub = formatCurrency(stopSubtotals[idx]);
                 const isDragging = dragIndex === idx;
                 const isDragOver = dragOverIndex === idx;
+
                 return (
-                  <div
-                    key={rp.id}
-                    draggable
-                    onDragStart={() => setDragIndex(idx)}
-                    onDragOver={(e) => { e.preventDefault(); setDragOverIndex(idx); }}
-                    onDragLeave={() => setDragOverIndex(null)}
-                    onDrop={() => {
-                      if (dragIndex !== null && dragIndex !== idx) {
-                        onReorderStops?.(dragIndex, idx);
-                      }
-                      setDragIndex(null);
-                      setDragOverIndex(null);
-                    }}
-                    onDragEnd={() => {
-                      setDragIndex(null);
-                      setDragOverIndex(null);
-                    }}
-                    style={{
-                      padding: "6px 8px",
-                      background: isDragging ? "#fef3c7" : (isDragOver ? "#f0f9ff" : "#f8fafc"),
-                      border: `1px solid ${isDragOver ? "#93c5fd" : "#e2e8f0"}`,
-                      borderRadius: "3px",
-                      fontSize: "11px",
-                      cursor: "grab",
-                      opacity: isDragging ? 0.7 : 1,
-                      transition: "all 0.15s",
-                    }}
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "4px" }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 600, color: "#1e293b", marginBottom: "1px" }}>
-                          Stop {rp.stop_sequence + 1}: {proj.client_name || "Untitled"}
-                        </div>
-                        <div style={{ fontSize: "10px", color: "#64748b" }}>
-                          {proj.city && proj.state ? `${proj.city}, ${proj.state}` : proj.formatted_address || "No address"}
-                        </div>
-                        {proj.project_subtotal != null && (
-                          <div style={{ fontSize: "10px", color: "#16a34a", marginTop: "1px" }}>
-                            ${Number(proj.project_subtotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  <div key={rp.id} style={{ marginBottom: "2px" }}>
+                    {/* Vertical line from previous */}
+                    <div style={{ display: "flex", alignItems: "stretch" }}>
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "20px", flexShrink: 0, marginRight: "8px" }}>
+                        <div style={{ width: "2px", flex: 1, background: "#cbd5e1", minHeight: "12px" }} />
+                        <div style={{ width: "10px", height: "10px", borderRadius: "50%", background: "#3b82f6", border: "2px solid #fff", boxShadow: "0 0 0 2px #3b82f6" }} />
+                      </div>
+                      <div style={{ flex: 1, paddingTop: "2px" }}>
+                        {/* Segment info */}
+                        {(segment || idx === 0) && (
+                          <div style={{ fontSize: "9px", color: "#64748b", marginBottom: "4px", fontStyle: "italic" }}>
+                            {segDistance} · {segDuration}
                           </div>
                         )}
+
+                        {/* Stop card */}
+                        <div
+                          draggable
+                          onDragStart={() => setDragIndex(idx)}
+                          onDragOver={(e) => { e.preventDefault(); setDragOverIndex(idx); }}
+                          onDragLeave={() => setDragOverIndex(null)}
+                          onDrop={() => {
+                            if (dragIndex !== null && dragIndex !== idx) {
+                              onReorderStops?.(dragIndex, idx);
+                            }
+                            setDragIndex(null);
+                            setDragOverIndex(null);
+                          }}
+                          onDragEnd={() => { setDragIndex(null); setDragOverIndex(null); }}
+                          style={{
+                            padding: "5px 8px",
+                            background: isDragging ? "#fef3c7" : (isDragOver ? "#f0f9ff" : "#f8fafc"),
+                            border: `1px solid ${isDragOver ? "#93c5fd" : "#e2e8f0"}`,
+                            borderRadius: "3px",
+                            cursor: "grab",
+                            opacity: isDragging ? 0.7 : 1,
+                            transition: "all 0.15s",
+                            marginBottom: "6px",
+                          }}
+                        >
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "4px" }}>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontWeight: 600, fontSize: "11px", color: "#1e293b", marginBottom: "1px" }}>
+                                {idx + 1}. {proj.client_name || "Untitled"}
+                              </div>
+                              <div style={{ fontSize: "9px", color: "#64748b" }}>
+                                {proj.city && proj.state ? `${proj.city}, ${proj.state}` : proj.formatted_address || "No address"}
+                              </div>
+                              <div style={{ fontSize: "10px", color: "#16a34a", fontWeight: 500, marginTop: "2px" }}>
+                                {sub}
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => onRemoveProject?.(rp.id)}
+                              style={{
+                                background: "none",
+                                border: "none",
+                                color: "#dc2626",
+                                cursor: "pointer",
+                                fontSize: "12px",
+                                padding: "0",
+                                lineHeight: 1,
+                              }}
+                              title="Remove from run"
+                            >×</button>
+                          </div>
+                        </div>
                       </div>
-                      <button
-                        onClick={() => onRemoveProject?.(rp.id)}
-                        style={{
-                          background: "none",
-                          border: "none",
-                          color: "#dc2626",
-                          cursor: "pointer",
-                          fontSize: "12px",
-                          padding: "0",
-                          lineHeight: 1,
-                        }}
-                        title="Remove from run"
-                      >×</button>
                     </div>
                   </div>
                 );
               })}
+
+              {/* Final destination dot */}
+              <div style={{ display: "flex", alignItems: "flex-start" }}>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "20px", flexShrink: 0, marginRight: "8px" }}>
+                  <div style={{ width: "2px", height: "12px", background: "#cbd5e1" }} />
+                  <div style={{ width: "10px", height: "10px", borderRadius: "3px", background: "#dc2626", transform: "rotate(45deg)" }} />
+                </div>
+                <div style={{ fontSize: "10px", fontWeight: 600, color: "#dc2626", paddingTop: "2px" }}>
+                  End
+                </div>
+              </div>
             </div>
           )}
         </div>
+
+        {/* Route Statistics */}
+        {routeStats && (
+          <div style={{
+            background: "#f8fafc",
+            border: "1px solid #e2e8f0",
+            borderRadius: "4px",
+            padding: "8px 10px",
+            marginBottom: "10px",
+          }}>
+            <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "4px" }}>
+              📊 Route Statistics
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "3px 10px" }}>
+              <div style={{ fontSize: "10px", color: "#64748b" }}>Total Stops</div>
+              <div style={{ fontSize: "11px", color: "#1e293b", fontWeight: 600, textAlign: "right" }}>{routeStats.totalStops}</div>
+              <div style={{ fontSize: "10px", color: "#64748b" }}>Avg Stop Time</div>
+              <div style={{ fontSize: "11px", color: "#1e293b", fontWeight: 600, textAlign: "right" }}>{formatDuration(routeStats.avgDuration)}</div>
+              <div style={{ fontSize: "10px", color: "#64748b" }}>Longest Leg</div>
+              <div style={{ fontSize: "11px", color: "#1e293b", fontWeight: 600, textAlign: "right" }}>{formatDistance(routeStats.longestLeg)}</div>
+              <div style={{ fontSize: "10px", color: "#64748b" }}>Shortest Leg</div>
+              <div style={{ fontSize: "11px", color: "#1e293b", fontWeight: 600, textAlign: "right" }}>{formatDistance(routeStats.shortestLeg)}</div>
+              <div style={{ fontSize: "10px", color: "#64748b" }}>Total Revenue</div>
+              <div style={{ fontSize: "11px", color: "#16a34a", fontWeight: 600, textAlign: "right" }}>{formatCurrency(totalRevenue)}</div>
+            </div>
+          </div>
+        )}
+
+        {/* Notes */}
+        {run.notes && (
+          <div style={{ marginBottom: "10px" }}>
+            <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "1px" }}>📝 Notes</div>
+            <div style={{ fontSize: "11px", color: "#475569", background: "#f8fafc", padding: "6px 8px", borderRadius: "3px", border: "1px solid #e2e8f0" }}>
+              {run.notes}
+            </div>
+          </div>
+        )}
       </div>
 
+      {/* Sticky Footer Actions */}
       <div style={{
         padding: "8px 12px",
         borderTop: "1px solid #e2e8f0",
         display: "flex",
         gap: "6px",
-        justifyContent: "flex-end",
+        justifyContent: "flex-start",
+        flexWrap: "wrap",
+        flexShrink: 0,
+        background: "#fff",
       }}>
-        <button onClick={onEdit} style={{
-          padding: "4px 10px",
-          fontSize: "12px",
-          borderRadius: "3px",
-          border: "1px solid #e2e8f0",
-          background: "#fff",
-          cursor: "pointer",
-        }}>Edit</button>
-        <button onClick={onDelete} style={{
-          padding: "4px 10px",
-          fontSize: "12px",
-          borderRadius: "3px",
-          border: "1px solid #fecaca",
-          background: "#fef2f2",
-          color: "#dc2626",
-          cursor: "pointer",
-        }}>Delete</button>
+        {actionButtons.map((btn, i) => (
+          <button
+            key={i}
+            onClick={btn.onClick}
+            style={{
+              padding: "4px 10px",
+              fontSize: "11px",
+              borderRadius: "3px",
+              border: "none",
+              cursor: "pointer",
+              fontWeight: 500,
+              background: btn.variant === "danger" ? "#fef2f2" : btn.variant === "primary" ? "#1e293b" : btn.variant === "success" ? "#16a34a" : "#fff",
+              color: btn.variant === "danger" ? "#dc2626" : btn.variant === "primary" ? "#fff" : btn.variant === "success" ? "#fff" : "#1e293b",
+              border: btn.variant === "secondary" || btn.variant === "danger" ? "1px solid #e2e8f0" : "none",
+            }}
+          >
+            {btn.label}
+          </button>
+        ))}
       </div>
     </div>
   );

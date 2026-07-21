@@ -267,10 +267,22 @@ export async function calculateRoute(originLat, originLng, destLat, destLng) {
     throw new Error("Origin and destination coordinates are required.");
   }
 
-  const url = `https://router.project-osrm.org/route/v1/driving/${originLng},${originLat};${destLng},${destLat}?overview=full&geometries=geojson&steps=false`;
+  const oLat = Number(originLat);
+  const oLng = Number(originLng);
+  const dLat = Number(destLat);
+  const dLng = Number(destLng);
+
+  if (!Number.isFinite(oLat) || !Number.isFinite(oLng) || !Number.isFinite(dLat) || !Number.isFinite(dLng)) {
+    throw new Error("Invalid coordinates provided. Ensure all projects have valid latitude/longitude values.");
+  }
+
+  const url = `https://router.project-osrm.org/route/v1/driving/${oLng},${oLat};${dLng},${dLat}?overview=full&geometries=geojson&steps=false`;
 
   const response = await fetch(url);
-  if (!response.ok) throw new Error(`OSRM request failed: ${response.statusText}`);
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(`OSRM request failed (${response.status}): ${text || response.statusText}`);
+  }
 
   const data = await response.json();
 
@@ -291,12 +303,33 @@ export async function calculateMultiStopRoute(coordinates) {
     throw new Error("At least 2 coordinates are required (origin + at least one stop).");
   }
 
-  const coordsStr = coordinates.map((c) => `${c.lng},${c.lat}`).join(";");
+  // Filter out invalid coordinates and sanitize
+  const validCoords = coordinates
+    .map((c) => {
+      const lat = c?.lat != null ? Number(c.lat) : NaN;
+      const lng = c?.lng != null ? Number(c.lng) : NaN;
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+      const clampedLat = Math.max(-90, Math.min(90, lat));
+      const clampedLng = Math.max(-180, Math.min(180, lng));
+      return {
+        lat: Math.round(clampedLat * 1000000) / 1000000,
+        lng: Math.round(clampedLng * 1000000) / 1000000,
+      };
+    })
+    .filter((c) => c !== null);
+
+  if (validCoords.length < 2) {
+    throw new Error("At least 2 valid coordinates are required.");
+  }
+
+  const coordsStr = validCoords.map((c) => `${c.lng},${c.lat}`).join(";");
   const url = `https://router.project-osrm.org/route/v1/driving/${coordsStr}?overview=full&geometries=geojson&steps=false`;
 
   const response = await fetch(url);
-  if (!response.ok) throw new Error(`OSRM request failed: ${response.statusText}`);
-
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(`OSRM request failed (${response.status}): ${text || response.statusText}`);
+  }
   const data = await response.json();
 
   if (!data.routes || data.routes.length === 0) {
@@ -308,5 +341,71 @@ export async function calculateMultiStopRoute(coordinates) {
     distance: route.distance,
     duration: route.duration,
     geometry: route.geometry,
+  };
+}
+
+// Calculate per-segment routes for a run
+export async function calculateSegmentRoutes(coordinates) {
+  if (!coordinates || coordinates.length < 2) {
+    throw new Error("At least 2 coordinates are required.");
+  }
+
+  // Filter and sanitize coordinates
+  const validCoords = coordinates
+    .map((c) => {
+      const lat = c?.lat != null ? Number(c.lat) : NaN;
+      const lng = c?.lng != null ? Number(c.lng) : NaN;
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+      return {
+        lat: Math.round(Math.max(-90, Math.min(90, lat)) * 1000000) / 1000000,
+        lng: Math.round(Math.max(-180, Math.min(180, lng)) * 1000000) / 1000000,
+      };
+    })
+    .filter((c) => c !== null);
+
+  if (validCoords.length < 2) {
+    throw new Error("At least 2 valid coordinates are required.");
+  }
+
+  // Calculate each leg individually
+  const segments = [];
+  for (let i = 0; i < validCoords.length - 1; i++) {
+    const from = validCoords[i];
+    const to = validCoords[i + 1];
+    const coordsStr = `${from.lng},${from.lat};${to.lng},${to.lat}`;
+    const url = `https://router.project-osrm.org/route/v1/driving/${coordsStr}?overview=false&steps=false`;
+
+    const response = await fetch(url);
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(`OSRM segment request failed (${response.status}): ${text || response.statusText}`);
+    }
+    const data = await response.json();
+
+    if (!data.routes || data.routes.length === 0) {
+      throw new Error(`No route found for segment ${i + 1}.`);
+    }
+
+    const route = data.routes[0];
+    segments.push({
+      fromIndex: i,
+      toIndex: i + 1,
+      distance: route.distance,
+      duration: route.duration,
+    });
+  }
+
+  // Calculate full route for overall geometry
+  const fullCoordsStr = validCoords.map((c) => `${c.lng},${c.lat}`).join(";");
+  const fullUrl = `https://router.project-osrm.org/route/v1/driving/${fullCoordsStr}?overview=full&geometries=geojson&steps=false`;
+  const fullResponse = await fetch(fullUrl);
+  const fullData = await fullResponse.json();
+  const fullRoute = fullData.routes?.[0];
+
+  return {
+    segments,
+    totalDistance: fullRoute?.distance || segments.reduce((sum, s) => sum + s.distance, 0),
+    totalDuration: fullRoute?.duration || segments.reduce((sum, s) => sum + s.duration, 0),
+    geometry: fullRoute?.geometry || null,
   };
 }

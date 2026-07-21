@@ -190,8 +190,18 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
 
   // Runs handlers
   const handleSelectRun = (id) => {
+    const prevRunId = selectedRunId;
     setSelectedRunId(id);
     setSelectedProjectId(null);
+    
+    // Clear all route-related state when switching runs to prevent stale waypoints
+    if (prevRunId !== id) {
+      setRunRouteData(null);
+      setRunSegmentData(null);
+      setRunRouteLoading(false);
+      prevCoordStringRef.current = null;
+      justSavedRef.current = false;
+    }
   };
 
   const handleCloseRunDetail = () => {
@@ -398,7 +408,16 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
       return;
     }
 
-    console.log("[ProjectMapView] Calculating segment routes for", coords.length, "points");
+    // Debug logging: show waypoints before OSRM call
+    console.log("[ProjectMapView] ========== ROUTE CALCULATION DEBUG ==========");
+    console.log("[ProjectMapView] Selected Run:", selectedRun?.run_name || `#${selectedRunId}`);
+    console.log("[ProjectMapView] Waypoints:", coords.length);
+    console.log("[ProjectMapView] Origin:", coords[0]);
+    coords.slice(1).forEach((c, i) => {
+      console.log(`[ProjectMapView] Stop ${i + 1}:`, c);
+    });
+    console.log("[ProjectMapView] Expected stops:", runProjects.length);
+    console.log("[ProjectMapView] ===============================================");
     
     // Use calculateSegmentRoutes to get per-leg data + full route
     calculateSegmentRoutes(coords)

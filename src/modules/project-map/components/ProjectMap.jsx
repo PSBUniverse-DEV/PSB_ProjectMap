@@ -411,6 +411,9 @@ export default function ProjectMap({
       origin = run?.proj_s_origin_addresses || null;
     }
 
+    // Show empty route overlay for runs with 0 stops
+    const isEmptyRun = mode === "runs" && selectedRunId && runProjects.length === 0;
+
     if (origin && origin.latitude != null && origin.longitude != null) {
       // Create origin marker (larger, square-ish, distinct)
       const originEl = document.createElement("div");
@@ -458,11 +461,42 @@ export default function ProjectMap({
       originMarkerRef.current = new MapLibreGL.Marker({ element: originWrapper })
         .setLngLat([origin.longitude, origin.latitude])
         .addTo(map);
+
+      // Show empty route overlay if run has no stops
+      if (isEmptyRun) {
+        const overlay = document.createElement("div");
+        overlay.style.cssText = `
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          background: rgba(255, 255, 255, 0.95);
+          border: 1px solid #e2e8f0;
+          border-radius: 8px;
+          padding: 16px 20px;
+          text-align: center;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+          max-width: 280px;
+          z-index: 1000;
+        `;
+        overlay.innerHTML = `
+          <div style="font-size: 24px; margin-bottom: 8px;">🛻</div>
+          <div style="font-size: 13px; font-weight: 600; color: #1e293b; margin-bottom: 6px;">No Route Created</div>
+          <div style="font-size: 11px; color: #64748b; line-height: 1.5; margin-bottom: 10px;">
+            This run currently has no assigned projects.<br />
+            Add one or more projects to generate a route.
+          </div>
+          <div style="font-size: 10px; color: #94a3b8; font-style: italic;">
+            Right-click a project marker and choose "Add to Run"
+          </div>
+        `;
+        map.getContainer().appendChild(overlay);
+      }
     }
 
     // Update route line
     const currentRouteData = mode === "runs" ? runRouteData : routeData;
-    if (currentRouteData && currentRouteData.geometry) {
+    if (!isEmptyRun && currentRouteData && currentRouteData.geometry) {
       const source = map.getSource("route-line");
       if (source) {
         source.setData({
@@ -497,6 +531,14 @@ export default function ProjectMap({
         });
       }
     }
+
+    // Cleanup overlay on unmount or when not empty run
+    return () => {
+      const existingOverlay = map.getContainer()?.querySelector("div[style*='position: absolute']");
+      if (existingOverlay && existingOverlay.textContent?.includes("No Route Created")) {
+        existingOverlay.remove();
+      }
+    };
   }, [mode, selectedOrigin, routeData, selectedProjectId, projects, runs, selectedRunId, runProjects, runRouteData]);
 
   // Center on selected project

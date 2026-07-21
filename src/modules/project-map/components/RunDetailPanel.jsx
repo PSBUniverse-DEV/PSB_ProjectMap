@@ -42,9 +42,10 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
   const [dragOverIndex, setDragOverIndex] = useState(null);
 
   const originName = run.proj_s_origin_addresses?.origin_name || "No Origin";
-  const totalDistance = formatDistance(run.estimated_distance);
-  const totalDuration = formatDuration(run.estimated_duration);
-  const totalSubtotal = formatCurrency(run.estimated_subtotal);
+  const hasStops = runProjects.length > 0;
+  const totalDistance = hasStops ? formatDistance(run.estimated_distance) : "—";
+  const totalDuration = hasStops ? formatDuration(run.estimated_duration) : "—";
+  const totalSubtotal = hasStops ? formatCurrency(run.estimated_subtotal) : "$0.00";
 
   // Compute per-stop subtotals (cumulative)
   const stopSubtotals = useMemo(() => {
@@ -205,7 +206,21 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
           </div>
 
           {runProjects.length === 0 ? (
-            <p style={{ fontSize: "11px", color: "#94a3b8", padding: "10px 0" }}>No stops added yet.</p>
+            <div style={{
+              background: "#f8fafc",
+              border: "1px dashed #e2e8f0",
+              borderRadius: "4px",
+              padding: "12px",
+              textAlign: "center",
+            }}>
+              <p style={{ fontSize: "11px", color: "#475569", margin: "0 0 8px", lineHeight: 1.5 }}>
+                No projects have been assigned to this run.
+              </p>
+              <p style={{ fontSize: "10px", color: "#64748b", margin: "0", lineHeight: 1.5 }}>
+                Right-click a project marker and choose<br />
+                <strong>"Add to Run"</strong> to begin building this route.
+              </p>
+            </div>
           ) : (
             <div style={{ position: "relative" }}>
               {/* Origin dot and label */}

@@ -69,22 +69,29 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
     };
   }, [runSegmentData, runProjects]);
 
+  // Print handler
+  const handlePrint = () => {
+    window.print();
+  };
+
   // Status-based actions
   const status = run.status || "Draft";
   const actionButtons = useMemo(() => {
     const btns = [];
+    btns.push({ label: "Edit", onClick: onEdit, variant: "secondary" });
     if (status === "Draft") {
-      btns.push({ label: "Edit", onClick: onEdit, variant: "secondary" });
       btns.push({ label: "Optimize", onClick: () => {}, variant: "primary" });
       btns.push({ label: "Delete", onClick: onDelete, variant: "danger" });
     } else if (status === "Planned") {
-      btns.push({ label: "Edit", onClick: onEdit, variant: "secondary" });
-      btns.push({ label: "Start", onClick: () => {}, variant: "primary" });
+      btns.push({ label: "Print Record", onClick: handlePrint, variant: "primary" });
     } else if (status === "In Progress") {
       btns.push({ label: "Complete", onClick: () => {}, variant: "success" });
+      btns.push({ label: "Print Record", onClick: handlePrint, variant: "secondary" });
     } else if (status === "Completed") {
+      btns.push({ label: "Print Record", onClick: handlePrint, variant: "primary" });
       btns.push({ label: "Duplicate", onClick: () => {}, variant: "secondary" });
-      btns.push({ label: "Print", onClick: () => {}, variant: "secondary" });
+    } else {
+      btns.push({ label: "Print Record", onClick: handlePrint, variant: "primary" });
     }
     return btns;
   }, [status, onEdit, onDelete]);
@@ -214,8 +221,9 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
               {runProjects.map((rp, idx) => {
                 const proj = rp.proj_t_projects || {};
                 const segment = runSegmentData?.segments?.[idx];
-                const segDistance = formatDistance(segment?.distance);
-                const segDuration = formatDuration(segment?.duration);
+                const hasError = segment?.error;
+                const segDistance = hasError ? "Route unavailable" : formatDistance(segment?.distance);
+                const segDuration = hasError ? "" : formatDuration(segment?.duration);
                 const sub = formatCurrency(stopSubtotals[idx]);
                 const isDragging = dragIndex === idx;
                 const isDragOver = dragOverIndex === idx;
@@ -231,8 +239,8 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
                       <div style={{ flex: 1, paddingTop: "2px" }}>
                         {/* Segment info */}
                         {(segment || idx === 0) && (
-                          <div style={{ fontSize: "9px", color: "#64748b", marginBottom: "4px", fontStyle: "italic" }}>
-                            {segDistance} · {segDuration}
+                          <div style={{ fontSize: "9px", color: hasError ? "#dc2626" : "#64748b", marginBottom: "4px", fontStyle: "italic" }}>
+                            {segDistance}{segDuration ? ` · ${segDuration}` : ""}
                           </div>
                         )}
 

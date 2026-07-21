@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Modal, toastError, toastSuccess } from "@/shared/components/ui";
-import { deleteProject, calculateRoute, calculateMultiStopRoute, calculateSegmentRoutes, deleteRun, removeProjectFromRun, loadRunDetails, updateStopSequence, addProjectToRun, updateRun } from "../data/projectMap.actions";
+import { deleteProject, calculateRoute, calculateMultiStopRoute, calculateSegmentRoutes, deleteRun, removeProjectFromRun, loadRunDetails, updateStopSequence, addProjectToRun, updateRun, getProjectRunAssignment } from "../data/projectMap.actions";
 import ProjectMap from "../components/ProjectMap";
 import ProjectList from "../components/ProjectList";
 import ProjectDetailDrawer from "../components/ProjectDetailDrawer";
@@ -41,6 +41,9 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
   
   // Segment route data for individual legs
   const [runSegmentData, setRunSegmentData] = useState(null);
+  
+  // Route error modal
+  const [showRouteErrorModal, setShowRouteErrorModal] = useState(false);
   
   // Refs to prevent unnecessary route recalculations
   const prevCoordStringRef = useRef(null);
@@ -233,17 +236,28 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
     setEditingRun(null);
   };
 
+  // Unified refresh: reload run data and force route recalculation
+  const refreshRunData = useCallback(async () => {
+    if (!selectedRunId) return;
+    try {
+      const details = await loadRunDetails(selectedRunId);
+      setRunProjects(details.projects || []);
+      // Reset coordinate cache to force route recalculation
+      prevCoordStringRef.current = null;
+      // Refresh parent data (runs list, etc.)
+      await router.refresh();
+    } catch (err) {
+      console.error("[ProjectMapView] Failed to refresh run data:", err);
+    }
+  }, [selectedRunId, router]);
+
   const handleAddProjectToRun = async (projectId) => {
     if (!selectedRunId) return;
     setBusy(true);
     try {
-      const currentMax = runProjects.length;
-      await addProjectToRun(selectedRunId, projectId, currentMax);
+      await addProjectToRun(selectedRunId, projectId, runProjects.length);
       toastSuccess("Project added to run.", "Runs");
-      // Refresh run projects
-      const details = await loadRunDetails(selectedRunId);
-      setRunProjects(details.projects || []);
-      router.refresh();
+      await refreshRunData();
     } catch (err) {
       toastError(err?.message || "Failed to add project to run.", "Runs");
     } finally {
@@ -257,13 +271,7 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
 
   const handleProjectSelectorSaved = () => {
     setShowProjectSelector(false);
-    // Refresh run projects
-    if (selectedRunId) {
-      loadRunDetails(selectedRunId).then((details) => {
-        setRunProjects(details.projects || []);
-      });
-    }
-    router.refresh();
+    refreshRunData();
   };
 
   const handleRemoveProjectFromRun = async (runProjectId) => {
@@ -271,12 +279,7 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
     try {
       await removeProjectFromRun(runProjectId);
       toastSuccess("Project removed from run.", "Runs");
-      // Refresh run projects
-      if (selectedRunId) {
-        const details = await loadRunDetails(selectedRunId);
-        setRunProjects(details.projects);
-      }
-      router.refresh();
+      await refreshRunData();
     } catch (err) {
       toastError(err?.message || "Failed to remove project.", "Runs");
     } finally {
@@ -298,8 +301,7 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
       await Promise.all(promises);
 
       toastSuccess("Stop order updated.", "Runs");
-      setRunProjects(updated);
-      router.refresh();
+      await refreshRunData();
     } catch (err) {
       toastError(err?.message || "Failed to reorder stops.", "Runs");
     } finally {
@@ -402,7 +404,12 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
     calculateSegmentRoutes(coords)
       .then((data) => {
         if (!cancelled) {
-          // Store full route geometry for map display
+          // Show modal if some segments failed
+          if (data.hasPartialFailure) {
+            setShowRouteErrorModal(true);
+          }
+          
+          // Store full route geometry for map display (may be null if all failed)
           setRunRouteData({
             distance: data.totalDistance,
             duration: data.totalDuration,
@@ -743,6 +750,22 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
           </div>
         </Modal>
       )}
+
+      {/* Route Error Modal */}
+      <Modal show={showRouteErrorModal} onHide={() => setShowRouteErrorModal(false)} title="Unable to Calculate Route">
+        <div style={{ padding: "4px 0" }}>
+          <p style={{ fontSize: "13px", color: "#1e293b", margin: "0 0 12px", lineHeight: 1.5 }}>
+            One or more locations cannot be connected using the road network.
+          </p>
+          <p style={{ fontSize: "12px", color: "#64748b", margin: "0 0 16px", lineHeight: 1.5 }}>
+            This usually happens when the origin and one or more stops are in different countries or are otherwise unreachable by road.
+            Please verify the selected locations.
+          </p>
+          <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+            <Button variant="secondary" onClick={() => setShowRouteErrorModal(false)}>OK</Button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Project Selector Modal */}
       {mode === "runs" && selectedRunId && (

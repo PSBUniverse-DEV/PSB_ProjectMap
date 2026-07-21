@@ -291,8 +291,17 @@ export default function ProjectMap({
         if (currentMode !== "runs") return;
         if (!currentOnAddToRun && !currentOnRemoveFromRun) return;
 
-        const alreadyInRun = currentRunProjects.some((rp) => rp.project_id === id);
-        const runProject = alreadyInRun ? currentRunProjects.find((rp) => rp.project_id === id) : null;
+        // Check if project is in the selected run
+        const inSelectedRun = currentRunProjects.some((rp) => rp.project_id === id);
+        const selectedRunProject = inSelectedRun ? currentRunProjects.find((rp) => rp.project_id === id) : null;
+        
+        // Check if project is in ANY other run
+        const otherRunAssignment = runs
+          .filter((r) => r.id !== currentSelectedRunId)
+          .flatMap((r) => r.run_projects || [])
+          .find((rp) => rp.project_id === id);
+        
+        const otherRun = otherRunAssignment ? runs.find((r) => r.id === otherRunAssignment.run_id) : null;
 
         // Build popup content
         let popupHtml = `
@@ -302,9 +311,18 @@ export default function ProjectMap({
 
         if (!currentSelectedRunId) {
           popupHtml += `<div style="font-size: 11px; color: #94a3b8; font-style: italic; padding: 4px 0;">Select a run first</div>`;
-        } else if (alreadyInRun) {
+        } else if (inSelectedRun) {
+          // Project is in the selected run → show Remove
           popupHtml += `<button data-remove-from-run="${id}" style="width: 100%; padding: 6px 12px; font-size: 11px; font-weight: 600; border-radius: 4px; border: 1px solid #dc2626; background: #fef2f2; color: #dc2626; cursor: pointer;">− Remove from Run</button>`;
+        } else if (otherRun) {
+          // Project is in another run → show disabled message
+          popupHtml += `
+            <div style="font-size: 11px; color: #dc2626; font-weight: 600; margin-bottom: 4px; padding: 4px 0;">Already Assigned</div>
+            <div style="font-size: 10px; color: #64748b; margin-bottom: 6px; line-height: 1.4;">This project is already assigned to:<br><strong>${otherRun.run_name || `Run #${otherRun.run_number || otherRun.id}`}</strong></div>
+            <div style="font-size: 10px; color: #94a3b8; font-style: italic;">Remove it from that run first.</div>
+          `;
         } else {
+          // Project is not in any run → show Add
           popupHtml += `<button data-add-to-run="${id}" style="width: 100%; padding: 6px 12px; font-size: 11px; font-weight: 600; border-radius: 4px; border: 1px solid #16a34a; background: #16a34a; color: #fff; cursor: pointer;">+ Add to Run</button>`;
         }
 

@@ -201,16 +201,61 @@ export async function deleteRun(runId) {
 
 export async function addProjectToRun(runId, projectId, stopSequence = 0) {
   const supabase = getSupabaseAdmin();
+  const pid = Number(projectId);
+
+  // Check if project is already assigned to ANY run (including this one)
+  const { data: existing, error: checkError } = await supabase
+    .from("proj_t_run_projects")
+    .select("id, run_id")
+    .eq("project_id", pid)
+    .maybeSingle();
+
+  if (checkError) throw new Error(checkError.message);
+
+  if (existing) {
+    if (existing.run_id === runId) {
+      throw new Error("This project is already in this run.");
+    }
+    // Get the other run's name
+    const { data: otherRun } = await supabase
+      .from("proj_t_runs")
+      .select("run_name")
+      .eq("id", existing.run_id)
+      .single();
+    throw new Error(
+      `Project is already assigned to run "${otherRun?.run_name || `#${existing.run_id}`}". Remove it from that run first.`
+    );
+  }
 
   const payload = {
     run_id: runId,
-    project_id: Number(projectId),
+    project_id: pid,
     stop_sequence: Number(stopSequence) || 0,
   };
 
   const { data, error } = await supabase.from("proj_t_run_projects").insert(payload).select("*").single();
   if (error) throw new Error(error.message);
   return data;
+}
+
+// Check if a project is already assigned to a run (returns { id, run_id, run_name } or null)
+export async function getProjectRunAssignment(projectId) {
+  const supabase = getSupabaseAdmin();
+  const pid = Number(projectId);
+
+  const { data, error } = await supabase
+    .from("proj_t_run_projects")
+    .select("id, run_id, proj_t_runs!inner(run_name)")
+    .eq("project_id", pid)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+  return {
+    id: data.id,
+    runId: data.run_id,
+    runName: data.proj_t_runs?.run_name || null,
+  };
 }
 
 export async function removeProjectFromRun(runProjectId) {
@@ -367,7 +412,7 @@ export async function calculateSegmentRoutes(coordinates) {
     throw new Error("At least 2 valid coordinates are required.");
   }
 
-  // Calculate each leg individually
+  // Calculate each leg individually, catching errors per segment
   const segments = [];
   for (let i = 0; i < validCoords.length - 1; i++) {
     const from = validCoords[i];
@@ -375,37 +420,76 @@ export async function calculateSegmentRoutes(coordinates) {
     const coordsStr = `${from.lng},${from.lat};${to.lng},${to.lat}`;
     const url = `https://router.project-osrm.org/route/v1/driving/${coordsStr}?overview=false&steps=false`;
 
-    const response = await fetch(url);
-    if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      throw new Error(`OSRM segment request failed (${response.status}): ${text || response.statusText}`);
-    }
-    const data = await response.json();
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        const text = await response.text().catch(() => "");
+        const parsed = JSON.parse(text);
+        console.error(`[OSRM] Segment ${i + 1} failed: ${from.lat},${from.lng} → ${to.lat},${to.lng} - ${parsed?.code || response.status}`);
+        segments.push({
+          fromIndex: i,
+          toIndex: i + 1,
+          error: parsed?.code || "NoRoute",
+          distance: null,
+          duration: null,
+        });
+        continue;
+      }
+      const data = await response.json();
 
-    if (!data.routes || data.routes.length === 0) {
-      throw new Error(`No route found for segment ${i + 1}.`);
-    }
+      if (!data.routes || data.routes.length === 0) {
+        console.error(`[OSRM] Segment ${i + 1}: No route found`);
+        segments.push({
+          fromIndex: i,
+          toIndex: i + 1,
+          error: "NoRoute",
+          distance: null,
+          duration: null,
+        });
+        continue;
+      }
 
-    const route = data.routes[0];
-    segments.push({
-      fromIndex: i,
-      toIndex: i + 1,
-      distance: route.distance,
-      duration: route.duration,
-    });
+      const route = data.routes[0];
+      segments.push({
+        fromIndex: i,
+        toIndex: i + 1,
+        distance: route.distance,
+        duration: route.duration,
+      });
+    } catch (err) {
+      console.error(`[OSRM] Segment ${i + 1} unexpected error:`, err.message);
+      segments.push({
+        fromIndex: i,
+        toIndex: i + 1,
+        error: "RouteError",
+        distance: null,
+        duration: null,
+      });
+    }
   }
 
-  // Calculate full route for overall geometry
+  // Calculate full route for overall geometry (only if all segments succeeded)
   const fullCoordsStr = validCoords.map((c) => `${c.lng},${c.lat}`).join(";");
   const fullUrl = `https://router.project-osrm.org/route/v1/driving/${fullCoordsStr}?overview=full&geometries=geojson&steps=false`;
-  const fullResponse = await fetch(fullUrl);
-  const fullData = await fullResponse.json();
-  const fullRoute = fullData.routes?.[0];
+  let fullRoute = null;
+  try {
+    const fullResponse = await fetch(fullUrl);
+    if (fullResponse.ok) {
+      const fullData = await fullResponse.json();
+      fullRoute = fullData.routes?.[0] || null;
+    }
+  } catch (err) {
+    console.error("[OSRM] Full route fetch failed:", err.message);
+  }
+
+  // Calculate totals from only valid segments
+  const validSegments = segments.filter((s) => !s.error);
 
   return {
     segments,
-    totalDistance: fullRoute?.distance || segments.reduce((sum, s) => sum + s.distance, 0),
-    totalDuration: fullRoute?.duration || segments.reduce((sum, s) => sum + s.duration, 0),
+    totalDistance: fullRoute?.distance || validSegments.reduce((sum, s) => sum + (s.distance || 0), 0),
+    totalDuration: fullRoute?.duration || validSegments.reduce((sum, s) => sum + (s.duration || 0), 0),
     geometry: fullRoute?.geometry || null,
+    hasPartialFailure: segments.some((s) => s.error),
   };
 }

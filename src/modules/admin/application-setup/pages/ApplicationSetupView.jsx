@@ -623,7 +623,7 @@ function ApplicationDialog({ dialog, applicationDraft, roleDraft, isMutatingActi
       {isAppForm ? (
         <div className="d-flex flex-column gap-3">
           <div><label className="form-label mb-1">Application Name</label><Input value={applicationDraft.name} onChange={(e) => setApplicationDraft((p) => ({ ...p, name: e.target.value }))} placeholder="Enter application name" autoFocus /></div>
-          <div><label className="form-label mb-1">Module Key</label><Input value={applicationDraft.moduleKey} onChange={(e) => { const raw = e.target.value; const normalized = normalizeModuleKey(raw); setApplicationDraft((p) => ({ ...p, moduleKey: raw })); if (raw !== normalized && raw.length > 0) { setApplicationDraft((p) => ({ ...p, moduleKey: normalized })); } }} placeholder="Enter module key" helperText="Unique identifier used internally by the platform." /></div>
+          <div><label className="form-label mb-1">Module Key</label><Input value={applicationDraft.moduleKey} onChange={(e) => { const raw = e.target.value; const normalized = normalizeModuleKey(raw); setApplicationDraft((p) => ({ ...p, moduleKey: raw })); if (raw !== normalized && raw.length > 0) { setApplicationDraft((p) => ({ ...p, moduleKey: normalized })); } }} placeholder="Enter module key" /><small className="text-muted d-block mt-1">Unique identifier used internally by the platform.</small></div>
           <div><label className="form-label mb-1">Description</label><Input as="textarea" rows={3} value={applicationDraft.desc} onChange={(e) => setApplicationDraft((p) => ({ ...p, desc: e.target.value }))} placeholder="Enter application description" /></div>
         </div>
       ) : null}

@@ -35,7 +35,7 @@ export default function ProjectMap({
   const originMarkerRef = useRef(null);
   const routeSourceRef = useRef("route-line");
   const initialFitDone = useRef(false);
-  const emptyRouteOverlayRef = useRef(null);
+  const mapInitAttemptedRef = useRef(false);
   
   // Refs for closure-dependent values used in marker event handlers
   const modeRef = useRef(mode);
@@ -68,7 +68,7 @@ export default function ProjectMap({
     return true;
   }), [projects, filters]);
 
-  // Street-level OSM style for MapLibre
+  // Memoize OSM style
   const osmStyle = useMemo(() => ({
     version: 8,
     sources: {
@@ -90,60 +90,75 @@ export default function ProjectMap({
     ],
   }), []);
 
-  // Initialize map
+  // Initialize map (only once)
   useEffect(() => {
-    if (!mapContainerRef.current || mapRef.current) return;
+    if (!mapContainerRef.current || mapRef.current || mapInitAttemptedRef.current) return;
+    mapInitAttemptedRef.current = true;
 
-    const map = new MapLibreGL.Map({
-      container: mapContainerRef.current,
-      style: osmStyle,
-      center: [-98.5795, 39.8283],
-      zoom: 3,
-    });
+    let map;
+    try {
+      map = new MapLibreGL.Map({
+        container: mapContainerRef.current,
+        style: osmStyle,
+        center: [-98.5795, 39.8283],
+        zoom: 3,
+        failIfMajorPerformanceCaveat: false,
+      });
+    } catch (err) {
+      console.error("[ProjectMap] Failed to initialize map:", err);
+      return;
+    }
 
     map.addControl(new MapLibreGL.NavigationControl(), "top-right");
 
-    // Add route line source and layer after map loads
     map.on("load", () => {
-      // Prevent browser right-click menu on the map canvas
-      const canvas = map.getCanvas();
-      if (canvas) canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+      try {
+        const canvas = map.getCanvas();
+        if (canvas) canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
-      map.addSource("route-line", {
-        type: "geojson",
-        data: { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: [] } },
-      });
+        map.addSource("route-line", {
+          type: "geojson",
+          data: { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: [] } },
+        });
 
-      map.addLayer({
-        id: "route-line-layer",
-        type: "line",
-        source: "route-line",
-        layout: {
-          "line-join": "round",
-          "line-cap": "round",
-        },
-        paint: {
-          "line-color": "#1d4ed8",
-          "line-width": 4,
-          "line-opacity": 0.8,
-        },
-      });
+        map.addLayer({
+          id: "route-line-layer",
+          type: "line",
+          source: "route-line",
+          layout: {
+            "line-join": "round",
+            "line-cap": "round",
+          },
+          paint: {
+            "line-color": "#1d4ed8",
+            "line-width": 4,
+            "line-opacity": 0.8,
+          },
+        });
+      } catch (err) {
+        console.error("[ProjectMap] Failed to add layers:", err);
+      }
     });
 
-    // Prevent browser's default right-click menu on the map
+    map.on("error", (e) => {
+      if (e?.error?.message?.includes("WebGL")) {
+        console.warn("[ProjectMap] WebGL error:", e.error.message);
+      }
+    });
+
     mapContainerRef.current.addEventListener("contextmenu", (e) => e.preventDefault());
 
     mapRef.current = map;
 
     return () => {
-      // Clean up all markers when map is destroyed
       Object.values(markersMapRef.current).forEach((m) => m.remove());
       markersMapRef.current = {};
       markersRef.current = [];
       originMarkerRef.current = null;
-      map.remove();
+      try { map.remove(); } catch (e) { }
       mapRef.current = null;
       initialFitDone.current = false;
+      mapInitAttemptedRef.current = false;
     };
   }, [osmStyle]);
 
@@ -167,16 +182,13 @@ export default function ProjectMap({
       const statusColor = getStatusColor(statusName, statuses);
       const stateColor = stateColorLookup[project.state_code] || statusColor;
 
-      // Reuse existing marker if it exists
       let marker = markersMapRef.current[id];
       if (marker) {
-        // Update position in case coordinates changed
         marker.setLngLat([lng, lat]);
         newMarkersMap[id] = marker;
         return;
       }
 
-      // Create marker dot with state color
       const markerEl = document.createElement("div");
       markerEl.style.cssText = `
         width: 20px;
@@ -188,7 +200,6 @@ export default function ProjectMap({
         box-shadow: 0 1px 4px rgba(0,0,0,0.3);
       `;
 
-      // Create label element with status color
       const labelEl = document.createElement("div");
       labelEl.style.cssText = `
         background: rgba(255, 255, 255, 0.95);
@@ -205,7 +216,6 @@ export default function ProjectMap({
       `;
       labelEl.textContent = project.client_name || "Untitled";
 
-      // Wrap marker and label using flexbox (no absolute positioning)
       const wrapper = document.createElement("div");
       wrapper.style.cssText = "display: inline-flex; flex-direction: column; align-items: center;";
       wrapper.appendChild(labelEl);
@@ -219,7 +229,6 @@ export default function ProjectMap({
         ? `$${Number(project.project_subtotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
         : "";
 
-      // Build address string: prefer formatted_address, fallback to components
       let addressDisplay = "";
       if (project.formatted_address) {
         addressDisplay = project.formatted_address;
@@ -257,46 +266,38 @@ export default function ProjectMap({
       }).setDOMContent(tooltip);
 
       markerEl.addEventListener("mouseenter", () => {
-        const pos = marker.getLngLat();
-        popup.setLngLat(pos).addTo(map);
+        try { popup.setLngLat(marker.getLngLat()).addTo(map); } catch (e) {}
       });
 
       markerEl.addEventListener("mouseleave", () => {
-        popup.remove();
+        try { popup.remove(); } catch (e) {}
       });
 
       markerEl.addEventListener("click", () => {
-        popup.remove();
+        try { popup.remove(); } catch (e) {}
         onSelectProject?.(project.id);
       });
 
-      // Prevent browser context menu on marker
       markerEl.addEventListener("contextmenu", (e) => e.preventDefault());
 
-      // Right-click context menu for "Add to Run" / "Remove from Run" using MapLibre Popup
       markerEl.addEventListener("mousedown", (e) => {
-        if (e.button !== 2) return; // Only handle right-click
+        if (e.button !== 2) return;
         e.preventDefault();
         e.stopPropagation();
-        popup.remove();
+        try { popup.remove(); } catch (e) {}
 
-        // Use refs to get latest values, avoiding stale closures
         const currentMode = modeRef.current;
         const currentSelectedRunId = selectedRunIdRef.current;
         const currentRunProjects = runProjectsRef.current;
         const currentOnAddToRun = onAddToRunRef.current;
         const currentOnRemoveFromRun = onRemoveFromRunRef.current;
 
-        console.log("[ProjectMap] right-click handler:", { currentMode, currentSelectedRunId, currentRunProjects: currentRunProjects.length, hasAdd: !!currentOnAddToRun, hasRemove: !!currentOnRemoveFromRun });
-
         if (currentMode !== "runs") return;
         if (!currentOnAddToRun && !currentOnRemoveFromRun) return;
 
-        // Check if project is in the selected run
         const inSelectedRun = currentRunProjects.some((rp) => rp.project_id === id);
         const selectedRunProject = inSelectedRun ? currentRunProjects.find((rp) => rp.project_id === id) : null;
         
-        // Check if project is in ANY other run
         const otherRunAssignment = runs
           .filter((r) => r.id !== currentSelectedRunId)
           .flatMap((r) => r.run_projects || [])
@@ -304,7 +305,6 @@ export default function ProjectMap({
         
         const otherRun = otherRunAssignment ? runs.find((r) => r.id === otherRunAssignment.run_id) : null;
 
-        // Build popup content
         let popupHtml = `
           <div style="font-weight: 600; margin-bottom: 6px; font-size: 12px;">${project.client_name || "Untitled"}</div>
           <div style="color: ${statusColor}; font-size: 11px; margin-bottom: 6px; font-weight: 500;">${statusName || "No Status"}</div>
@@ -313,17 +313,14 @@ export default function ProjectMap({
         if (!currentSelectedRunId) {
           popupHtml += `<div style="font-size: 11px; color: #94a3b8; font-style: italic; padding: 4px 0;">Select a run first</div>`;
         } else if (inSelectedRun) {
-          // Project is in the selected run → show Remove
           popupHtml += `<button data-remove-from-run="${id}" style="width: 100%; padding: 6px 12px; font-size: 11px; font-weight: 600; border-radius: 4px; border: 1px solid #dc2626; background: #fef2f2; color: #dc2626; cursor: pointer;">− Remove from Run</button>`;
         } else if (otherRun) {
-          // Project is in another run → show disabled message
           popupHtml += `
             <div style="font-size: 11px; color: #dc2626; font-weight: 600; margin-bottom: 4px; padding: 4px 0;">Already Assigned</div>
             <div style="font-size: 10px; color: #64748b; margin-bottom: 6px; line-height: 1.4;">This project is already assigned to:<br><strong>${otherRun.run_name || `Run #${otherRun.run_number || otherRun.id}`}</strong></div>
             <div style="font-size: 10px; color: #94a3b8; font-style: italic;">Remove it from that run first.</div>
           `;
         } else {
-          // Project is not in any run → show Add
           popupHtml += `<button data-add-to-run="${id}" style="width: 100%; padding: 6px 12px; font-size: 11px; font-weight: 600; border-radius: 4px; border: 1px solid #16a34a; background: #16a34a; color: #fff; cursor: pointer;">+ Add to Run</button>`;
         }
 
@@ -335,23 +332,20 @@ export default function ProjectMap({
           maxWidth: "200px",
         }).setHTML(popupHtml);
 
-        const pos = marker.getLngLat();
-        contextPopup.setLngLat(pos).addTo(map);
+        try { contextPopup.setLngLat(marker.getLngLat()).addTo(map); } catch (e) {}
 
-        // Handle "Add to Run" button click
         const addBtn = contextPopup.getElement()?.querySelector(`[data-add-to-run="${id}"]`);
         if (addBtn) {
           addBtn.addEventListener("click", () => {
-            contextPopup.remove();
+            try { contextPopup.remove(); } catch (e) {}
             currentOnAddToRun?.(id);
           });
         }
 
-        // Handle "Remove from Run" button click
         const removeBtn = contextPopup.getElement()?.querySelector(`[data-remove-from-run="${id}"]`);
         if (removeBtn && selectedRunProject) {
           removeBtn.addEventListener("click", () => {
-            contextPopup.remove();
+            try { contextPopup.remove(); } catch (e) {}
             currentOnRemoveFromRun?.(selectedRunProject.id);
           });
         }
@@ -360,19 +354,16 @@ export default function ProjectMap({
       newMarkersMap[id] = marker;
     });
 
-    // Remove markers for projects no longer in the filtered list
     Object.keys(markersMapRef.current).forEach((id) => {
       if (!projectIds.has(Number(id))) {
-        markersMapRef.current[id].remove();
+        try { markersMapRef.current[id].remove(); } catch (e) {}
         delete markersMapRef.current[id];
       }
     });
 
-    // Update the ref
     markersMapRef.current = newMarkersMap;
     markersRef.current = Object.values(newMarkersMap);
 
-    // Fit bounds only on initial load
     if (!initialFitDone.current) {
       const targetProjects = searchResults || filteredProjects;
       if (targetProjects.length > 0) {
@@ -387,42 +378,32 @@ export default function ProjectMap({
           }
         });
         if (hasValid) {
-          map.fitBounds(bounds, { padding: 50, maxZoom: 14 });
+          try { map.fitBounds(bounds, { padding: 50, maxZoom: 14 }); } catch (e) {}
         }
       }
       initialFitDone.current = true;
     }
   }, [filteredProjects, stateColorLookup, searchResults]);
 
-  // Update origin marker and route line
+  // Update origin marker and route line (no overlay — empty state lives in RunDetailPanel)
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    // Remove existing origin marker
-    if (originMarkerRef.current) {
-      originMarkerRef.current.remove();
-      originMarkerRef.current = null;
-    }
+    try {
+      if (originMarkerRef.current) {
+        originMarkerRef.current.remove();
+        originMarkerRef.current = null;
+      }
+    } catch (e) {}
 
-    // Remove existing empty route overlay if present
-    if (emptyRouteOverlayRef.current) {
-      emptyRouteOverlayRef.current.remove();
-      emptyRouteOverlayRef.current = null;
-    }
-
-    // Determine which origin to show
     let origin = selectedOrigin;
     if (mode === "runs" && selectedRunId) {
       const run = runs.find((r) => r.id === selectedRunId);
       origin = run?.proj_s_origin_addresses || null;
     }
 
-    // Show empty route overlay for runs with 0 stops
-    const isEmptyRun = mode === "runs" && selectedRunId && runProjects.length === 0;
-
     if (origin && origin.latitude != null && origin.longitude != null) {
-      // Create origin marker (larger, square-ish, distinct)
       const originEl = document.createElement("div");
       originEl.style.cssText = `
         width: 24px;
@@ -442,7 +423,6 @@ export default function ProjectMap({
       `;
       originEl.textContent = "O";
 
-      // Origin label
       const originLabel = document.createElement("div");
       originLabel.style.cssText = `
         position: absolute;
@@ -465,86 +445,58 @@ export default function ProjectMap({
       originWrapper.appendChild(originEl);
       originWrapper.appendChild(originLabel);
 
-      originMarkerRef.current = new MapLibreGL.Marker({ element: originWrapper })
-        .setLngLat([origin.longitude, origin.latitude])
-        .addTo(map);
-
-      // Show empty route overlay if run has no stops
-      if (isEmptyRun) {
-        const overlay = document.createElement("div");
-        overlay.style.cssText = `
-          position: absolute;
-          top: 50%;
-          left: 50%;
-          transform: translate(-50%, -50%);
-          background: rgba(255, 255, 255, 0.95);
-          border: 1px solid #e2e8f0;
-          border-radius: 8px;
-          padding: 16px 20px;
-          text-align: center;
-          box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-          max-width: 280px;
-          z-index: 1000;
-        `;
-        overlay.innerHTML = `
-          <div style="font-size: 24px; margin-bottom: 8px;">🛻</div>
-          <div style="font-size: 13px; font-weight: 600; color: #1e293b; margin-bottom: 6px;">No Route Created</div>
-          <div style="font-size: 11px; color: #64748b; line-height: 1.5; margin-bottom: 10px;">
-            This run currently has no assigned projects.<br />
-            Add one or more projects to generate a route.
-          </div>
-          <div style="font-size: 10px; color: #94a3b8; font-style: italic;">
-            Right-click a project marker and choose "Add to Run"
-          </div>
-        `;
-        map.getContainer().appendChild(overlay);
-        emptyRouteOverlayRef.current = overlay;
-      }
+      try {
+        originMarkerRef.current = new MapLibreGL.Marker({ element: originWrapper })
+          .setLngLat([origin.longitude, origin.latitude])
+          .addTo(map);
+      } catch (e) {}
     }
 
     // Update route line
     const currentRouteData = mode === "runs" ? runRouteData : routeData;
-    if (!isEmptyRun && currentRouteData && currentRouteData.geometry) {
-      const source = map.getSource("route-line");
-      if (source) {
-        source.setData({
-          type: "Feature",
-          properties: {},
-          geometry: currentRouteData.geometry,
-        });
-
-        // Fit bounds to include origin and all stops
-        if (origin && runProjects.length > 0) {
-          const bounds = new MapLibreGL.LngLatBounds();
-          bounds.extend([origin.longitude, origin.latitude]);
-          runProjects.forEach((rp) => {
-            const proj = rp.proj_t_projects || {};
-            const lat = proj.site_latitude || proj.address_latitude;
-            const lng = proj.site_longitude || proj.address_longitude;
-            if (lat != null && lng != null) {
-              bounds.extend([lng, lat]);
-            }
+    if (currentRouteData && currentRouteData.geometry) {
+      try {
+        const source = map.getSource("route-line");
+        if (source) {
+          source.setData({
+            type: "Feature",
+            properties: {},
+            geometry: currentRouteData.geometry,
           });
-          map.fitBounds(bounds, { padding: 60, maxZoom: 14 });
+
+          if (origin && runProjects.length > 0) {
+            const bounds = new MapLibreGL.LngLatBounds();
+            bounds.extend([origin.longitude, origin.latitude]);
+            runProjects.forEach((rp) => {
+              const proj = rp.proj_t_projects || {};
+              const lat = proj.site_latitude || proj.address_latitude;
+              const lng = proj.site_longitude || proj.address_longitude;
+              if (lat != null && lng != null) {
+                bounds.extend([lng, lat]);
+              }
+            });
+            map.fitBounds(bounds, { padding: 60, maxZoom: 14 });
+          }
         }
-      }
+      } catch (e) {}
     } else {
-      // Clear route line
-      const source = map.getSource("route-line");
-      if (source) {
-        source.setData({
-          type: "Feature",
-          properties: {},
-          geometry: { type: "LineString", coordinates: [] },
-        });
-      }
+      try {
+        const source = map.getSource("route-line");
+        if (source) {
+          source.setData({
+            type: "Feature",
+            properties: {},
+            geometry: { type: "LineString", coordinates: [] },
+          });
+        }
+      } catch (e) {}
     }
   }, [mode, selectedOrigin, routeData, selectedProjectId, projects, runs, selectedRunId, runProjects, runRouteData]);
 
   // Center on selected project
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !selectedProjectId || routeData) return; // Don't interfere if route is shown
+    if (!map || !selectedProjectId || routeData) return;
 
     const project = projects.find((p) => p.id === selectedProjectId);
     if (!project) return;
@@ -553,15 +505,14 @@ export default function ProjectMap({
     const lng = project.site_longitude || project.address_longitude;
     if (lat == null || lng == null) return;
 
-    map.flyTo({ center: [lng, lat], zoom: 14 });
+    try { map.flyTo({ center: [lng, lat], zoom: 14 }); } catch (e) {}
   }, [selectedProjectId, projects, routeData]);
 
   // Resize map when drawer opens/closes
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-
-    const timer = setTimeout(() => map.resize(), 350);
+    const timer = setTimeout(() => { try { map.resize(); } catch (e) {} }, 350);
     return () => clearTimeout(timer);
   }, [selectedProjectId]);
 

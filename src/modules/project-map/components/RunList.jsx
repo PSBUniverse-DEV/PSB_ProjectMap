@@ -56,7 +56,7 @@ export default function RunList({ runs = [], selectedRunId, onSelectRun }) {
           sortedRuns.map((run) => {
             const isSelected = run.id === selectedRunId;
             const originName = run.proj_s_origin_addresses?.origin_name || "No Origin";
-            const projectCount = run.run_projects?.length || 0;
+            const projectCount = run.stops ?? 0;
             const hasData = run.estimated_distance != null || run.estimated_subtotal != null;
 
             return (

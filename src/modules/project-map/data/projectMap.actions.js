@@ -309,7 +309,7 @@ export async function loadRunDetails(runId) {
   const supabase = getSupabaseAdmin();
 
   const [runResult, projectsResult] = await Promise.all([
-    supabase.from("proj_t_runs").select("*, proj_s_origin_addresses(*)").eq("id", runId).single(),
+    supabase.from("proj_t_runs").select("*, proj_s_origin_addresses(*)").eq("id", runId).maybeSingle(),
     supabase
       .from("proj_t_run_projects")
       .select("*, proj_t_projects(*, proj_s_project_status(*))")
@@ -324,6 +324,7 @@ export async function loadRunDetails(runId) {
     run: runResult.data || null,
     projects: projectsResult.data || [],
   };
+
 }
 
 // ─── OSRM Route Calculation ─────────────────────────────────

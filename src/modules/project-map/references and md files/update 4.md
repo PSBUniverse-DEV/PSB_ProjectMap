@@ -40,9 +40,9 @@ These are used to populate the dropdowns in the forms.
 * Permit Status → dropdown from `proj_s_permit_status`
 * Welcome Call Status → dropdown from `proj_s_welcome_call_status`
 
-### What NOT to build yet
+###  build 
 
-No management UI like:
+management UI or setup pages for;
 
 * Add Permit Status
 * Edit Permit Status
@@ -54,8 +54,6 @@ No management UI like:
 * Edit Building Category Status
 * Delete Building Category Status
 
-
-Those can be implemented later if the business needs administrators to manage those values.
 
 ---
 

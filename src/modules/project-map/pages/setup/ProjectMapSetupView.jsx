@@ -65,6 +65,57 @@ const TABLE_DEFS = [
       { key: "is_active", label: "Is Active", type: "boolean" },
     ],
   },
+  {
+    key: "buildingCategories",
+    label: "Building Categories",
+    pk: "id",
+    columns: [
+      { key: "building_category_name", label: "Category Name", sortable: true },
+      { key: "description", label: "Description", sortable: true },
+      { key: "display_order", label: "Order", sortable: true },
+      { key: "is_active", label: "Active", sortable: true },
+    ],
+    fields: [
+      { key: "building_category_name", label: "Category Name", required: true },
+      { key: "description", label: "Description" },
+      { key: "display_order", label: "Display Order", type: "number" },
+      { key: "is_active", label: "Is Active", type: "boolean" },
+    ],
+  },
+  {
+    key: "permitStatuses",
+    label: "Permit Statuses",
+    pk: "id",
+    columns: [
+      { key: "status_name", label: "Status Name", sortable: true },
+      { key: "description", label: "Description", sortable: true },
+      { key: "display_order", label: "Order", sortable: true },
+      { key: "is_active", label: "Active", sortable: true },
+    ],
+    fields: [
+      { key: "status_name", label: "Status Name", required: true },
+      { key: "description", label: "Description" },
+      { key: "display_order", label: "Display Order", type: "number" },
+      { key: "is_active", label: "Is Active", type: "boolean" },
+    ],
+  },
+  {
+    key: "welcomeCallStatuses",
+    label: "Welcome Call Statuses",
+    pk: "id",
+    columns: [
+      { key: "status_name", label: "Status Name", sortable: true },
+      { key: "description", label: "Description", sortable: true },
+      { key: "display_order", label: "Order", sortable: true },
+      { key: "is_active", label: "Active", sortable: true },
+    ],
+    fields: [
+      { key: "status_name", label: "Status Name", required: true },
+      { key: "description", label: "Description" },
+      { key: "display_order", label: "Display Order", type: "number" },
+      { key: "is_active", label: "Is Active", type: "boolean" },
+    ],
+  },
 ];
 
 // ─── Main Setup View ─────────────────────────────────────────────────────────

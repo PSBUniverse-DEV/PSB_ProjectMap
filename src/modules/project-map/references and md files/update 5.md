@@ -1,209 +1,174 @@
+Yeah, this is a good example of Cline following the instruction too literally and losing the original intent. It "fixed" one issue by introducing several new ones.
 
+## What I observed from the screenshots
 
+### 1. Customer Information section lost important fields ❌
 
----
+Originally it contained:
 
-# Project Form Review - UI & Functional Corrections
+* Client Name
+* Dealer
+* Building Category
+* Status
+* State
 
-The new Project Form layout is heading in the right direction. The grouped sections improve readability and align with the operational workflow. However, there are several functional and UX issues that need to be addressed.
+Now it only contains:
 
-## 1. State Should Be Auto-Populated
+* Client Name
+* State
 
-### Current Behavior
-
-The **State** field is still manually editable.
-
-From the screenshots, it appears as a normal text input beside Status.
-
-### Expected Behavior
-
-When the user selects an address from the address search:
-
-* formatted address
-* city
-* state
-* state code
-* postal code
-* country
-* latitude
-* longitude
-
-should all be populated automatically from the selected location.
-
-The user should **not** manually type the state.
-
-If the address changes, the state should update automatically.
-
-The State field should therefore be readonly (or disabled) because it is derived from the selected address.
+Dealer and Building Category have been moved elsewhere, which breaks the logical grouping.
 
 ---
 
-## 2. Hide Latitude and Longitude
+### 2. Building Category is in the wrong section ❌
 
-### Current Behavior
+It has been moved into **Sales / Order Information**.
 
-The Project Location section still displays:
+That doesn't make business sense.
 
-* Latitude
-* Longitude
+A building category is part of the **project itself**, not sales information.
 
-These are only showing "Auto-populated."
+It belongs with:
 
-### Expected Behavior
-
-Hide these fields completely.
-
-They are implementation details and provide no value to the end user.
-
-The coordinates should still be stored internally and saved to the database, but they do not need to be visible in the form.
-
-This also frees up vertical space.
+* Client
+* Dealer
+* State
 
 ---
 
-## 3. Project Status Dropdown Is Not Wired
+### 3. State is duplicated ❌
 
-### Current Behavior
+I can see **State** twice.
 
-The Status dropdown only shows:
+One is in Customer Information.
 
-```
-Select status...
-```
+Another is in Sales / Order Information.
 
-No project statuses are loaded.
+Only one should exist.
 
-Meanwhile, the Setup page clearly contains multiple Project Status records such as:
+Since State comes from the selected address, it should be displayed once as a readonly field.
 
-* New Dealer Order
-* Welcome Email / Call
-* Pending Permits
-* Ready for Install
-* Fully Installed
-* Repairs
-* Collections
+---
 
-The dropdown is not loading from `proj_s_project_status`.
+### 4. Dealer disappeared completely ❌
 
-### Expected Behavior
+Dealer is one of the primary project attributes.
 
-The Status dropdown should load all active records from `proj_s_project_status`.
+It's no longer visible anywhere.
 
-This should work exactly like:
+That means either:
+
+* it was accidentally removed
+* or forgotten during the refactor
+
+Either way, that's a regression.
+
+---
+
+### 5. Sales / Order Information lost most of its fields ❌
+
+Originally this section was intended to contain things like:
+
+* Project Subtotal
+* Invoice #
+* Order Received
+
+Instead it now contains:
 
 * Building Category
-* Permit Status
-* Welcome Call Status
+* State
+* Order Received
 
-No hardcoded options.
+This is incorrect grouping.
 
 ---
 
-## 4. Group All Status Fields Together
+### 6. Workflow Status is correct ✅
 
-The current Workflow Status section only contains:
+This section is actually better.
 
+Grouping
+
+* Project Status
 * Welcome Call Status
 * Permit Status
 
-while Project Status is still located inside Customer Information.
+together is exactly what we wanted.
 
-This separates related information.
+---
 
-### Expected Layout
+### 7. Scheduling section looks good ✅
 
-Move Project Status into the Workflow Status section.
+No issues.
 
-Workflow Status should contain:
+---
+
+### 8. Notes section is fine ✅
+
+---
+
+# What happened?
+
+Cline misunderstood **"move Project Status into Workflow Status"** as **"move everything around until the layout fits."**
+
+The requirement was **not** to reshuffle unrelated fields.
+
+The only requested move was:
 
 ```
 Project Status
 
-Welcome Call Status
+↓
 
-Permit Status
+Workflow Status
 ```
 
-These three represent the operational workflow and should stay together.
-
-Remove Status from Customer Information.
+Everything else should have stayed where it logically belongs.
 
 ---
 
-## 5. Address Should Be Required
+# Recommended Layout
 
-The map relies on a valid address.
-
-Without an address:
-
-* location cannot be geocoded
-* coordinates cannot be stored
-* marker cannot be created
-* routing cannot work
-
-Therefore:
-
-Address should be a required field.
-
-Example:
+## Customer Information
 
 ```
-Project Address *
-```
+Client Name *
 
-The user should not be able to save a project without a valid selected address.
+Dealer *
 
----
-
-# Minor UX Suggestions
-
-These are optional but would improve the form.
-
-### Customer Information
-
-Current:
-
-```
-Dealer
-
-Building Category
-
-Status
-
-State
-```
-
-After moving Status:
-
-```
-Dealer
-
-Building Category
+Building Category *
 
 State (readonly)
 ```
 
-Cleaner layout.
-
 ---
 
-### Project Location
-
-After hiding coordinates:
+## Project Location
 
 ```
 Project Address *
 ```
 
-Only one row is needed.
+Nothing else.
 
-Much cleaner.
+No coordinates.
 
 ---
 
-### Workflow Status
+## Sales / Order Information
 
-Recommended layout:
+```
+Project Subtotal
+
+Invoice #
+
+Order Received
+```
+
+---
+
+## Workflow Status
 
 ```
 Project Status
@@ -213,15 +178,75 @@ Welcome Call Status
 Permit Status
 ```
 
-Three equal-width dropdowns on one row (or two on the first row and one below if needed for responsiveness).
+---
+
+## Scheduling
+
+```
+Scheduled Start
+
+Scheduled End
+
+Install Start
+
+Install End
+```
 
 ---
 
-# Acceptance Criteria
+## Notes
 
-* State is automatically populated from the selected address and is readonly.
-* Latitude and Longitude fields are hidden from the UI while still being stored internally.
-* Project Status dropdown loads from `proj_s_project_status`.
-* Project Status is grouped together with Welcome Call Status and Permit Status.
-* Project Address is marked as required and validation prevents saving without a valid address.
-* No unnecessary refactoring or architectural changes; simply wire the existing form correctly and keep the implementation straightforward.
+```
+Notes
+```
+
+---
+
+# Prompt for Cline
+
+> The latest refactor introduced several regressions by moving fields into incorrect sections. Please restore the logical organization of the Project form without redesigning it.
+>
+> **Observed Issues**
+>
+> * Dealer has disappeared from the form.
+> * Building Category was moved into **Sales / Order Information**, but it belongs to the project's general information.
+> * State now appears twice (Customer Information and Sales / Order Information). It should only exist once.
+> * Sales / Order Information no longer contains only sales/order-related fields.
+>
+> **Required Layout**
+>
+> **Customer Information**
+>
+> * Client Name
+> * Dealer
+> * Building Category
+> * State (readonly, auto-populated from the selected address)
+>
+> **Project Location**
+>
+> * Project Address (required)
+>
+> **Sales / Order Information**
+>
+> * Project Subtotal
+> * Invoice Number
+> * Order Received
+>
+> **Workflow Status**
+>
+> * Project Status
+> * Welcome Call Status
+> * Permit Status
+>
+> **Scheduling**
+>
+> * Scheduled Start
+> * Scheduled End
+> * Install Start
+> * Install End
+>
+> **Notes**
+>
+> * Notes textarea
+>
+> Do **not** move fields between sections unless there is a business reason. The objective is to organize the existing form logically, not redesign it. Keep the implementation simple, preserve the original structure where possible, and only apply the requested improvements.

@@ -136,6 +136,11 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
       return;
     }
 
+    if (!form.formatted_address || !form.address_line_1) {
+      toastError("Project address is required. Please select an address from the search.", "Validation");
+      return;
+    }
+
     setBusy(true);
     try {
       const payload = {
@@ -207,69 +212,20 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
                 </select>
               </div>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-              <div>
-                <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Status</label>
-                <select
-                  value={form.status_id}
-                  onChange={(e) => handleChange("status_id", e.target.value)}
-                  style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px", background: "#fff" }}
-                >
-                  <option value="">Select status...</option>
-                  {statuses.map((s) => (
-                    <option key={s.status_id} value={String(s.status_id)}>{s.status_name}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>State</label>
-                <input
-                  type="text"
-                  value={form.state}
-                  onChange={(e) => handleChange("state", e.target.value)}
-                  style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px" }}
-                  placeholder="State"
-                />
-              </div>
-            </div>
           </div>
         </div>
 
         {/* Section 2: Project Location */}
         <div style={{ background: "#f8fafc", padding: "10px", borderRadius: "4px", border: "1px solid #e2e8f0" }}>
           <div style={{ fontSize: "11px", fontWeight: 600, color: "#1e293b", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Project Location</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            <div>
-              <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Address</label>
-              <LocationSearch
-                onSelect={handleLocationSelect}
-                selectedLocation={form}
-                query={locationQuery}
-                onQueryChange={setLocationQuery}
-              />
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-              <div>
-                <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Latitude</label>
-                <input
-                  type="text"
-                  value={form.address_latitude != null ? form.address_latitude : ""}
-                  readOnly
-                  style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px", background: "#f1f5f9", color: "#64748b" }}
-                  placeholder="Auto-populated"
-                />
-              </div>
-              <div>
-                <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Longitude</label>
-                <input
-                  type="text"
-                  value={form.address_longitude != null ? form.address_longitude : ""}
-                  readOnly
-                  style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px", background: "#f1f5f9", color: "#64748b" }}
-                  placeholder="Auto-populated"
-                />
-              </div>
-            </div>
+          <div>
+            <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Project Address <span style={{ color: "#dc2626" }}>*</span></label>
+            <LocationSearch
+              onSelect={handleLocationSelect}
+              selectedLocation={form}
+              query={locationQuery}
+              onQueryChange={setLocationQuery}
+            />
           </div>
         </div>
 
@@ -317,6 +273,19 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
         <div style={{ background: "#f8fafc", padding: "10px", borderRadius: "4px", border: "1px solid #e2e8f0" }}>
           <div style={{ fontSize: "11px", fontWeight: 600, color: "#1e293b", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Workflow Status</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px" }}>
+            <div>
+              <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Project Status</label>
+              <select
+                value={form.status_id}
+                onChange={(e) => handleChange("status_id", e.target.value)}
+                style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px", background: "#fff" }}
+              >
+                <option value="">Select status...</option>
+                {statuses.map((s) => (
+                  <option key={s.status_id} value={String(s.status_id)}>{s.status_name}</option>
+                ))}
+              </select>
+            </div>
             <div>
               <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Welcome Call Status</label>
               <select

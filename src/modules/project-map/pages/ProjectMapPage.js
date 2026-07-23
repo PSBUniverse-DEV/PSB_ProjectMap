@@ -8,5 +8,6 @@ export default async function ProjectMapPage() {
     loadProjectMapSetup(),
     loadRuns(),
   ]);
-  return <ProjectMapView {...setup} runs={runs} />;
+  // Map projectStatuses to statuses for backward compatibility with view
+  return <ProjectMapView {...setup} statuses={setup.projectStatuses || []} runs={runs} />;
 }

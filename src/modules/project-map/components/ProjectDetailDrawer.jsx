@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faLocationDot, faCalendarDays, faBuilding, faDollarSign } from "@fortawesome/free-solid-svg-icons";
+import { faLocationDot, faCalendarDays, faBuilding, faDollarSign, faTag } from "@fortawesome/free-solid-svg-icons";
 
 export default function ProjectDetailDrawer({ project, statuses = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [], onClose, onEdit, onDelete, routeInfo = null }) {
   const statusName = useMemo(() => {
@@ -28,9 +28,9 @@ export default function ProjectDetailDrawer({ project, statuses = [], buildingCa
     return s?.status_name || "";
   }, [project, welcomeCallStatuses]);
 
-  function getStatusColor(statusName) {
-    if (!statusName) return "#6b7280";
-    const found = statuses.find((s) => s.status_name === statusName);
+  function getStatusColor(name) {
+    if (!name) return "#6b7280";
+    const found = statuses.find((s) => s.status_name === name);
     return found?.display_color || "#6b7280";
   }
 
@@ -42,11 +42,35 @@ export default function ProjectDetailDrawer({ project, statuses = [], buildingCa
     } catch { return val; }
   }
 
+  function StatusChip({ label, name }) {
+    if (!name) return null;
+    const color = getStatusColor(name);
+    return (
+      <tr style={{ borderBottom: "1px solid #f2f2f2" }}>
+        <td style={{ padding: "4px 0", fontSize: "11px", color: "#64748b", fontWeight: 500 }}>{label}</td>
+        <td style={{ padding: "4px 0", textAlign: "right" }}>
+          <span style={{
+            display: "inline-block",
+            padding: "1px 8px",
+            borderRadius: "10px",
+            fontSize: "10px",
+            fontWeight: 600,
+            background: `${color}20`,
+            color: color,
+            border: `1px solid ${color}40`,
+          }}>{name}</span>
+        </td>
+      </tr>
+    );
+  }
+
   if (!project) return null;
 
   const subtotal = project.project_subtotal != null
     ? `$${Number(project.project_subtotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
     : null;
+
+  const stateDisplay = [project.state, project.state_code].filter(Boolean).join(" (");
 
   return (
     <div style={{
@@ -63,170 +87,147 @@ export default function ProjectDetailDrawer({ project, statuses = [], buildingCa
       flexDirection: "column",
     }}>
       {/* Header */}
-      <div style={{
-        padding: "16px",
-        borderBottom: "1px solid #e2e8f0",
-      }}>
-        <h2 style={{ margin: "0 0 8px", fontSize: "22px", fontWeight: 700, color: "#1e293b", lineHeight: 1.2 }}>
+      {/* <div style={{ padding: "14px 16px", borderBottom: "1px solid #e2e8f0" }}>
+        <h2 style={{ margin: "0 0 6px", fontSize: "18px", fontWeight: 700, color: "#1e293b", lineHeight: 1.2 }}>
           {project.client_name || "Untitled"}
         </h2>
         <span style={{
           display: "inline-block",
-          padding: "3px 12px",
-          borderRadius: "12px",
-          fontSize: "11px",
+          padding: "2px 10px",
+          borderRadius: "10px",
+          fontSize: "10px",
           fontWeight: 600,
-          background: `${statusName ? getStatusColor(statusName, statuses) : "#6b7280"}20`,
-          color: statusName ? getStatusColor(statusName, statuses) : "#6b7280",
-          border: `1px solid ${statusName ? getStatusColor(statusName, statuses) : "#6b7280"}40`,
+          background: `${statusName ? getStatusColor(statusName) : "#6b7280"}20`,
+          color: statusName ? getStatusColor(statusName) : "#6b7280",
+          border: `1px solid ${statusName ? getStatusColor(statusName) : "#6b7280"}40`,
         }}>{statusName || "No Status"}</span>
-      </div>
+      </div> */}
 
       {/* Scrollable Content */}
-      <div style={{ flex: 1, overflow: "auto", padding: "16px" }}>
-        {/* Project Value KPI Card */}
-        {subtotal && (
-          <div style={{
-            background: "linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)",
-            border: "1px solid #bbf7d0",
-            borderRadius: "8px",
-            padding: "16px",
-            marginBottom: "20px",
-          }}>
-            <div style={{ fontSize: "11px", fontWeight: 600, color: "#166534", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "4px" }}>
-              Project Value
-            </div>
-            <div style={{ fontSize: "26px", fontWeight: 700, color: "#14532d", lineHeight: 1.2 }}>
-              {subtotal}
-            </div>
-          </div>
-        )}
-
-        {/* Project Address */}
-        <div style={{ marginBottom: "20px" }}>
-          <div style={{ fontSize: "11px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: "8px", letterSpacing: "0.5px", display: "flex", alignItems: "center", gap: "6px" }}>
-            <FontAwesomeIcon icon={faLocationDot} style={{ fontSize: "12px" }} />
-            Project Address
-          </div>
-          <div style={{ fontSize: "14px", color: "#1e293b", lineHeight: "1.6" }}>
-            {project.formatted_address || (
-              <>
-                {project.address_line_1}<br />
-                {[project.city, project.state, project.postal_code].filter(Boolean).join(", ")}<br />
-                {project.country || ""}
-              </>
-            ) || "—"}
-          </div>
+      <div style={{ flex: 1, overflow: "auto", padding: "12px 16px" }}>
+        {/* Customer Information */}
+        <div style={{ marginBottom: "14px" }}>
+          <div style={{ fontSize: "10px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>Customer Information</div>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <tbody>
+              <tr style={{ borderBottom: "1px solid #f2f2f2" }}>
+                <td style={{ padding: "4px 0", fontSize: "11px", color: "#64748b", fontWeight: 500 }}>Client Name</td>
+                <td style={{ padding: "4px 0", fontSize: "12px", color: "#1e293b", fontWeight: 600, textAlign: "right" }}>{project.client_name || "—"}</td>
+              </tr>
+              {project.dealer && (
+                <tr style={{ borderBottom: "1px solid #f2f2f2" }}>
+                  <td style={{ padding: "4px 0", fontSize: "11px", color: "#64748b", fontWeight: 500 }}>Dealer</td>
+                  <td style={{ padding: "4px 0", fontSize: "12px", color: "#1e293b", fontWeight: 600, textAlign: "right" }}>{project.dealer}</td>
+                </tr>
+              )}
+              {buildingCategoryName && (
+                <tr>
+                  <td style={{ padding: "4px 0", fontSize: "11px", color: "#64748b", fontWeight: 500 }}>Building Category</td>
+                  <td style={{ padding: "4px 0", fontSize: "12px", color: "#1e293b", fontWeight: 600, textAlign: "right" }}>{buildingCategoryName}</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
 
-        {/* Dealer */}
-        {project.dealer && (
-          <div style={{ marginBottom: "20px" }}>
-            <div style={{ fontSize: "11px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: "8px", letterSpacing: "0.5px", display: "flex", alignItems: "center", gap: "6px" }}>
-              <FontAwesomeIcon icon={faBuilding} style={{ fontSize: "12px" }} />
-              Dealer
-            </div>
-            <div style={{ fontSize: "13px", color: "#1e293b" }}>{project.dealer}</div>
-          </div>
-        )}
-
-        {/* Building Category */}
-        {buildingCategoryName && (
-          <div style={{ marginBottom: "20px" }}>
-            <div style={{ fontSize: "11px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: "8px", letterSpacing: "0.5px", display: "flex", alignItems: "center", gap: "6px" }}>
-              <FontAwesomeIcon icon={faBuilding} style={{ fontSize: "12px" }} />
-              Building Category
-            </div>
-            <div style={{ fontSize: "13px", color: "#1e293b" }}>{buildingCategoryName}</div>
-          </div>
-        )}
-
-        {/* Invoice Number */}
-        {project.invoice_number && (
-          <div style={{ marginBottom: "20px" }}>
-            <div style={{ fontSize: "11px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: "8px", letterSpacing: "0.5px", display: "flex", alignItems: "center", gap: "6px" }}>
-              <FontAwesomeIcon icon={faDollarSign} style={{ fontSize: "12px" }} />
-              Invoice Number
-            </div>
-            <div style={{ fontSize: "13px", color: "#1e293b" }}>{project.invoice_number}</div>
-          </div>
-        )}
+        {/* Project Information */}
+        <div style={{ marginBottom: "14px" }}>
+          <div style={{ fontSize: "10px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>Project Information</div>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <tbody>
+              <tr style={{ borderBottom: "1px solid #f2f2f2" }}>
+                <td style={{ padding: "4px 0", fontSize: "11px", color: "#64748b", fontWeight: 500 }}>Address</td>
+                <td style={{ padding: "4px 0", fontSize: "11px", color: "#1e293b", textAlign: "right", lineHeight: 1.4 }}>
+                  {project.formatted_address || (
+                    <>
+                      {project.address_line_1}<br />
+                      {[project.city, project.state, project.postal_code].filter(Boolean).join(", ")}
+                    </>
+                  ) || "—"}
+                </td>
+              </tr>
+              {(project.state || project.state_code) && (
+                <tr style={{ borderBottom: "1px solid #f2f2f2" }}>
+                  <td style={{ padding: "4px 0", fontSize: "11px", color: "#64748b", fontWeight: 500 }}>State</td>
+                  <td style={{ padding: "4px 0", fontSize: "12px", color: "#1e293b", fontWeight: 600, textAlign: "right" }}>
+                    {project.state}{project.state_code ? ` (${project.state_code})` : ""}
+                  </td>
+                </tr>
+              )}
+              {subtotal && (
+                <tr style={{ borderBottom: "1px solid #f2f2f2" }}>
+                  <td style={{ padding: "4px 0", fontSize: "11px", color: "#64748b", fontWeight: 500 }}>Project Subtotal</td>
+                  <td style={{ padding: "4px 0", fontSize: "12px", color: "#16a34a", fontWeight: 700, textAlign: "right" }}>{subtotal}</td>
+                </tr>
+              )}
+              {project.invoice_number && (
+                <tr>
+                  <td style={{ padding: "4px 0", fontSize: "11px", color: "#64748b", fontWeight: 500 }}>Invoice #</td>
+                  <td style={{ padding: "4px 0", fontSize: "12px", color: "#1e293b", fontWeight: 600, textAlign: "right" }}>{project.invoice_number}</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
 
         {/* Workflow Status */}
-        {(permitStatusName || welcomeCallStatusName) && (
-          <div style={{ marginBottom: "20px" }}>
-            <div style={{ fontSize: "11px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: "10px", letterSpacing: "0.5px" }}>Workflow Status</div>
+        {(statusName || welcomeCallStatusName || permitStatusName) && (
+          <div style={{ marginBottom: "14px" }}>
+            <div style={{ fontSize: "10px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>Workflow Status</div>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <tbody>
-                {welcomeCallStatusName && (
-                  <tr style={{ borderBottom: "1px solid #f2f2f2" }}>
-                    <td style={{ padding: "5px 0", fontSize: "12px", color: "#64748b", fontWeight: 500 }}>Welcome Call</td>
-                    <td style={{ padding: "5px 0", fontSize: "13px", color: "#1e293b", fontWeight: 600, textAlign: "right" }}>{welcomeCallStatusName}</td>
-                  </tr>
-                )}
-                {permitStatusName && (
-                  <tr>
-                    <td style={{ padding: "5px 0", fontSize: "12px", color: "#64748b", fontWeight: 500 }}>Permit</td>
-                    <td style={{ padding: "5px 0", fontSize: "13px", color: "#1e293b", fontWeight: 600, textAlign: "right" }}>{permitStatusName}</td>
-                  </tr>
-                )}
+                <StatusChip label="Project Status" name={statusName} />
+                <StatusChip label="Welcome Call" name={welcomeCallStatusName} />
+                <StatusChip label="Permit" name={permitStatusName} />
               </tbody>
             </table>
           </div>
         )}
 
         {/* Schedule */}
-        <div style={{ marginBottom: "20px" }}>
-          <div style={{ fontSize: "11px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: "10px", letterSpacing: "0.5px", display: "flex", alignItems: "center", gap: "6px" }}>
-            <FontAwesomeIcon icon={faCalendarDays} style={{ fontSize: "12px" }} />
-            Schedule
-          </div>
+        <div style={{ marginBottom: "14px" }}>
+          <div style={{ fontSize: "10px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>Schedule</div>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <tbody>
               <tr style={{ borderBottom: "1px solid #f2f2f2" }}>
-                <td style={{ padding: "5px 0", fontSize: "12px", color: "#64748b", fontWeight: 500 }}>Order Received</td>
-                <td style={{ padding: "5px 0", fontSize: "13px", color: "#1e293b", fontWeight: 600, textAlign: "right" }}>{formatDateTime(project.order_received_at)}</td>
+                <td style={{ padding: "4px 0", fontSize: "11px", color: "#64748b", fontWeight: 500 }}>Order Received</td>
+                <td style={{ padding: "4px 0", fontSize: "12px", color: "#1e293b", fontWeight: 600, textAlign: "right" }}>{formatDateTime(project.order_received_at)}</td>
               </tr>
               <tr style={{ borderBottom: "1px solid #f2f2f2" }}>
-                <td style={{ padding: "5px 0", fontSize: "12px", color: "#64748b", fontWeight: 500 }}>Scheduled Start</td>
-                <td style={{ padding: "5px 0", fontSize: "13px", color: "#1e293b", fontWeight: 600, textAlign: "right" }}>{formatDateTime(project.scheduled_project_start)}</td>
-              </tr>
-              <tr style={{ borderBottom: "1px solid #f2f2f2" }}>
-                <td style={{ padding: "5px 0", fontSize: "12px", color: "#64748b", fontWeight: 500 }}>Scheduled End</td>
-                <td style={{ padding: "5px 0", fontSize: "13px", color: "#1e293b", fontWeight: 600, textAlign: "right" }}>{formatDateTime(project.scheduled_project_end)}</td>
-              </tr>
-              <tr style={{ borderBottom: "1px solid #f2f2f2" }}>
-                <td style={{ padding: "5px 0", fontSize: "12px", color: "#64748b", fontWeight: 500 }}>Install Start</td>
-                <td style={{ padding: "5px 0", fontSize: "13px", color: "#1e293b", fontWeight: 600, textAlign: "right" }}>{formatDateTime(project.install_start)}</td>
+                <td style={{ padding: "4px 0", fontSize: "11px", color: "#64748b", fontWeight: 500 }}>Scheduled</td>
+                <td style={{ padding: "4px 0", fontSize: "12px", color: "#1e293b", fontWeight: 600, textAlign: "right" }}>
+                  {formatDateTime(project.scheduled_project_start)}{project.scheduled_project_end ? ` → ${formatDateTime(project.scheduled_project_end)}` : ""}
+                </td>
               </tr>
               <tr>
-                <td style={{ padding: "5px 0", fontSize: "12px", color: "#64748b", fontWeight: 500 }}>Install End</td>
-                <td style={{ padding: "5px 0", fontSize: "13px", color: "#1e293b", fontWeight: 600, textAlign: "right" }}>{formatDateTime(project.install_end)}</td>
+                <td style={{ padding: "4px 0", fontSize: "11px", color: "#64748b", fontWeight: 500 }}>Install</td>
+                <td style={{ padding: "4px 0", fontSize: "12px", color: "#1e293b", fontWeight: 600, textAlign: "right" }}>
+                  {formatDateTime(project.install_start)}{project.install_end ? ` → ${formatDateTime(project.install_end)}` : ""}
+                </td>
               </tr>
             </tbody>
           </table>
         </div>
 
         {/* Notes */}
-        {project.notes && (
-          <div style={{ marginBottom: "20px" }}>
-            <div style={{ fontSize: "11px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: "8px", letterSpacing: "0.5px" }}>Notes</div>
-            <div style={{ fontSize: "13px", color: "#1e293b", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{project.notes}</div>
+        {project.project_notes && (
+          <div style={{ marginBottom: "14px" }}>
+            <div style={{ fontSize: "10px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>Notes</div>
+            <div style={{ fontSize: "12px", color: "#1e293b", lineHeight: 1.5, whiteSpace: "pre-wrap", background: "#f8fafc", padding: "8px", borderRadius: "4px", border: "1px solid #e2e8f0" }}>{project.project_notes}</div>
           </div>
         )}
 
         {routeInfo && (
-          <div style={{ marginBottom: "10px", padding: "10px", background: "#f8fafc", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
-            <div style={{ fontSize: "11px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}>Route from Origin</div>
-            <div style={{ fontSize: "12px", color: "#1e293b", marginBottom: "2px" }}><strong>Distance:</strong> {routeInfo.distance}</div>
-            <div style={{ fontSize: "12px", color: "#64748b" }}><strong>Duration:</strong> {routeInfo.duration}</div>
+          <div style={{ marginBottom: "10px", padding: "8px", background: "#f8fafc", borderRadius: "4px", border: "1px solid #e2e8f0" }}>
+            <div style={{ fontSize: "10px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: "4px", letterSpacing: "0.5px" }}>Route from Origin</div>
+            <div style={{ fontSize: "11px", color: "#1e293b" }}><strong>Distance:</strong> {routeInfo.distance} · <strong>Duration:</strong> {routeInfo.duration}</div>
           </div>
         )}
       </div>
 
       {/* Sticky Footer */}
       <div style={{
-        padding: "12px 16px",
+        padding: "10px 16px",
         borderTop: "1px solid #e2e8f0",
         display: "flex",
         gap: "8px",
@@ -234,8 +235,8 @@ export default function ProjectDetailDrawer({ project, statuses = [], buildingCa
         background: "#fff",
       }}>
         <button onClick={onEdit} style={{
-          padding: "6px 14px",
-          fontSize: "12px",
+          padding: "5px 12px",
+          fontSize: "11px",
           fontWeight: 600,
           borderRadius: "4px",
           border: "1px solid #e2e8f0",
@@ -244,8 +245,8 @@ export default function ProjectDetailDrawer({ project, statuses = [], buildingCa
           color: "#1e293b",
         }}>Edit</button>
         <button onClick={onDelete} style={{
-          padding: "6px 14px",
-          fontSize: "12px",
+          padding: "5px 12px",
+          fontSize: "11px",
           fontWeight: 600,
           borderRadius: "4px",
           border: "1px solid #fecaca",

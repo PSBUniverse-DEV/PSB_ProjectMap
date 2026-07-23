@@ -16,20 +16,22 @@ function getSupabaseAdmin() {
 export async function loadProjectMapSetup() {
   const supabase = getSupabaseAdmin();
 
+  // Use a simple base query for projects that only references columns that exist
+  // before the migration. The new fields (building_category_id, etc.) are added
+  // by the migration and may not exist yet.
+  const projectsQuery = supabase
+    .from("proj_t_projects")
+    .select(
+      "id, client_name, formatted_address, address_line_1, city, state, state_code, " +
+      "postal_code, country, address_latitude, address_longitude, site_latitude, site_longitude, " +
+      "location_source, location_confirmed, status_id, dealer, " +
+      "project_subtotal, created_at, updated_at, created_by, updated_by, " +
+      "proj_s_project_status(status_id, status_name, status_description)"
+    )
+    .order("updated_at", { ascending: false });
+
   const queries = {
-    projects: supabase
-      .from("proj_t_projects")
-      .select(
-        "id, client_name, formatted_address, address_line_1, city, state, state_code, " +
-        "postal_code, country, address_latitude, address_longitude, site_latitude, site_longitude, " +
-        "location_source, location_confirmed, status_id, dealer, " +
-        "building_category_id, permit_status_id, welcome_call_status_id, invoice_number, " +
-        "order_received_at, scheduled_project_start, scheduled_project_end, install_start, install_end, " +
-        "project_subtotal, notes, " +
-        "created_at, updated_at, created_by, updated_by, " +
-        "proj_s_project_status(status_id, status_name, status_description)"
-      )
-      .order("updated_at", { ascending: false }),
+    projects: projectsQuery,
     projectStatuses: supabase.from("proj_s_project_status").select("*").order("status_id"),
     originAddresses: supabase.from("proj_s_origin_addresses").select("*").order("origin_name"),
     states: supabase.from("proj_s_states").select("*").order("display_order"),
@@ -48,6 +50,11 @@ export async function loadProjectMapSetup() {
     if (r.status === "fulfilled" && !r.value.error) {
       result[key] = r.value.data || [];
     } else {
+      // Log the actual error so we can see why the query failed
+      const errMsg = r.status === "rejected"
+        ? r.reason?.message || "Promise rejected"
+        : r.value?.error?.message || "Unknown error";
+      console.error(`[loadProjectMapSetup] Query "${key}" failed:`, errMsg);
       result[key] = [];
       errors.push(key);
     }

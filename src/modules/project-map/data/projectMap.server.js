@@ -20,6 +20,9 @@ export async function loadProjectMapSetup() {
     projectStatuses: supabase.from("proj_s_project_status").select("*").order("status_id"),
     originAddresses: supabase.from("proj_s_origin_addresses").select("*").order("origin_name"),
     states: supabase.from("proj_s_states").select("*").order("display_order"),
+    buildingCategories: supabase.from("proj_s_building_categories").select("*").order("display_order"),
+    permitStatuses: supabase.from("proj_s_permit_status").select("*").order("display_order"),
+    welcomeCallStatuses: supabase.from("proj_s_welcome_call_status").select("*").order("display_order"),
   };
 
   const keys = Object.keys(queries);

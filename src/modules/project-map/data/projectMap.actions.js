@@ -81,6 +81,38 @@ export async function deleteSetupRow(tableKey, id) {
   return { success: true };
 }
 
+// ─── Lookup Table Loaders ──────────────────────────────────
+
+export async function loadBuildingCategories() {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("proj_s_building_categories")
+    .select("*")
+    .order("display_order", { ascending: true });
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+export async function loadPermitStatuses() {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("proj_s_permit_status")
+    .select("*")
+    .order("display_order", { ascending: true });
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+export async function loadWelcomeCallStatuses() {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("proj_s_welcome_call_status")
+    .select("*")
+    .order("display_order", { ascending: true });
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
 // ─── Project CRUD ──────────────────────────────────────────
 
 export async function createProject(project) {
@@ -104,9 +136,15 @@ export async function createProject(project) {
     location_confirmed: Boolean(project.location_confirmed),
     status_id: toIntOrNull(project.status_id),
     dealer: hasValue(project.dealer) ? String(project.dealer).trim() : null,
-    order_received_date: toDateOrNull(project.order_received_date),
-    scheduled_project_date: toDateOrNull(project.scheduled_project_date),
-    install_date: toDateOrNull(project.install_date),
+    building_category_id: toIntOrNull(project.building_category_id),
+    permit_status_id: toIntOrNull(project.permit_status_id),
+    welcome_call_status_id: toIntOrNull(project.welcome_call_status_id),
+    invoice_number: hasValue(project.invoice_number) ? String(project.invoice_number).trim() : null,
+    order_received_at: project.order_received_at || null,
+    scheduled_project_start: project.scheduled_project_start || null,
+    scheduled_project_end: project.scheduled_project_end || null,
+    install_start: project.install_start || null,
+    install_end: project.install_end || null,
     project_subtotal: project.project_subtotal != null ? Number(project.project_subtotal) : null,
     created_by: toIntOrNull(project.created_by),
     updated_by: toIntOrNull(project.updated_by),
@@ -129,9 +167,15 @@ export async function updateProject(projectId, updates) {
   const payload = {
     ...updates,
     updated_at: now,
-    order_received_date: toDateOrNull(updates.order_received_date),
-    scheduled_project_date: toDateOrNull(updates.scheduled_project_date),
-    install_date: toDateOrNull(updates.install_date),
+    building_category_id: toIntOrNull(updates.building_category_id),
+    permit_status_id: toIntOrNull(updates.permit_status_id),
+    welcome_call_status_id: toIntOrNull(updates.welcome_call_status_id),
+    invoice_number: hasValue(updates.invoice_number) ? String(updates.invoice_number).trim() : null,
+    order_received_at: updates.order_received_at || null,
+    scheduled_project_start: updates.scheduled_project_start || null,
+    scheduled_project_end: updates.scheduled_project_end || null,
+    install_start: updates.install_start || null,
+    install_end: updates.install_end || null,
     updated_by: toIntOrNull(updates.updated_by),
   };
 
@@ -167,6 +211,7 @@ export async function createRun(runData) {
     team_assigned: runData.team_assigned ? String(runData.team_assigned).trim() : null,
     vehicle_assigned: runData.vehicle_assigned ? String(runData.vehicle_assigned).trim() : null,
     estimated_distance: runData.estimated_distance != null ? Number(runData.estimated_distance) : null,
+    estimated_mileage: runData.estimated_mileage != null ? Number(runData.estimated_mileage) : null,
     estimated_duration: runData.estimated_duration != null ? Number(runData.estimated_duration) : null,
     estimated_subtotal: runData.estimated_subtotal != null ? Number(runData.estimated_subtotal) : null,
     created_at: now,
@@ -312,7 +357,7 @@ export async function loadRunDetails(runId) {
     supabase.from("proj_t_runs").select("*, proj_s_origin_addresses(*)").eq("id", runId).maybeSingle(),
     supabase
       .from("proj_t_run_projects")
-      .select("*, proj_t_projects(*, proj_s_project_status(*))")
+      .select("*, proj_t_projects(*, proj_s_project_status(*), proj_s_building_categories(*), proj_s_permit_status(*), proj_s_welcome_call_status(*))")
       .eq("run_id", runId)
       .order("stop_sequence"),
   ]);

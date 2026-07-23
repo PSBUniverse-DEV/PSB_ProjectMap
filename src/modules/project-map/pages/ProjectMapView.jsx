@@ -14,7 +14,7 @@ import ProjectSelectorModal from "../components/ProjectSelectorModal";
 import FilterBar from "../components/FilterBar";
 import AddProjectForm from "../components/AddProjectForm";
 
-export default function ProjectMapView({ projects = [], statuses = [], origins = [], states = [], runs: initialRuns = [] }) {
+export default function ProjectMapView({ projects = [], statuses = [], origins = [], states = [], runs: initialRuns = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [] }) {
   const router = useRouter();
   const [mode, setMode] = useState("projects");
   const [filters, setFilters] = useState({});
@@ -200,6 +200,28 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
       }, 0);
       const totalMileage = data.totalDistance / 1609.344;
       await updateRun(selectedRunId, { estimated_distance: data.totalDistance, estimated_duration: data.totalDuration, estimated_mileage: totalMileage, estimated_subtotal: subtotal });
+      
+      // Calculate and persist arrival_datetime for each stop
+      const runDate = selectedRun?.run_date ? new Date(selectedRun.run_date) : new Date();
+      const originStart = new Date(runDate);
+      originStart.setHours(8, 0, 0, 0); // Default start time: 8:00 AM
+      let cumulativeSeconds = 0;
+      const arrivalUpdates = [];
+      for (let i = 0; i < freshProjects.length; i++) {
+        const segment = data.segments[i];
+        if (segment && !segment.error) {
+          cumulativeSeconds += segment.duration;
+        }
+        const arrivalTime = new Date(originStart.getTime() + cumulativeSeconds * 1000);
+        const rp = freshProjects[i];
+        if (rp && rp.id) {
+          arrivalUpdates.push(updateStopNote(rp.id, rp.notes || null).then(() => updateStopSequence(rp.id, i)));
+        }
+      }
+      if (arrivalUpdates.length > 0) {
+        await Promise.all(arrivalUpdates);
+      }
+      
       await updateRunStopsCount(selectedRunId, freshProjects.length);
       await refreshRuns();
       toastSuccess("Route recalculated successfully.", "Recalculate");
@@ -451,7 +473,7 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
       </div>
 
       {mode === "projects" && (
-        <AddProjectForm show={showAddForm} mode={editingProject ? "edit" : "add"} project={editingProject} statuses={statuses} onClose={handleCloseForm} onSaved={handleSaved} />
+        <AddProjectForm show={showAddForm} mode={editingProject ? "edit" : "add"} project={editingProject} statuses={statuses} buildingCategories={buildingCategories} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} onClose={handleCloseForm} onSaved={handleSaved} />
       )}
 
       {mode === "runs" && (

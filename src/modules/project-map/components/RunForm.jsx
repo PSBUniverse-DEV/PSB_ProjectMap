@@ -16,6 +16,7 @@ export default function RunForm({ show, mode, run, origins = [], statuses = [], 
     team_assigned: "",
     vehicle_assigned: "",
     estimated_distance: "",
+    estimated_mileage: "",
     estimated_duration: "",
     estimated_subtotal: "",
   });
@@ -37,6 +38,7 @@ export default function RunForm({ show, mode, run, origins = [], statuses = [], 
         team_assigned: run.team_assigned || "",
         vehicle_assigned: run.vehicle_assigned || "",
         estimated_distance: run.estimated_distance != null ? String(run.estimated_distance) : "",
+        estimated_mileage: run.estimated_mileage != null ? String(run.estimated_mileage) : "",
         estimated_duration: run.estimated_duration != null ? String(run.estimated_duration) : "",
         estimated_subtotal: run.estimated_subtotal != null ? String(run.estimated_subtotal) : "",
       });
@@ -50,6 +52,7 @@ export default function RunForm({ show, mode, run, origins = [], statuses = [], 
         team_assigned: "",
         vehicle_assigned: "",
         estimated_distance: "",
+        estimated_mileage: "",
         estimated_duration: "",
         estimated_subtotal: "",
       });
@@ -231,19 +234,19 @@ export default function RunForm({ show, mode, run, origins = [], statuses = [], 
             />
           </div>
           <div>
-            <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Est. Duration</label>
+            <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Est. Mileage</label>
             <input
               type="text"
-              value={form.estimated_duration ? `${Math.round(Number(form.estimated_duration) / 60)} min` : "—"}
+              value={form.estimated_mileage ? `${Number(form.estimated_mileage).toFixed(1)} mi` : "—"}
               readOnly
               style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px", background: "#f8fafc", color: "#64748b" }}
             />
           </div>
           <div>
-            <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Est. Subtotal ($)</label>
+            <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Est. Duration</label>
             <input
               type="text"
-              value={form.estimated_subtotal ? `$${Number(form.estimated_subtotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}
+              value={form.estimated_duration ? `${Math.round(Number(form.estimated_duration) / 60)} min` : "—"}
               readOnly
               style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px", background: "#f8fafc", color: "#64748b" }}
             />

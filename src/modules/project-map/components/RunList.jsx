@@ -21,6 +21,11 @@ function formatCurrency(value) {
   return `$${Number(value).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 }
 
+function formatMileage(miles) {
+  if (miles == null) return "";
+  return `${Number(miles).toFixed(1)} mi`;
+}
+
 function formatDate(dateStr) {
   if (!dateStr) return "";
   try {
@@ -57,7 +62,7 @@ export default function RunList({ runs = [], selectedRunId, onSelectRun }) {
             const isSelected = run.id === selectedRunId;
             const originName = run.proj_s_origin_addresses?.origin_name || "No Origin";
             const projectCount = run.stops ?? 0;
-            const hasData = run.estimated_distance != null || run.estimated_subtotal != null;
+            const hasData = run.estimated_distance != null || run.estimated_mileage != null || run.estimated_subtotal != null;
 
             return (
               <div
@@ -82,12 +87,15 @@ export default function RunList({ runs = [], selectedRunId, onSelectRun }) {
                 <div style={{ display: "flex", alignItems: "center", gap: "4px", marginBottom: "3px" }}>
                   <StatusBadge tone={getStatusTone(run.status)}>{run.status || "Draft"}</StatusBadge>
                 </div>
-                <div style={{ fontSize: "9px", color: "#94a3b8", display: "flex", gap: "8px" }}>
+                <div style={{ fontSize: "9px", color: "#94a3b8", display: "flex", gap: "8px", flexWrap: "wrap" }}>
                   <span>📍 {projectCount} stop{projectCount !== 1 ? "s" : ""}</span>
                   {hasData && (
                     <>
                       {run.estimated_distance != null && (
                         <span>📏 {(run.estimated_distance / 1000).toFixed(1)} km</span>
+                      )}
+                      {run.estimated_mileage != null && (
+                        <span>🛣️ {formatMileage(run.estimated_mileage)}</span>
                       )}
                       {run.estimated_subtotal != null && (
                         <span>💰 {formatCurrency(run.estimated_subtotal)}</span>

@@ -35,6 +35,11 @@ function formatCurrency(value) {
   return `$${Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+function formatMileage(miles) {
+  if (miles == null) return "—";
+  return `${Number(miles).toFixed(1)} mi`;
+}
+
 export default function RunDetailPanel({ run, runProjects = [], runSegmentData = null, onClose, onEdit, onDelete, onRemoveProject, onReorderStops, onRecalculate, recalculating = false, onEditStopNote }) {
   if (!run) return null;
 
@@ -44,6 +49,7 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
   const originName = run.proj_s_origin_addresses?.origin_name || "No Origin";
   const hasStops = runProjects.length > 0;
   const totalDistance = hasStops ? formatDistance(run.estimated_distance) : "—";
+  const totalMileage = hasStops ? formatMileage(run.estimated_mileage) : "—";
   const totalDuration = hasStops ? formatDuration(run.estimated_duration) : "—";
   const totalSubtotal = hasStops ? formatCurrency(run.estimated_subtotal) : "$0.00";
 
@@ -109,9 +115,9 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
           <div style={{ fontSize: "9px", fontWeight: 700, textTransform: "uppercase", color: "#94a3b8", marginBottom: "6px", letterSpacing: "0.5px" }}>Route Summary</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
             <div><div style={{ fontSize: "9px", color: "#94a3b8" }}>Distance</div><div style={{ fontSize: "16px", fontWeight: 700 }}>{totalDistance}</div></div>
+            <div><div style={{ fontSize: "9px", color: "#94a3b8" }}>Mileage</div><div style={{ fontSize: "16px", fontWeight: 700 }}>{totalMileage}</div></div>
             <div><div style={{ fontSize: "9px", color: "#94a3b8" }}>Duration</div><div style={{ fontSize: "16px", fontWeight: 700 }}>{totalDuration}</div></div>
             <div><div style={{ fontSize: "9px", color: "#94a3b8" }}>Revenue</div><div style={{ fontSize: "16px", fontWeight: 700 }}>{totalSubtotal}</div></div>
-            <div><div style={{ fontSize: "9px", color: "#94a3b8" }}>Stops</div><div style={{ fontSize: "16px", fontWeight: 700 }}>{runProjects.length}</div></div>
           </div>
         </div>
 

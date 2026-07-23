@@ -1,12 +1,12 @@
-import { loadProjectMapProjects, loadRuns } from "../data/projectMap.server";
+import { loadProjectMapSetup, loadRuns } from "../data/projectMap.server";
 import ProjectMapView from "./ProjectMapView";
 
 export const dynamic = "force-dynamic";
 
 export default async function ProjectMapPage() {
-  const [projectsData, runs] = await Promise.all([
-    loadProjectMapProjects(),
+  const [setup, runs] = await Promise.all([
+    loadProjectMapSetup(),
     loadRuns(),
   ]);
-  return <ProjectMapView {...projectsData} runs={runs} />;
+  return <ProjectMapView {...setup} runs={runs} />;
 }

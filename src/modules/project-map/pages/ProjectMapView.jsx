@@ -465,7 +465,7 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
         </div>
 
         {mode === "projects" && selectedProject && (
-          <ProjectDetailDrawer project={selectedProject} statuses={statuses} onClose={handleCloseDrawer} onEdit={handleEdit} onDelete={() => setConfirmDeleteId(selectedProject.id)} routeInfo={routeInfo} />
+          <ProjectDetailDrawer project={selectedProject} statuses={statuses} buildingCategories={buildingCategories} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} onClose={handleCloseDrawer} onEdit={handleEdit} onDelete={() => setConfirmDeleteId(selectedProject.id)} routeInfo={routeInfo} />
         )}
         {mode === "runs" && selectedRun && (
           <RunDetailPanel run={selectedRun} runProjects={runProjects} runSegmentData={runSegmentData} onClose={handleCloseRunDetail} onEdit={handleEditRun} onDelete={() => setConfirmDeleteRunId(selectedRun.id)} onRemoveProject={handleRemoveProjectFromRun} onReorderStops={handleReorderStops} onRecalculate={handleRecalculate} recalculating={recalculating} onEditStopNote={handleEditStopNote} />

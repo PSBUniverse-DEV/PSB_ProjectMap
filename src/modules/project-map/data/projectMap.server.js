@@ -16,16 +16,18 @@ function getSupabaseAdmin() {
 export async function loadProjectMapSetup() {
   const supabase = getSupabaseAdmin();
 
-  // Use a simple base query for projects that only references columns that exist
-  // before the migration. The new fields (building_category_id, etc.) are added
-  // by the migration and may not exist yet.
+  // Select all project fields including the new operational fields.
+  // Uses LEFT JOIN (Supabase default) so projects without lookup records are not excluded.
   const projectsQuery = supabase
     .from("proj_t_projects")
     .select(
       "id, client_name, formatted_address, address_line_1, city, state, state_code, " +
       "postal_code, country, address_latitude, address_longitude, site_latitude, site_longitude, " +
       "location_source, location_confirmed, status_id, dealer, " +
-      "project_subtotal, created_at, updated_at, created_by, updated_by, " +
+      "building_category_id, permit_status_id, welcome_call_status_id, invoice_number, " +
+      "order_received_at, scheduled_project_start, scheduled_project_end, install_start, install_end, " +
+      "project_subtotal, project_notes, " +
+      "created_at, updated_at, created_by, updated_by, " +
       "proj_s_project_status(status_id, status_name, status_description)"
     )
     .order("updated_at", { ascending: false });

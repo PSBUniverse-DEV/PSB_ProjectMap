@@ -39,6 +39,7 @@ export default function ProjectMap({
   const routeSourceRef = useRef("route-line");
   const initialFitDone = useRef(false);
   const mapInitAttemptedRef = useRef(false);
+  const contextMenuPopupRef = useRef(null);
   
   // Refs for closure-dependent values used in marker event handlers
   const modeRef = useRef(mode);
@@ -272,8 +273,12 @@ export default function ProjectMap({
         max-width: 280px;
         line-height: 1.4;
       `;
+      const assignedRun = runs.find((r) => (r.proj_t_run_projects || []).some((rp) => rp.project_id === id));
+      const assignedRunLabel = assignedRun ? assignedRun.run_name || `Run #${assignedRun.run_number || assignedRun.id}` : null;
+
       tooltip.innerHTML = `
-        <div style="font-weight: 700; font-size: 13px; color: #1e293b; margin-bottom: 8px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px;">${project.client_name || "Untitled"}</div>
+        <div style="font-weight: 700; font-size: 13px; color: #1e293b; margin-bottom: ${assignedRunLabel ? "4px" : "8px"}; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px;">${project.client_name || "Untitled"}</div>
+        ${assignedRunLabel ? `<div style="font-size: 10px; color: #6366f1; font-weight: 500; margin-bottom: 8px;">📦 Run: ${assignedRunLabel}</div>` : ""}
 
         <div style="font-size: 9px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 3px; letter-spacing: 0.4px;">Customer Information</div>
         <table style="width: 100%; border-collapse: collapse; margin-bottom: 8px;">
@@ -340,40 +345,52 @@ export default function ProjectMap({
 
         const currentMode = modeRef.current;
         const currentSelectedRunId = selectedRunIdRef.current;
-        const currentRunProjects = runProjectsRef.current;
         const currentOnAddToRun = onAddToRunRef.current;
         const currentOnRemoveFromRun = onRemoveFromRunRef.current;
 
         if (currentMode !== "runs") return;
         if (!currentOnAddToRun && !currentOnRemoveFromRun) return;
 
-        const inSelectedRun = currentRunProjects.some((rp) => rp.project_id === id);
-        const selectedRunProject = inSelectedRun ? currentRunProjects.find((rp) => rp.project_id === id) : null;
-        
-        const otherRunAssignment = runs
-          .filter((r) => r.id !== currentSelectedRunId)
-          .flatMap((r) => r.run_projects || [])
-          .find((rp) => rp.project_id === id);
-        
-        const otherRun = otherRunAssignment ? runs.find((r) => r.id === otherRunAssignment.run_id) : null;
+        // Close any previous context menu popup
+        if (contextMenuPopupRef.current) {
+          try { contextMenuPopupRef.current.remove(); } catch (e) {}
+          contextMenuPopupRef.current = null;
+        }
 
-        let popupHtml = `
-          <div style="font-weight: 600; margin-bottom: 6px; font-size: 12px;">${project.client_name || "Untitled"}</div>
-          <div style="color: ${statusColor}; font-size: 11px; margin-bottom: 6px; font-weight: 500;">${statusName || "No Status"}</div>
-        `;
+        // Shared assignment lookup — same source of truth as hover
+        const assignedRun = runs.find((r) => (r.proj_t_run_projects || []).some((rp) => rp.project_id === id));
+        const assignedRunName = assignedRun ? assignedRun.run_name || `Run #${assignedRun.run_number || assignedRun.id}` : null;
 
-        if (!currentSelectedRunId) {
-          popupHtml += `<div style="font-size: 11px; color: #94a3b8; font-style: italic; padding: 4px 0;">Select a run first</div>`;
-        } else if (inSelectedRun) {
-          popupHtml += `<button data-remove-from-run="${id}" style="width: 100%; padding: 6px 12px; font-size: 11px; font-weight: 600; border-radius: 4px; border: 1px solid #dc2626; background: #fef2f2; color: #dc2626; cursor: pointer;">− Remove from Run</button>`;
-        } else if (otherRun) {
-          popupHtml += `
-            <div style="font-size: 11px; color: #dc2626; font-weight: 600; margin-bottom: 4px; padding: 4px 0;">Already Assigned</div>
-            <div style="font-size: 10px; color: #64748b; margin-bottom: 6px; line-height: 1.4;">This project is already assigned to:<br><strong>${otherRun.run_name || `Run #${otherRun.run_number || otherRun.id}`}</strong></div>
+        // Determine relationship
+        let relationship;
+        if (!assignedRun) {
+          relationship = "unassigned";
+        } else if (assignedRun.id === currentSelectedRunId) {
+          relationship = "selected";
+        } else {
+          relationship = "other";
+        }
+
+        // Find run_project id for remove action (from runs array directly)
+        const runProjectId = relationship === "selected"
+          ? (assignedRun.proj_t_run_projects || []).find((rp) => rp.project_id === id)?.id
+          : null;
+
+        let popupHtml = "";
+        if (relationship === "unassigned") {
+          if (!currentSelectedRunId) {
+            popupHtml = `<div style="font-size: 11px; color: #94a3b8; font-style: italic; padding: 4px 0;">Select a run first</div>`;
+          } else {
+            popupHtml = `<button data-add-to-run="${id}" style="width: 100%; padding: 6px 12px; font-size: 11px; font-weight: 600; border-radius: 4px; border: 1px solid #16a34a; background: #16a34a; color: #fff; cursor: pointer;">+ Add to Run</button>`;
+          }
+        } else if (relationship === "selected") {
+          popupHtml = `<button data-remove-from-run="${id}" style="width: 100%; padding: 6px 12px; font-size: 11px; font-weight: 600; border-radius: 4px; border: 1px solid #dc2626; background: #fef2f2; color: #dc2626; cursor: pointer;">− Remove from Run</button>`;
+        } else {
+          popupHtml = `
+            <div style="font-size: 11px; color: #dc2626; font-weight: 600; margin-bottom: 4px;">Already Assigned</div>
+            <div style="font-size: 10px; color: #64748b; margin-bottom: 6px; line-height: 1.4;">Run: <strong>${assignedRunName || "Unknown"}</strong></div>
             <div style="font-size: 10px; color: #94a3b8; font-style: italic;">Remove it from that run first.</div>
           `;
-        } else {
-          popupHtml += `<button data-add-to-run="${id}" style="width: 100%; padding: 6px 12px; font-size: 11px; font-weight: 600; border-radius: 4px; border: 1px solid #16a34a; background: #16a34a; color: #fff; cursor: pointer;">+ Add to Run</button>`;
         }
 
         const contextPopup = new MapLibreGL.Popup({
@@ -385,6 +402,11 @@ export default function ProjectMap({
         }).setHTML(popupHtml);
 
         try { contextPopup.setLngLat(marker.getLngLat()).addTo(map); } catch (e) {}
+        contextMenuPopupRef.current = contextPopup;
+
+        contextPopup.on("close", () => {
+          contextMenuPopupRef.current = null;
+        });
 
         const addBtn = contextPopup.getElement()?.querySelector(`[data-add-to-run="${id}"]`);
         if (addBtn) {
@@ -395,10 +417,10 @@ export default function ProjectMap({
         }
 
         const removeBtn = contextPopup.getElement()?.querySelector(`[data-remove-from-run="${id}"]`);
-        if (removeBtn && selectedRunProject) {
+        if (removeBtn) {
           removeBtn.addEventListener("click", () => {
             try { contextPopup.remove(); } catch (e) {}
-            currentOnRemoveFromRun?.(selectedRunProject.id);
+            currentOnRemoveFromRun?.(runProjectId);
           });
         }
       });

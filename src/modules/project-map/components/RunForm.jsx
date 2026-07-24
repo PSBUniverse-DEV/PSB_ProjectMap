@@ -214,7 +214,7 @@ export default function RunForm({ show, mode, run, origins = [], statuses = [], 
         </div>
 
         <div>
-          <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Notes</label>
+          <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Remarks</label>
           <textarea
             value={form.notes}
             onChange={(e) => handleChange("notes", e.target.value)}

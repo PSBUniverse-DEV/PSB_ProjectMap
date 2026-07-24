@@ -19,6 +19,9 @@ export default function ProjectMap({
   routeData = null,
   stateColorLookup = {},
   statuses = [],
+  buildingCategories = [],
+  permitStatuses = [],
+  welcomeCallStatuses = [],
   searchResults = null,
   mode = "projects",
   runs = [],
@@ -239,23 +242,71 @@ export default function ProjectMap({
         addressDisplay = "No address";
       }
 
+      // Lookup names for status chips
+      const buildingCategoryName = buildingCategories.find((c) => c.id === project.building_category_id)?.building_category_name || "";
+      const permitStatusNameVal = permitStatuses.find((s) => s.id === project.permit_status_id)?.status_name || "";
+      const welcomeCallStatusNameVal = welcomeCallStatuses.find((s) => s.id === project.welcome_call_status_id)?.status_name || "";
+
+      const formatDate = (val) => {
+        if (!val) return "—";
+        try {
+          const d = new Date(val);
+          return d.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+        } catch { return val; }
+      };
+
+      const projectNotes = project.project_notes || "";
+      const truncatedNotes = projectNotes.length > 120 ? projectNotes.substring(0, 120) + "…" : projectNotes;
+
       const tooltip = document.createElement("div");
       tooltip.style.cssText = `
         background: rgba(255, 255, 255, 0.98);
         border: 1px solid #e2e8f0;
-        border-radius: 4px;
-        padding: 6px 8px;
+        border-radius: 6px;
+        padding: 10px 12px;
         font-size: 11px;
         color: #1e293b;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        box-shadow: 0 3px 14px rgba(0,0,0,0.18);
         pointer-events: none;
-        min-width: 150px;
+        min-width: 220px;
+        max-width: 280px;
+        line-height: 1.4;
       `;
       tooltip.innerHTML = `
-        <div style="font-weight: 600; margin-bottom: 4px; font-size: 12px;">${project.client_name || "Untitled"}</div>
-        <div style="color: ${statusColor}; font-size: 11px; margin-bottom: 2px; font-weight: 500;">${statusName || "No Status"}</div>
-        <div style="font-size: 10px; color: #64748b; margin-bottom: 2px; line-height: 1.4;">${addressDisplay}</div>
-        ${subtotalStr ? `<div style="font-size: 11px; color: #16a34a; font-weight: 600; margin-bottom: 4px;">${subtotalStr}</div>` : ""}
+        <div style="font-weight: 700; font-size: 13px; color: #1e293b; margin-bottom: 8px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px;">${project.client_name || "Untitled"}</div>
+
+        <div style="font-size: 9px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 3px; letter-spacing: 0.4px;">Customer Information</div>
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 8px;">
+          <tr><td style="font-size: 10px; color: #94a3b8; padding-bottom: 2px;">Dealer</td><td style="font-size: 10px; color: #1e293b; font-weight: 600; text-align: right; padding-bottom: 2px;">${project.dealer || "—"}</td></tr>
+          <tr><td style="font-size: 10px; color: #94a3b8; padding-bottom: 2px;">Building Category</td><td style="font-size: 10px; color: #1e293b; font-weight: 600; text-align: right; padding-bottom: 2px;">${buildingCategoryName || "—"}</td></tr>
+        </table>
+
+        <div style="font-size: 9px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 3px; letter-spacing: 0.4px;">Project Information</div>
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 8px;">
+          <tr><td style="font-size: 10px; color: #94a3b8; padding-bottom: 2px;">Address</td><td style="font-size: 10px; color: #1e293b; font-weight: 600; text-align: right; padding-bottom: 2px;">${addressDisplay || "—"}</td></tr>
+          <tr><td style="font-size: 10px; color: #94a3b8; padding-bottom: 2px;">State</td><td style="font-size: 10px; color: #1e293b; font-weight: 600; text-align: right; padding-bottom: 2px;">${project.state || project.state_code ? `${project.state || ""}${project.state_code ? " (" + project.state_code + ")" : ""}` : "—"}</td></tr>
+          <tr><td style="font-size: 10px; color: #94a3b8; padding-bottom: 2px;">Project Subtotal</td><td style="font-size: 10px; color: #16a34a; font-weight: 700; text-align: right; padding-bottom: 2px;">${subtotalStr || "—"}</td></tr>
+          <tr><td style="font-size: 10px; color: #94a3b8; padding-bottom: 2px;">Invoice #</td><td style="font-size: 10px; color: #1e293b; font-weight: 600; text-align: right; padding-bottom: 2px;">${project.invoice_number || "—"}</td></tr>
+        </table>
+
+        <div style="font-size: 9px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 3px; letter-spacing: 0.4px;">Workflow Status</div>
+        <div style="display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 8px;">
+          <span style="font-size: 9px; padding: 1px 6px; border-radius: 8px; font-weight: 600; background: ${getStatusColor(statusName, statuses)}20; color: ${getStatusColor(statusName, statuses)}; border: 1px solid ${getStatusColor(statusName, statuses)}40;">${statusName || "—"}</span>
+          <span style="font-size: 9px; padding: 1px 6px; border-radius: 8px; font-weight: 600; background: ${permitStatusNameVal ? "#6366f120" : "#6b728020"}; color: ${permitStatusNameVal ? "#6366f1" : "#6b7280"}; border: 1px solid ${permitStatusNameVal ? "#6366f140" : "#6b728040"};">${permitStatusNameVal || "—"}</span>
+          <span style="font-size: 9px; padding: 1px 6px; border-radius: 8px; font-weight: 600; background: ${welcomeCallStatusNameVal ? "#0891b220" : "#6b728020"}; color: ${welcomeCallStatusNameVal ? "#0891b2" : "#6b7280"}; border: 1px solid ${welcomeCallStatusNameVal ? "#0891b240" : "#6b728040"};">${welcomeCallStatusNameVal || "—"}</span>
+        </div>
+
+        <div style="font-size: 9px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 3px; letter-spacing: 0.4px;">Schedule</div>
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: ${projectNotes ? "8px" : "0"};">
+          <tr><td style="font-size: 10px; color: #94a3b8; padding-bottom: 2px;">Order Received</td><td style="font-size: 10px; color: #1e293b; font-weight: 600; text-align: right; padding-bottom: 2px;">${formatDate(project.order_received_at)}</td></tr>
+          <tr><td style="font-size: 10px; color: #94a3b8; padding-bottom: 2px;">Scheduled</td><td style="font-size: 10px; color: #1e293b; font-weight: 600; text-align: right; padding-bottom: 2px;">${formatDate(project.scheduled_project_start)}${project.scheduled_project_end ? " → " + formatDate(project.scheduled_project_end) : ""}</td></tr>
+          <tr><td style="font-size: 10px; color: #94a3b8; padding-bottom: 2px;">Install</td><td style="font-size: 10px; color: #1e293b; font-weight: 600; text-align: right; padding-bottom: 2px;">${formatDate(project.install_start)}${project.install_end ? " → " + formatDate(project.install_end) : ""}</td></tr>
+        </table>
+
+        ${projectNotes ? `
+        <div style="font-size: 9px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 2px; letter-spacing: 0.4px;">Remarks</div>
+        <div style="font-size: 10px; color: #475569; background: #f8fafc; padding: 4px 6px; border-radius: 3px; border: 1px solid #e2e8f0; white-space: pre-wrap; line-height: 1.4;">${truncatedNotes}</div>
+        ` : ""}
       `;
 
       const popup = new MapLibreGL.Popup({ 

@@ -21,7 +21,7 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
     scheduled_project_end: "",
     install_start: "",
     install_end: "",
-    notes: "",
+    project_notes: "",
     formatted_address: "",
     address_line_1: "",
     city: "",
@@ -59,7 +59,7 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
         scheduled_project_end: project.scheduled_project_end || "",
         install_start: project.install_start || "",
         install_end: project.install_end || "",
-        notes: project.notes || "",
+        project_notes: project.project_notes || "",
         formatted_address: address,
         address_line_1: project.address_line_1 || "",
         city: project.city || "",
@@ -90,7 +90,7 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
         scheduled_project_end: "",
         install_start: "",
         install_end: "",
-        notes: "",
+        project_notes: "",
         formatted_address: "",
         address_line_1: "",
         city: "",
@@ -358,12 +358,12 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
           </div>
         </div>
 
-        {/* Section 6: Notes */}
+        {/* Section 6: Remarks */}
         <div style={{ background: "#f8fafc", padding: "10px", borderRadius: "4px", border: "1px solid #e2e8f0" }}>
-          <div style={{ fontSize: "11px", fontWeight: 600, color: "#1e293b", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Notes</div>
+          <div style={{ fontSize: "11px", fontWeight: 600, color: "#1e293b", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Remarks</div>
           <textarea
-            value={form.notes}
-            onChange={(e) => handleChange("notes", e.target.value)}
+            value={form.project_notes}
+            onChange={(e) => handleChange("project_notes", e.target.value)}
             style={{ width: "100%", minHeight: "80px", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "6px 8px", fontSize: "12px", resize: "vertical" }}
             placeholder="Add notes..."
           />

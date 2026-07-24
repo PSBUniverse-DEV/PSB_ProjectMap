@@ -215,27 +215,9 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
           )}
         </div>
 
-        {routeStats && (
-          <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "4px", padding: "8px 10px", marginBottom: "10px" }}>
-            <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "4px" }}>📊 Route Statistics</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "3px 10px" }}>
-              <div style={{ fontSize: "10px", color: "#64748b" }}>Total Stops</div>
-              <div style={{ fontSize: "11px", color: "#1e293b", fontWeight: 600, textAlign: "right" }}>{routeStats.totalStops}</div>
-              <div style={{ fontSize: "10px", color: "#64748b" }}>Avg Stop Time</div>
-              <div style={{ fontSize: "11px", color: "#1e293b", fontWeight: 600, textAlign: "right" }}>{formatDuration(routeStats.avgDuration)}</div>
-              <div style={{ fontSize: "10px", color: "#64748b" }}>Longest Leg</div>
-              <div style={{ fontSize: "11px", color: "#1e293b", fontWeight: 600, textAlign: "right" }}>{formatDistance(routeStats.longestLeg)}</div>
-              <div style={{ fontSize: "10px", color: "#64748b" }}>Shortest Leg</div>
-              <div style={{ fontSize: "11px", color: "#1e293b", fontWeight: 600, textAlign: "right" }}>{formatDistance(routeStats.shortestLeg)}</div>
-              <div style={{ fontSize: "10px", color: "#64748b" }}>Total Revenue</div>
-              <div style={{ fontSize: "11px", color: "#16a34a", fontWeight: 600, textAlign: "right" }}>{formatCurrency(totalRevenue)}</div>
-            </div>
-          </div>
-        )}
-
         {run.notes && (
           <div style={{ marginBottom: "10px" }}>
-            <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "1px" }}>📝 Notes</div>
+            <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "1px" }}>📝 Remarks</div>
             <div style={{ fontSize: "11px", color: "#475569", background: "#f8fafc", padding: "6px 8px", borderRadius: "3px", border: "1px solid #e2e8f0" }}>{run.notes}</div>
           </div>
         )}
@@ -243,11 +225,24 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
 
       <div style={{ padding: "8px 12px", borderTop: "1px solid #e2e8f0", display: "flex", gap: "6px", justifyContent: "flex-start", flexWrap: "wrap", flexShrink: 0, background: "#fff" }}>
         {actionButtons.map((btn, i) => (
-          <button key={i} onClick={btn.onClick} style={{ padding: "4px 10px", fontSize: "11px", borderRadius: "3px", border: "none", cursor: "pointer", fontWeight: 500, background: btn.variant === "danger" ? "#fef2f2" : btn.variant === "primary" ? "#1e293b" : btn.variant === "success" ? "#16a34a" : "#fff", color: btn.variant === "danger" ? "#dc2626" : btn.variant === "primary" ? "#fff" : btn.variant === "success" ? "#fff" : "#1e293b", border: btn.variant === "secondary" || btn.variant === "danger" ? "1px solid #e2e8f0" : "none" }}>{btn.label}</button>
+          <button key={i} disabled={recalculating} onClick={btn.onClick} style={{ padding: "4px 10px", fontSize: "11px", borderRadius: "3px", border: "none", cursor: recalculating ? "not-allowed" : "pointer", fontWeight: 500, opacity: recalculating ? 0.5 : 1, background: btn.variant === "danger" ? "#fef2f2" : btn.variant === "primary" ? "#1e293b" : btn.variant === "success" ? "#16a34a" : "#fff", color: btn.variant === "danger" ? "#dc2626" : btn.variant === "primary" ? "#fff" : btn.variant === "success" ? "#fff" : "#1e293b", border: btn.variant === "secondary" || btn.variant === "danger" ? "1px solid #e2e8f0" : "none" }}>{btn.label}</button>
         ))}
         <div style={{ flex: 1 }} />
         <button onClick={onRecalculate} disabled={recalculating} style={{ padding: "4px 10px", fontSize: "11px", borderRadius: "3px", border: "1px solid #6366f1", cursor: recalculating ? "not-allowed" : "pointer", fontWeight: 500, background: recalculating ? "#eef2ff" : "#eef2ff", color: recalculating ? "#94a3b8" : "#6366f1", opacity: recalculating ? 0.7 : 1 }}>{recalculating ? "⟳ Recalculating..." : "⟳ Recalculate Run"}</button>
       </div>
+
+      {recalculating && (
+        <div style={{
+          position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
+          background: "rgba(30,41,59,0.75)", zIndex: 20,
+          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "8px",
+          pointerEvents: "all",
+        }}>
+          <div style={{ fontSize: "28px", color: "#fff", animation: "recalcSpin 0.8s linear infinite", display: "inline-block" }}>⟳</div>
+          <div style={{ fontSize: "11px", fontWeight: 600, color: "#e2e8f0" }}>Recalculating route...</div>
+          <div style={{ fontSize: "9px", color: "#94a3b8" }}>Please wait while the run details are updated.</div>
+        </div>
+      )}
     </div>
   );
 }

@@ -112,7 +112,9 @@ export async function loadProjectMapProjects() {
         "id, client_name, formatted_address, address_line_1, city, state, state_code, " +
         "postal_code, country, address_latitude, address_longitude, site_latitude, site_longitude, " +
         "location_source, location_confirmed, status_id, dealer, " +
-        "order_received_date, scheduled_project_date, install_date, project_subtotal, " +
+        "building_category_id, permit_status_id, welcome_call_status_id, invoice_number, " +
+        "order_received_at, scheduled_project_start, scheduled_project_end, install_start, install_end, " +
+        "project_subtotal, project_notes, " +
         "created_at, updated_at, created_by, updated_by, " +
         "proj_s_project_status(status_id, status_name, status_description)"
       )

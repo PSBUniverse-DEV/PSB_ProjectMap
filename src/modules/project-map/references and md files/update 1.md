@@ -1,862 +1,369 @@
-From the screenshots, I can see that Asana is acting as the **master source of the sales workflow**, while your Project Map is becoming the **operations/scheduling system**. You should not copy every Asana field blindly. Only bring over the data that operations actually need.
+Looking at the screenshots and the `RunForm.jsx`, the UI itself is fine. The problem is that **the origin data isn't being mapped consistently between the Setup module and the Runs module.** 
 
-## What I observed from Asana
+## What I noticed
 
-Each customer/order contains information such as:
+Your Setup page clearly contains records like:
 
-* Customer Name
-* Dealer
-* Building Address
-* Order Received Date
-* Welcome Call Status
-* Permit Status
-* State
-* Order Subtotal
-* Building Category
-* Invoice Number
-* Attachments
-* Comments
-* Assignee
+* abreza
+* Atlanta HQ
+* Dallas Service Center
+* Phoenix Depot
+* Tampa Warehouse
 
-The Project Map currently only has:
+Yet in the Run modal, the dropdown only displays:
 
-* Client Name
-* Address
-* Dealer
-* Order Received Date
-* Install Date
-* Scheduled Date
-* Status
-* Price
-* Coordinates
+```
+Select origin...
+Draft
+```
 
-There are several missing fields that would make scheduling much easier.
+That is a huge clue.
+
+`Draft` is **not an origin**.
+
+`Draft` is a **Run Status**.
+
+That means the data source being passed into:
+
+```jsx
+origins
+```
+
+is either:
+
+* actually the status list,
+* or it contains the wrong objects,
+* or the loader/query is incorrect.
 
 ---
 
-# 1. Add Time Support
+## The RunForm itself is not the issue
 
-Currently you only have dates.
+The dropdown is straightforward.
 
-```
-Order Received Date
-Scheduled Project Date
-Install Date
-```
+```jsx
+<select
+    value={form.origin_id}
+    onChange={(e) => handleChange("origin_id", e.target.value)}
+>
+    <option value="">Select origin...</option>
 
-Operations scheduling eventually needs **time**, not just dates.
-
-Instead of
-
-```
-Scheduled Project Date
-2026-07-23
-```
-
-it should support
-
-```
-2026-07-23 8:00 AM
+    {origins.map((o) => (
+        <option key={o.id} value={o.id}>
+            {o.origin_name}
+        </option>
+    ))}
+</select>
 ```
 
-or
+This expects every item to look like
 
-```
-2026-07-23 1:30 PM
-```
-
-I recommend:
-
-```
-scheduled_project_start
-scheduled_project_end
-```
-
-instead of just one datetime.
-
-Example
-
-```
-Start:
-July 23 2026 8:00 AM
-
-End:
-July 23 2026 12:00 PM
+```js
+{
+    id,
+    origin_name,
+    formatted_address,
+    address_line_1,
+    ...
+}
 ```
 
-This will later allow:
-
-* daily schedules
-* overlapping detection
-* arrival calculations
-* technician workload
-
-without redesigning the database later.
+which matches the database perfectly. 
 
 ---
 
-# 2. Building Category
+## Database says
 
-Yes.
+The origin table is
 
-Do NOT store text.
+```sql
+proj_s_origin_addresses
+```
 
-Create a lookup table.
+Columns
 
 ```
-proj_s_building_categories
---------------------------------
-
 id
-building_category_name
-description
-display_order
-is_active
-created_at
-updated_at
+origin_name
+origin_code
+formatted_address
+address_line_1
+city
+state
+postal_code
+latitude
+longitude
+...
 ```
 
-Examples
-
-```
-Garage
-
-Commercial
-
-Barn
-
-Storage
-
-Lean-To
-
-Carport
-
-Agricultural
-
-Residential
-
-Workshop
-```
-
-Then
-
-```
-proj_t_projects
-
-building_category_id
-```
-
-FK
-
-This is much cleaner.
+Exactly what the form expects. 
 
 ---
 
-# 3. Welcome Call Status
+## The biggest evidence
 
-Do NOT make it a text field.
-
-Make another lookup table.
+The dropdown shows
 
 ```
-proj_s_welcome_call_status
+Draft
 ```
 
-Example
+But
 
 ```
-Pending
-
-Attempted
-
-Completed
-
-Needs Callback
-
-Not Required
+Draft
 ```
 
-FK on projects.
-
----
-
-# 4. Permit Status
-
-Same approach.
+exists in
 
 ```
-proj_s_permit_status
+proj_t_runs.status
 ```
 
-Example
+NOT
 
 ```
-Pending
-
-Submitted
-
-Approved
-
-Rejected
-
-Not Required
+proj_s_origin_addresses.origin_name
 ```
 
-FK.
+That almost certainly means somewhere above this component someone is doing something similar to
 
----
-
-# 5. Invoice Number
-
-This one does NOT need a lookup.
-
-Simply add
-
-```
-invoice_number
-varchar(50)
-```
-
-inside
-
-```
-proj_t_projects
-```
-
-because every project has a unique invoice.
-
----
-
-# 6. Order Time
-
-Right now you only have
-
-```
-order_received_date
-```
-
-I'd change it to
-
-```
-order_received_datetime
+```jsx
+<RunForm
+    origins={statuses}
+/>
 ```
 
 or
 
-```
-order_received_at
+```jsx
+origins={runStatuses}
 ```
 
-That preserves the exact submission time.
+instead of
+
+```jsx
+origins={originAddresses}
+```
 
 ---
 
-# 7. Install Time
+# Another issue
 
-Instead of
+This field
 
-```
-install_date
-```
-
-I'd use
-
-```
-install_start
-install_end
+```jsx
+value={selectedOrigin?.formatted_address || selectedOrigin?.address_line_1 || ""}
 ```
 
-Again, more future-proof while still simple.
+only works **after** a valid origin has been found.
+
+If
+
+```jsx
+selectedOrigin
+```
+
+is always
+
+```
+null
+```
+
+then
+
+```
+Origin Address
+```
+
+will forever stay blank.
+
+That tells me
+
+```jsx
+const selectedOrigin = useMemo(() => {
+    if (!form.origin_id) return null;
+
+    return origins.find(
+        (o) => String(o.id) === String(form.origin_id)
+    ) || null;
+
+}, [form.origin_id, origins]);
+```
+
+is never finding a matching record because either:
+
+* origins is wrong
+* origin_id is wrong
+* ids don't match
 
 ---
 
-# 8. Route Arrival Time
+# Things to inspect
 
-Earlier you wanted:
+### 1. Verify what is being passed into RunForm
 
-```
-Arrival Time per Stop
-```
+Immediately before
 
-I would store it in
-
-```
-proj_t_run_projects
+```jsx
+<RunForm
 ```
 
-because it depends on the run, not the project.
+add
 
-```
-arrival_datetime
-```
-
-Example
-
-```
-Run A
-
-Stop 1
-
-Arrival
-
-9:42 AM
+```jsx
+console.log("Origins:", origins);
 ```
 
-Tomorrow the same project could belong to another run with another arrival time.
+You should see
+
+```js
+[
+    {
+        id:1,
+        origin_name:"Atlanta HQ",
+        formatted_address:"...",
+        ...
+    },
+    ...
+]
+```
+
+If you instead see
+
+```js
+[
+    {
+        status:"Draft"
+    }
+]
+```
+
+or
+
+```js
+[
+    {
+        status_name:"Draft"
+    }
+]
+```
+
+then you've found the bug.
 
 ---
 
-# 9. Estimated Mileage
+### 2. Verify the query
 
-You also mentioned mileage.
+The loader should be querying
 
-Add
-
-```
-estimated_mileage
+```sql
+proj_s_origin_addresses
 ```
 
-to
+NOT
 
 ```
 proj_t_runs
 ```
 
-This should be calculated together with
+NOT
 
 ```
-estimated_distance
-
-estimated_duration
-
-estimated_subtotal
-```
-
-during recalculation.
-
----
-
-# Suggested Phase 1 Database Changes
-
-### New lookup tables
-
-```
-proj_s_building_categories
-
-proj_s_permit_status
-
-proj_s_welcome_call_status
+proj_s_project_status
 ```
 
 ---
 
-### proj_t_projects
+### 3. Verify the prop
 
-Add
+The parent component should be doing something like
 
+```jsx
+<RunForm
+    origins={originAddresses}
+    statuses={statuses}
+/>
 ```
-building_category_id
 
-permit_status_id
+NOT
 
-welcome_call_status_id
-
-invoice_number
-
-order_received_at
-
-scheduled_project_start
-
-scheduled_project_end
-
-install_start
-
-install_end
+```jsx
+origins={statuses}
 ```
 
 ---
 
-### proj_t_runs
+### 4. Verify object shape
 
-Add
+Every origin should contain
 
+```js
+{
+    id,
+    origin_name,
+    formatted_address,
+    address_line_1,
+    city,
+    state
+}
 ```
-estimated_mileage
+
+If instead the object looks like
+
+```js
+{
+    name,
+    code
+}
 ```
+
+or
+
+```js
+{
+    label,
+    value
+}
+```
+
+then
+
+```jsx
+o.origin_name
+```
+
+will be undefined.
 
 ---
 
-### proj_t_run_projects
+# Prompt for Cline
 
-Add
-
-```
-arrival_datetime
-```
-
----
-
-# One More Suggestion
-
-Looking at Asana, there is another field that will become valuable later:
-
-```
-Assignee
-```
-
-Eventually, your runs are going to have:
-
-```
-Run
- ├── Vehicle
- ├── Team
- ├── Driver
- └── Crew
-```
-
-Therefore, **do not add `assignee` to projects**.
-
-The assignment belongs to the **Run**, not the project, because one run services many projects.
-
----
-
-## Prompt for Cline
-
-> We are expanding Phase 1 of the Project Map based on the operational workflow used in Asana. The goal is to capture scheduling and operations data without overengineering the database.
+> The Run Form origin dropdown is not wired correctly.
 >
-> ### Database updates
+> **Current behavior**
 >
-> Create the following lookup tables:
+> * The Setup page correctly loads records from `proj_s_origin_addresses`.
+> * The Run Form dropdown displays `Draft`, which is a Run Status rather than an Origin.
+> * Selecting an origin does not populate the Origin Address field.
 >
-> * `proj_s_building_categories`
-> * `proj_s_permit_status`
-> * `proj_s_welcome_call_status`
+> **Expected behavior**
 >
-> Add the following columns to `proj_t_projects`:
+> * The Origin dropdown must load from `proj_s_origin_addresses`.
+> * Each option should display `origin_name`.
+> * Selecting an origin should store `origin_id`.
+> * The selected origin should populate the read-only Origin Address using `formatted_address`, falling back to `address_line_1`.
 >
-> * `building_category_id` (FK)
-> * `permit_status_id` (FK)
-> * `welcome_call_status_id` (FK)
-> * `invoice_number`
-> * `order_received_at` (datetime)
-> * `scheduled_project_start` (datetime)
-> * `scheduled_project_end` (datetime)
-> * `install_start` (datetime)
-> * `install_end` (datetime)
+> **Investigate the parent component**
 >
-> Add the following column to `proj_t_runs`:
+> 1. Verify the query fetching origin records uses `proj_s_origin_addresses`.
+> 2. Verify the fetched data is passed into `<RunForm origins={originAddresses} />` rather than passing statuses or another collection.
+> 3. Log the `origins` prop before rendering the form to verify its shape.
+> 4. Ensure each origin object contains:
 >
-> * `estimated_mileage`
->
-> Add the following column to `proj_t_run_projects`:
->
-> * `arrival_datetime`
->
-> ### Rules
->
-> * Use lookup tables for statuses and building categories. Do not store status names as free text.
-> * Invoice number remains a text field in `proj_t_projects`.
-> * Arrival time belongs to `proj_t_run_projects` because it is specific to a run, not the project itself.
-> * Scheduled and install dates should support both date and time using datetime fields.
-> * Keep the implementation simple and database-driven.
-> * **DO NOT OVERENGINEER THE SOLUTION.**
-> * **DO NOT INTRODUCE NEW ARCHITECTURE OR COMPLEX ABSTRACTIONS.**
-> * **FOLLOW THE DATABASE DESIGN AS THE SINGLE SOURCE OF TRUTH.**
-> * **NEVER HALF-ASS THE UI/UX. Every new field must be displayed and edited consistently wherever it is used.**
-
----
-
-This is actually a good point to stop and redesign the forms before you keep adding columns. Right now both forms are still "v1" forms. If you continue adding fields randomly, they're going to become cluttered and difficult to use.
-
-Based on your current forms and the Asana workflow, this is how I'd organize them.
-
----
-
-# Project Form (Operations Data)
-
-The Project should contain information about **the customer and the job**, not routing.
-
-## Section 1 — Customer Information
-
-```
-Client Name *
-Dealer *
-Building Category *
-State
-```
-
----
-
-## Section 2 — Project Location
-
-```
-Project Address *
-Latitude (readonly)
-Longitude (readonly)
-```
-
-Keep the current location search.
-
----
-
-## Section 3 — Sales / Order Information
-
-```
-Project Subtotal *
-
-Invoice #
-
-Order Received
-(Date + Time)
-
-Dealer Order
-(button)
-
-```
-
----
-
-## Section 4 — Workflow Status
-
-Instead of only
-
-```
-Status
-```
-
-have
-
-```
-Project Status
-
-Welcome Call Status
-
-Permit Status
-```
-
-Exactly like Asana.
-
----
-
-## Section 5 — Scheduling
-
-```
-Scheduled Start
-
-Scheduled End
-
-Install Start
-
-Install End
-```
-
-instead of three separate dates.
-
----
-
-## Section 6 — Notes
-
-Large textarea.
-
----
-
-# Run Form
-
-Runs are different.
-
-A run is an operational schedule.
-
----
-
-## Section 1 — Run Information
-
-```
-Run Name
-
-Origin
-
-Run Date
-
-Status
-```
-
----
-
-## Section 2 — Team
-
-```
-Team Assigned
-
-Vehicle Assigned
-```
-
-Later you can add
-
-```
-Driver
-```
-
-without redesigning.
-
----
-
-## Section 3 — Route Statistics (readonly)
-
-Instead of only
-
-```
-Distance
-
-Duration
-
-Subtotal
-```
-
-include
-
-```
-Estimated Distance
-
-Estimated Mileage
-
-Estimated Duration
-
-Estimated Revenue
-
-Stops
-```
-
-These should never be editable.
-
-Only recalculation changes them.
-
----
-
-## Section 4 — Notes
-
-Large textarea.
-
----
-
-# Route Timeline
-
-This is already close.
-
-Each stop should eventually show
-
-```
-Stop #
-
-Client
-
-Arrival Time
-
-Travel Time
-
-Distance
-
-Subtotal
-
-Building Category
-
-Permit Status
-
-Welcome Call Status
-
-Note
-```
-
-instead of only
-
-```
-Client
-
-Address
-
-Subtotal
-```
-
----
-
-# Detail Panel
-
-I also noticed the right panel is becoming crowded.
-
-I would group it.
-
-```
-Route Summary
-```
-
-```
-Distance
-
-Mileage
-
-Duration
-
-Revenue
-
-Stops
-```
-
----
-
-```
-Run Information
-```
-
-```
-Origin
-
-Team
-
-Vehicle
-
-Run Date
-
-Status
-```
-
----
-
-```
-Route Timeline
-```
-
----
-
-```
-Route Statistics
-```
-
----
-
-```
-Run Notes
-```
-
----
-
-```
-Footer
-```
-
-```
-Edit
-
-Print Record
-
-Recalculate Run
-```
-
-Nothing else.
-
-No Optimize.
-
-No Delete.
-
-Delete belongs only inside the Edit Run dialog, exactly as you've already decided.
-
----
-
-# Database Additions I'd Make
-
-## New lookup tables
-
-```
-proj_s_building_categories
-
-proj_s_permit_status
-
-proj_s_welcome_call_status
-```
-
----
-
-## proj_t_projects
-
-```
-building_category_id
-
-permit_status_id
-
-welcome_call_status_id
-
-invoice_number
-
-order_received_at
-
-scheduled_start
-
-scheduled_end
-
-install_start
-
-install_end
-```
-
----
-
-## proj_t_runs
-
-```
-estimated_mileage
-```
-
----
-
-## proj_t_run_projects
-
-```
-arrival_datetime
-
-notes
-```
-
----
-
-# One More Improvement
-
-From the Asana screenshots, I noticed another opportunity.
-
-Asana separates the **business workflow** from the **installation workflow**.
-
-For example:
-
-```
-Welcome Call
-↓
-
-Permit
-
-↓
-
-Ready for Install
-
-↓
-
-Installation
-
-↓
-
-Repairs
-
-↓
-
-Completed
-```
-
-Your current `Project Status` is trying to represent all of these with one field.
-
-That will eventually become messy because "Ready for Install" and "Permit Pending" are different concepts.
-
-I recommend keeping them separate:
-
-* **Project Status** → overall lifecycle (Draft, Active, Scheduled, Completed, Cancelled, etc.)
-* **Welcome Call Status** → independent lookup
-* **Permit Status** → independent lookup
-
-That matches how operations actually work and avoids encoding multiple business processes into a single status field.
-
-This keeps the schema normalized, makes filtering much more powerful, and aligns the Project Map with the operational data shown in Asana without overcomplicating the design.
+>    * `id`
+>    * `origin_name`
+>    * `formatted_address`
+>    * `address_line_1`
+> 5. Ensure `form.origin_id` matches `origin.id` so `selectedOrigin` resolves correctly.
+> 6. Do not modify the RunForm UI unless necessary—the likely issue is the data source or prop wiring, not the component itself.

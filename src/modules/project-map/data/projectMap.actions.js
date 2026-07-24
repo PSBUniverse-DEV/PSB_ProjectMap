@@ -151,6 +151,7 @@ export async function createProject(project) {
     project_subtotal: project.project_subtotal != null ? Number(project.project_subtotal) : null,
     created_by: toIntOrNull(project.created_by),
     updated_by: toIntOrNull(project.updated_by),
+    project_notes: hasValue(project.project_notes) ? String(project.project_notes).trim() : null,
     created_at: now,
     updated_at: now,
   };
@@ -346,7 +347,7 @@ export async function loadRuns() {
 
   const { data, error } = await supabase
     .from("proj_t_runs")
-    .select("*, proj_s_origin_addresses(*)")
+    .select("*, proj_s_origin_addresses(*), proj_t_run_projects(project_id)")
     .order("run_date", { ascending: false });
 
   if (error) throw new Error(error.message);

@@ -9,5 +9,5 @@ export default async function ProjectMapPage() {
     loadRuns(),
   ]);
   // Map projectStatuses to statuses for backward compatibility with view
-  return <ProjectMapView {...setup} statuses={setup.projectStatuses || []} runs={runs} />;
+  return <ProjectMapView {...setup} statuses={setup.projectStatuses || []} origins={setup.originAddresses || []} runs={runs} />;
 }

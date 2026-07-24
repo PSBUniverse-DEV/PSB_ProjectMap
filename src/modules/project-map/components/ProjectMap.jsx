@@ -310,7 +310,8 @@ export default function ProjectMap({
       `;
 
       const popup = new MapLibreGL.Popup({ 
-        offset: 20,
+        anchor: "right",
+        offset: 10,
         closeButton: false,
         closeOnClick: false,
         className: "project-map-tooltip"

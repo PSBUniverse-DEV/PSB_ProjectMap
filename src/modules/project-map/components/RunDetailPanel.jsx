@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef } from "react";
 import { StatusBadge } from "@/shared/components/ui";
 
 function getStatusTone(status) {
@@ -40,11 +40,18 @@ function formatMileage(miles) {
   return `${Number(miles).toFixed(1)} mi`;
 }
 
+function getStatusColor(statusName) {
+  if (!statusName) return "#6b7280";
+  return "#6b7280";
+}
+
 export default function RunDetailPanel({ run, runProjects = [], runSegmentData = null, onClose, onEdit, onDelete, onRemoveProject, onReorderStops, onRecalculate, recalculating = false, onEditStopNote }) {
   if (!run) return null;
 
   const [dragIndex, setDragIndex] = useState(null);
   const [dragOverIndex, setDragOverIndex] = useState(null);
+  const runSegmentDataRef = useRef(runSegmentData);
+  runSegmentDataRef.current = runSegmentData;
 
   const originName = run.proj_s_origin_addresses?.origin_name || "No Origin";
   const hasStops = runProjects.length > 0;
@@ -74,7 +81,154 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
     };
   }, [runSegmentData, runProjects]);
 
-  const handlePrint = () => { window.print(); };
+  const handlePrint = () => {
+    const now = new Date();
+    const printDate = now.toLocaleString("en-US", { month: "long", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+
+    const formatInstallDate = (start, end) => {
+      if (!start && !end) return "—";
+      try {
+        const s = start ? new Date(start) : null;
+        const e = end ? new Date(end) : null;
+        const fmt = (d) => d ? d.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }) : "";
+        if (s && e) return `${fmt(s)} – ${fmt(e)}`;
+        if (s) return fmt(s);
+        return fmt(e);
+      } catch { return "—"; }
+    };
+
+    const getProjectStatusName = (proj) => proj.proj_s_project_status?.status_name || "—";
+    const originAddress = run.proj_s_origin_addresses?.formatted_address || run.proj_s_origin_addresses?.address_line_1 || originName;
+
+    const printWindow = window.open("", "_blank", "width=900,height=700");
+    if (!printWindow) return;
+
+    const stopsHtml = runProjects.map((rp, idx) => {
+      const proj = rp.proj_t_projects || {};
+      const stopNum = idx + 1;
+      const segment = runSegmentDataRef.current?.segments?.[idx];
+      const segDistance = segment ? formatDistance(segment.distance) : "—";
+      const segDuration = segment ? formatDuration(segment.duration) : "—";
+      const sub = formatCurrency(stopSubtotals[idx]);
+      const installDate = formatInstallDate(proj.install_start, proj.install_end);
+      const address = proj.formatted_address || (
+        [proj.address_line_1, proj.city, proj.state, proj.postal_code].filter(Boolean).join(", ")
+      ) || "No address";
+      const notes = proj.project_notes || "";
+      const statusName = getProjectStatusName(proj);
+      const distanceLabel = idx === 0 ? `Origin → Stop #${stopNum}` : `Stop #${idx} → Stop #${stopNum}`;
+
+      const installStartFormatted = proj.install_start ? (() => {
+        try {
+          const d = new Date(proj.install_start);
+          const date = d.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric" });
+          const day = d.toLocaleString("en-US", { weekday: "short" });
+          const time = d.toLocaleString("en-US", { hour: "numeric", minute: "2-digit" });
+          return `${date} | ${day} | ${time}`;
+        } catch { return "—"; }
+      })() : "—";
+
+      return `
+        <div style="border: 1px solid #e2e8f0; border-radius: 4px; padding: 8px 10px; margin-bottom: 8px; page-break-inside: avoid; background: #fff;">
+          <div style="font-size: 12px; font-weight: 700; color: #1e293b; margin-bottom: 4px;">Stop #${stopNum}: ${proj.client_name || "Untitled"}</div>
+
+          <table style="width: 100%; border-collapse: collapse; font-size: 10px;">
+            <tr>
+              <td style="padding: 1px 4px; width: 33%;"><span style="font-size: 8px; color: #94a3b8;">Client</span><br style="font-size: 0;">${proj.client_name || "—"}</td>
+              <td style="padding: 1px 4px; width: 33%;"><span style="font-size: 8px; color: #94a3b8;">Dealer</span><br style="font-size: 0;">${proj.dealer || "—"}</td>
+              <td style="padding: 1px 4px; width: 33%;"><span style="font-size: 8px; color: #94a3b8;">Building</span><br style="font-size: 0;">${proj.proj_s_building_categories?.building_category_name || "—"}</td>
+            </tr>
+          </table>
+
+          <table style="width: 100%; border-collapse: collapse; font-size: 10px; margin-top: 2px;">
+            <tr>
+              <td style="padding: 1px 4px; width: 60%;"><span style="font-size: 8px; color: #94a3b8;">Address</span><br style="font-size: 0;">${address}</td>
+              <td style="padding: 1px 4px; width: 40%;"><span style="font-size: 8px; color: #94a3b8;">State</span><br style="font-size: 0;">${proj.state || proj.state_code ? `${proj.state || ""}${proj.state_code ? " (" + proj.state_code + ")" : ""}` : "—"}</td>
+            </tr>
+          </table>
+
+          <table style="width: 100%; border-collapse: collapse; font-size: 10px; margin-top: 2px;">
+            <tr>
+              <td style="padding: 1px 4px; width: 30%;"><span style="font-size: 8px; color: #94a3b8;">${distanceLabel}</span><br style="font-size: 0;">${segDistance}</td>
+              <td style="padding: 1px 4px; width: 40%;"><span style="font-size: 8px; color: #94a3b8;">Install</span><br style="font-size: 0;">${installStartFormatted}</td>
+              <td style="padding: 1px 4px; width: 15%;"><span style="font-size: 8px; color: #94a3b8;">Travel</span><br style="font-size: 0;">${segDuration}</td>
+              <td style="padding: 1px 4px; width: 15%; text-align: right;"><span style="font-size: 8px; color: #94a3b8;">Subtotal</span><br style="font-size: 0;"><span style="font-weight: 700; color: #16a34a;">${sub}</span></td>
+            </tr>
+          </table>
+
+          ${notes ? `
+          <div style="font-size: 9px; color: #475569; background: #f8fafc; padding: 3px 5px; border-radius: 2px; border: 1px solid #e2e8f0; margin-top: 4px; white-space: pre-wrap; line-height: 1.3;">${notes}</div>
+          ` : ""}
+        </div>
+      `;
+    }).join("\n");
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Run Record - ${run.run_name || `Run #${run.run_number || "?"}`}</title>
+        <style>
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 11px; color: #1e293b; padding: 16px; max-width: 210mm; margin: 0 auto; }
+          @page { size: A4 portrait; margin: 12mm 15mm; }
+          @media print { body { padding: 0; } .no-print { display: none; } }
+        </style>
+      </head>
+      <body>
+        <div class="no-print" style="margin-bottom: 12px; padding: 8px; background: #f0f9ff; border: 1px solid #93c5fd; border-radius: 4px; text-align: center;">
+          <button onclick="window.print()" style="padding: 6px 20px; font-size: 13px; font-weight: 600; border: none; background: #1e293b; color: #fff; border-radius: 4px; cursor: pointer;">🖨 Print Manifest</button>
+          <button onclick="window.close()" style="margin-left: 6px; padding: 6px 20px; font-size: 13px; font-weight: 600; border: 1px solid #e2e8f0; background: #fff; color: #1e293b; border-radius: 4px; cursor: pointer;">Close</button>
+        </div>
+
+        <div style="text-align: center; margin-bottom: 12px;">
+          <div style="font-size: 18px; font-weight: 800; color: #1e293b;">RUN RECORD</div>
+          <div style="font-size: 10px; color: #64748b;">Delivery Manifest</div>
+        </div>
+
+        <div style="border: 2px solid #1e293b; border-radius: 4px; padding: 10px; margin-bottom: 14px;">
+          <div style="font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">Run Information</div>
+          <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+            <tr>
+              <td style="padding: 2px 4px; width: 33%;"><span style="font-size: 9px; color: #94a3b8;">Run Name</span><br style="font-size: 0; font-weight: 600;">${run.run_name || `Run #${run.run_number || "?"}`}</td>
+              <td style="padding: 2px 4px; width: 33%;"><span style="font-size: 9px; color: #94a3b8;">Origin Address</span><br style="font-size: 0; font-weight: 600;">${originAddress}</td>
+              <td style="padding: 2px 4px; width: 33%;"><span style="font-size: 9px; color: #94a3b8;">Run Date</span><br style="font-size: 0; font-weight: 600;">${run.run_date || "—"}</td>
+            </tr>
+            <tr>
+              <td style="padding: 2px 4px;"><span style="font-size: 9px; color: #94a3b8;">Team Assigned</span><br style="font-size: 0; font-weight: 600;">${run.team_assigned || "—"}</td>
+              <td style="padding: 2px 4px;"><span style="font-size: 9px; color: #94a3b8;">Vehicle Assigned</span><br style="font-size: 0; font-weight: 600;">${run.vehicle_assigned || "—"}</td>
+              <td style="padding: 2px 4px;"><span style="font-size: 9px; color: #94a3b8;">Total Stops</span><br style="font-size: 0; font-weight: 600;">${runProjects.length}</td>
+            </tr>
+            <tr>
+              <td style="padding: 2px 4px;"><span style="font-size: 9px; color: #94a3b8;">Estimated Distance</span><br style="font-size: 0; font-weight: 600;">${totalDistance}</td>
+              <td style="padding: 2px 4px;"><span style="font-size: 9px; color: #94a3b8;">Estimated Mileage</span><br style="font-size: 0; font-weight: 600;">${totalMileage}</td>
+              <td style="padding: 2px 4px;"><span style="font-size: 9px; color: #94a3b8;">Estimated Travel Time</span><br style="font-size: 0; font-weight: 600;">${totalDuration}</td>
+            </tr>
+            <tr>
+              <td colspan="3" style="padding: 2px 4px;"><span style="font-size: 9px; color: #94a3b8;">Total Revenue</span><br style="font-size: 0;"><span style="font-weight: 700; color: #16a34a;">${formatCurrency(totalRevenue)}</span></td>
+            </tr>
+          </table>
+          <div style="font-size: 9px; color: #94a3b8; margin-top: 4px; padding-top: 4px; border-top: 1px solid #e2e8f0;">Printed: ${printDate}</div>
+        </div>
+
+        <div style="font-size: 11px; font-weight: 700; color: #1e293b; margin-bottom: 8px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">Stop Details</div>
+
+        ${stopsHtml || '<div style="color: #64748b; font-style: italic;">No stops assigned to this run.</div>'}
+
+        <div style="margin-top: 24px;">
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr>
+              <td style="border-top: 1px solid #1e293b; padding-top: 6px; text-align: center; width: 50%;"><span style="font-size: 9px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Prepared By</span></td>
+              <td style="border-top: 1px solid #1e293b; padding-top: 6px; text-align: center; width: 50%;"><span style="font-size: 9px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Received By</span></td>
+            </tr>
+          </table>
+          <div style="margin: 16px auto 0; max-width: 200px; border-top: 1px solid #1e293b; padding-top: 6px; text-align: center;"><span style="font-size: 9px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Date</span></div>
+        </div>
+      </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
 
   const status = run.status || "Draft";
   const actionButtons = useMemo(() => {

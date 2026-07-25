@@ -178,8 +178,8 @@ export default function ProjectMap({
       const id = project.id;
       projectIds.add(id);
 
-      const lat = project.site_latitude || project.address_latitude;
-      const lng = project.site_longitude || project.address_longitude;
+      const lat = project.site_latitude ?? project.address_latitude;
+      const lng = project.site_longitude ?? project.address_longitude;
       if (lat == null || lng == null) return;
 
       const statusName = project.proj_s_project_status?.status_name || "";
@@ -195,6 +195,9 @@ export default function ProjectMap({
 
       const markerEl = document.createElement("div");
       markerEl.style.cssText = `
+        position: absolute;
+        left: 0;
+        top: 0;
         width: 20px;
         height: 20px;
         background: ${stateColor};
@@ -206,6 +209,10 @@ export default function ProjectMap({
 
       const labelEl = document.createElement("div");
       labelEl.style.cssText = `
+        position: absolute;
+        bottom: 22px;
+        left: 50%;
+        transform: translateX(-50%);
         background: rgba(255, 255, 255, 0.95);
         border: 1px solid #e2e8f0;
         border-radius: 3px;
@@ -216,14 +223,13 @@ export default function ProjectMap({
         white-space: nowrap;
         pointer-events: none;
         box-shadow: 0 1px 2px rgba(0,0,0,0.15);
-        margin-bottom: 2px;
       `;
       labelEl.textContent = project.client_name || "Untitled";
 
       const wrapper = document.createElement("div");
-      wrapper.style.cssText = "display: inline-flex; flex-direction: column; align-items: center;";
-      wrapper.appendChild(labelEl);
+      wrapper.style.cssText = "position: relative; width: 20px; height: 20px; pointer-events: auto;";
       wrapper.appendChild(markerEl);
+      wrapper.appendChild(labelEl);
 
       marker = new MapLibreGL.Marker({ element: wrapper, anchor: "bottom" })
         .setLngLat([lng, lat])

@@ -45,6 +45,7 @@ export default function ProjectMap({
   const modeRef = useRef(mode);
   const selectedRunIdRef = useRef(selectedRunId);
   const runProjectsRef = useRef(runProjects);
+  const runsRef = useRef(runs);
   const onAddToRunRef = useRef(onAddToRun);
   const onRemoveFromRunRef = useRef(onRemoveFromRun);
   
@@ -52,6 +53,7 @@ export default function ProjectMap({
   modeRef.current = mode;
   selectedRunIdRef.current = selectedRunId;
   runProjectsRef.current = runProjects;
+  runsRef.current = runs;
   onAddToRunRef.current = onAddToRun;
   onRemoveFromRunRef.current = onRemoveFromRun;
 
@@ -279,7 +281,7 @@ export default function ProjectMap({
         max-width: 280px;
         line-height: 1.4;
       `;
-      const assignedRun = runs.find((r) => (r.proj_t_run_projects || []).some((rp) => rp.project_id === id));
+      const assignedRun = runsRef.current.find((r) => (r.proj_t_run_projects || []).some((rp) => rp.project_id === id));
       const assignedRunLabel = assignedRun ? assignedRun.run_name || `Run #${assignedRun.run_number || assignedRun.id}` : null;
 
       tooltip.innerHTML = `
@@ -364,7 +366,7 @@ export default function ProjectMap({
         }
 
         // Shared assignment lookup — same source of truth as hover
-        const assignedRun = runs.find((r) => (r.proj_t_run_projects || []).some((rp) => rp.project_id === id));
+        const assignedRun = runsRef.current.find((r) => (r.proj_t_run_projects || []).some((rp) => rp.project_id === id));
         const assignedRunName = assignedRun ? assignedRun.run_name || `Run #${assignedRun.run_number || assignedRun.id}` : null;
 
         // Determine relationship

@@ -347,8 +347,20 @@ export async function loadRuns() {
 
   const { data, error } = await supabase
     .from("proj_t_runs")
-    .select("*, proj_s_origin_addresses(*), proj_t_run_projects(project_id)")
+    .select("*, proj_s_origin_addresses(*)")
     .order("run_date", { ascending: false });
+
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+export async function loadAllRunProjects() {
+  const supabase = getSupabaseAdmin();
+
+  const { data, error } = await supabase
+    .from("proj_t_run_projects")
+    .select("id, run_id, project_id, stop_sequence, notes, estimated_arrival, estimated_departure, arrival_datetime")
+    .order("run_id", { ascending: true });
 
   if (error) throw new Error(error.message);
   return data || [];

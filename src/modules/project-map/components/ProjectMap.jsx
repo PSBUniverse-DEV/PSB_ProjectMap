@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import MapLibreGL from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 
@@ -30,6 +30,7 @@ export default function ProjectMap({
   runRouteData = null,
   onAddToRun = null,
   onRemoveFromRun = null,
+  projectRunLookup = new Map(),
 }) {
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
@@ -48,6 +49,7 @@ export default function ProjectMap({
   const runsRef = useRef(runs);
   const onAddToRunRef = useRef(onAddToRun);
   const onRemoveFromRunRef = useRef(onRemoveFromRun);
+  const projectRunLookupRef = useRef(projectRunLookup);
   
   // Keep refs in sync with props
   modeRef.current = mode;
@@ -56,6 +58,7 @@ export default function ProjectMap({
   runsRef.current = runs;
   onAddToRunRef.current = onAddToRun;
   onRemoveFromRunRef.current = onRemoveFromRun;
+  projectRunLookupRef.current = projectRunLookup;
 
   // Filter projects (memoized to avoid recreating on every render)
   const filteredProjects = useMemo(() => projects.filter((p) => {
@@ -141,6 +144,7 @@ export default function ProjectMap({
             "line-opacity": 0.8,
           },
         });
+
       } catch (err) {
         console.error("[ProjectMap] Failed to add layers:", err);
       }
@@ -168,7 +172,7 @@ export default function ProjectMap({
     };
   }, [osmStyle]);
 
-  // Update markers
+  // Update markers (plain MapLibre default markers, no custom HTML)
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -195,47 +199,8 @@ export default function ProjectMap({
         return;
       }
 
-      const markerEl = document.createElement("div");
-      markerEl.style.cssText = `
-        position: absolute;
-        left: 0;
-        top: 0;
-        width: 20px;
-        height: 20px;
-        background: ${stateColor};
-        border: 2px solid #fff;
-        border-radius: 50%;
-        cursor: pointer;
-        box-shadow: 0 1px 4px rgba(0,0,0,0.3);
-      `;
-
-      const labelEl = document.createElement("div");
-      labelEl.style.cssText = `
-        position: absolute;
-        bottom: 22px;
-        left: 50%;
-        transform: translateX(-50%);
-        background: rgba(255, 255, 255, 0.95);
-        border: 1px solid #e2e8f0;
-        border-radius: 3px;
-        padding: 1px 4px;
-        font-size: 10px;
-        font-weight: 600;
-        color: ${statusColor};
-        white-space: nowrap;
-        pointer-events: none;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.15);
-      `;
-      labelEl.textContent = project.client_name || "Untitled";
-
-      const wrapper = document.createElement("div");
-      wrapper.style.cssText = "position: relative; width: 20px; height: 20px; pointer-events: auto;";
-      wrapper.appendChild(markerEl);
-      wrapper.appendChild(labelEl);
-
-      marker = new MapLibreGL.Marker({ element: wrapper, anchor: "bottom" })
-        .setLngLat([lng, lat])
-        .addTo(map);
+      const assignedRun = projectRunLookupRef.current.get(id) || null;
+      const assignedRunLabel = assignedRun ? assignedRun.run_name || `Run #${assignedRun.run_number || assignedRun.id}` : null;
 
       const subtotalStr = project.project_subtotal != null
         ? `$${Number(project.project_subtotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -267,6 +232,40 @@ export default function ProjectMap({
       const projectNotes = project.project_notes || "";
       const truncatedNotes = projectNotes.length > 120 ? projectNotes.substring(0, 120) + "…" : projectNotes;
 
+      // Native MapLibre marker with state color
+      marker = new MapLibreGL.Marker({
+        color: stateColor,
+        scale: 0.9
+      })
+        .setLngLat([lng, lat])
+        .addTo(map);
+
+      // Persistent label popup (always visible)
+      const labelContent = document.createElement("div");
+      labelContent.style.cssText = `
+        font-size: 9px;
+        color: #1e293b;
+        line-height: 1.4;
+      `;
+      labelContent.innerHTML = `
+        <div style="font-weight: 600; line-height: 1.2;">${project.client_name || "Untitled"}</div>
+        <div style="color: #16a34a; font-weight: 600; line-height: 1.2;">${subtotalStr || "—"}</div>
+        ${assignedRunLabel ? `<div style="color: #6366f1; line-height: 1.2;">📦 ${assignedRunLabel}</div>` : ""}
+      `;
+
+      const persistentPopup = new MapLibreGL.Popup({
+        closeButton: false,
+        closeOnClick: false,
+        closeOnMove: false,
+        anchor: "right",
+        offset: 10,
+        className: "project-persistent-label"
+      })
+        .setLngLat([lng, lat])
+        .setDOMContent(labelContent)
+        .addTo(map);
+
+      // Detailed hover popup (existing)
       const tooltip = document.createElement("div");
       tooltip.style.cssText = `
         background: rgba(255, 255, 255, 0.98);
@@ -281,8 +280,6 @@ export default function ProjectMap({
         max-width: 280px;
         line-height: 1.4;
       `;
-      const assignedRun = runsRef.current.find((r) => (r.proj_t_run_projects || []).some((rp) => rp.project_id === id));
-      const assignedRunLabel = assignedRun ? assignedRun.run_name || `Run #${assignedRun.run_number || assignedRun.id}` : null;
 
       tooltip.innerHTML = `
         <div style="font-weight: 700; font-size: 13px; color: #1e293b; margin-bottom: ${assignedRunLabel ? "4px" : "8px"}; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px;">${project.client_name || "Untitled"}</div>
@@ -322,7 +319,7 @@ export default function ProjectMap({
         ` : ""}
       `;
 
-      const popup = new MapLibreGL.Popup({ 
+      const hoverPopup = new MapLibreGL.Popup({ 
         anchor: "right",
         offset: 10,
         closeButton: false,
@@ -330,107 +327,20 @@ export default function ProjectMap({
         className: "project-map-tooltip"
       }).setDOMContent(tooltip);
 
+      const markerEl = marker.getElement();
       markerEl.addEventListener("mouseenter", () => {
-        try { popup.setLngLat(marker.getLngLat()).addTo(map); } catch (e) {}
+        try { persistentPopup.remove(); } catch (e) {}
+        try { hoverPopup.setLngLat(marker.getLngLat()).addTo(map); } catch (e) {}
       });
 
       markerEl.addEventListener("mouseleave", () => {
-        try { popup.remove(); } catch (e) {}
+        try { hoverPopup.remove(); } catch (e) {}
+        try { persistentPopup.setLngLat(marker.getLngLat()).addTo(map); } catch (e) {}
       });
 
       markerEl.addEventListener("click", () => {
-        try { popup.remove(); } catch (e) {}
+        try { hoverPopup.remove(); } catch (e) {}
         onSelectProject?.(project.id);
-      });
-
-      markerEl.addEventListener("contextmenu", (e) => e.preventDefault());
-
-      markerEl.addEventListener("mousedown", (e) => {
-        if (e.button !== 2) return;
-        e.preventDefault();
-        e.stopPropagation();
-        try { popup.remove(); } catch (e) {}
-
-        const currentMode = modeRef.current;
-        const currentSelectedRunId = selectedRunIdRef.current;
-        const currentOnAddToRun = onAddToRunRef.current;
-        const currentOnRemoveFromRun = onRemoveFromRunRef.current;
-
-        if (currentMode !== "runs") return;
-        if (!currentOnAddToRun && !currentOnRemoveFromRun) return;
-
-        // Close any previous context menu popup
-        if (contextMenuPopupRef.current) {
-          try { contextMenuPopupRef.current.remove(); } catch (e) {}
-          contextMenuPopupRef.current = null;
-        }
-
-        // Shared assignment lookup — same source of truth as hover
-        const assignedRun = runsRef.current.find((r) => (r.proj_t_run_projects || []).some((rp) => rp.project_id === id));
-        const assignedRunName = assignedRun ? assignedRun.run_name || `Run #${assignedRun.run_number || assignedRun.id}` : null;
-
-        // Determine relationship
-        let relationship;
-        if (!assignedRun) {
-          relationship = "unassigned";
-        } else if (assignedRun.id === currentSelectedRunId) {
-          relationship = "selected";
-        } else {
-          relationship = "other";
-        }
-
-        // Find run_project id for remove action (from runs array directly)
-        const runProjectId = relationship === "selected"
-          ? (assignedRun.proj_t_run_projects || []).find((rp) => rp.project_id === id)?.id
-          : null;
-
-        let popupHtml = "";
-        if (relationship === "unassigned") {
-          if (!currentSelectedRunId) {
-            popupHtml = `<div style="font-size: 11px; color: #94a3b8; font-style: italic; padding: 4px 0;">Select a run first</div>`;
-          } else {
-            popupHtml = `<button data-add-to-run="${id}" style="width: 100%; padding: 6px 12px; font-size: 11px; font-weight: 600; border-radius: 4px; border: 1px solid #16a34a; background: #16a34a; color: #fff; cursor: pointer;">+ Add to Run</button>`;
-          }
-        } else if (relationship === "selected") {
-          popupHtml = `<button data-remove-from-run="${id}" style="width: 100%; padding: 6px 12px; font-size: 11px; font-weight: 600; border-radius: 4px; border: 1px solid #dc2626; background: #fef2f2; color: #dc2626; cursor: pointer;">− Remove from Run</button>`;
-        } else {
-          popupHtml = `
-            <div style="font-size: 11px; color: #dc2626; font-weight: 600; margin-bottom: 4px;">Already Assigned</div>
-            <div style="font-size: 10px; color: #64748b; margin-bottom: 6px; line-height: 1.4;">Run: <strong>${assignedRunName || "Unknown"}</strong></div>
-            <div style="font-size: 10px; color: #94a3b8; font-style: italic;">Remove it from that run first.</div>
-          `;
-        }
-
-        const contextPopup = new MapLibreGL.Popup({
-          offset: 20,
-          closeButton: true,
-          closeOnClick: false,
-          className: "project-map-tooltip",
-          maxWidth: "200px",
-        }).setHTML(popupHtml);
-
-        try { contextPopup.setLngLat(marker.getLngLat()).addTo(map); } catch (e) {}
-        contextMenuPopupRef.current = contextPopup;
-
-        contextPopup.on("close", () => {
-          contextMenuPopupRef.current = null;
-        });
-
-        const addBtn = contextPopup.getElement()?.querySelector(`[data-add-to-run="${id}"]`);
-        if (addBtn) {
-          addBtn.addEventListener("click", () => {
-            try { contextPopup.remove(); } catch (e) {}
-            currentOnAddToRun?.(id);
-          });
-        }
-
-        const removeBtn = contextPopup.getElement()?.querySelector(`[data-remove-from-run="${id}"]`);
-        if (removeBtn) {
-          removeBtn.addEventListener("click", () => {
-            try { contextPopup.remove(); } catch (e) {}
-            currentOnRemoveFromRun?.(runProjectId);
-          });
-        }
       });
 
       newMarkersMap[id] = marker;
@@ -467,17 +377,16 @@ export default function ProjectMap({
     }
   }, [filteredProjects, stateColorLookup, searchResults]);
 
-  // Update origin marker and route line (no overlay — empty state lives in RunDetailPanel)
+  // Update origin marker (plain MapLibre default marker, no custom HTML)
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    try {
-      if (originMarkerRef.current) {
-        originMarkerRef.current.remove();
-        originMarkerRef.current = null;
-      }
-    } catch (e) {}
+    // Remove old marker if it exists
+    if (originMarkerRef.current) {
+      originMarkerRef.current.remove();
+      originMarkerRef.current = null;
+    }
 
     let origin = selectedOrigin;
     if (mode === "runs" && selectedRunId) {
@@ -486,49 +395,11 @@ export default function ProjectMap({
     }
 
     if (origin && origin.latitude != null && origin.longitude != null) {
-      const originEl = document.createElement("div");
-      originEl.style.cssText = `
-        width: 24px;
-        height: 24px;
-        background: #059669;
-        border: 3px solid #fff;
-        border-radius: 4px;
-        cursor: default;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: #fff;
-        font-size: 12px;
-        font-weight: 700;
-        line-height: 1;
-      `;
-      originEl.textContent = "O";
-
-      const originLabel = document.createElement("div");
-      originLabel.style.cssText = `
-        position: absolute;
-        top: -16px;
-        left: 50%;
-        transform: translateX(-50%);
-        background: rgba(5, 150, 105, 0.9);
-        border-radius: 3px;
-        padding: 1px 4px;
-        font-size: 9px;
-        font-weight: 600;
-        color: #fff;
-        white-space: nowrap;
-        pointer-events: none;
-      `;
-      originLabel.textContent = origin.origin_name || "Origin";
-
-      const originWrapper = document.createElement("div");
-      originWrapper.style.cssText = "position: relative; display: inline-block;";
-      originWrapper.appendChild(originEl);
-      originWrapper.appendChild(originLabel);
-
       try {
-        originMarkerRef.current = new MapLibreGL.Marker({ element: originWrapper })
+        originMarkerRef.current = new MapLibreGL.Marker({
+          color: "#000000",
+          scale: 1.0
+        })
           .setLngLat([origin.longitude, origin.latitude])
           .addTo(map);
       } catch (e) {}

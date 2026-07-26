@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Modal, toastError, toastSuccess } from "@/shared/components/ui";
-import { deleteProject, calculateRoute, calculateMultiStopRoute, calculateSegmentRoutes, deleteRun, removeProjectFromRun, loadRunDetails, updateStopSequence, addProjectToRun, updateRun, getProjectRunAssignment, updateStopNote, updateRunStopsCount, loadRuns } from "../data/projectMap.actions";
+import { deleteProject, calculateRoute, calculateMultiStopRoute, calculateSegmentRoutes, deleteRun, removeProjectFromRun, loadRunDetails, updateStopSequence, addProjectToRun, updateRun, getProjectRunAssignment, updateStopNote, updateRunStopsCount, loadRuns, loadAllRunProjects } from "../data/projectMap.actions";
 import ProjectMap from "../components/ProjectMap";
 import ProjectList from "../components/ProjectList";
 import ProjectDetailDrawer from "../components/ProjectDetailDrawer";
@@ -45,8 +45,30 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
   const [showRouteErrorModal, setShowRouteErrorModal] = useState(false);
   const [recalculating, setRecalculating] = useState(false);
   const [editingStopNote, setEditingStopNote] = useState(null);
+  const [allRunProjects, setAllRunProjects] = useState([]);
 
   useEffect(() => { window.scrollTo(0, 0); }, []);
+
+  // Fetch all run projects for the Assigned Run lookup
+  useEffect(() => {
+    let cancelled = false;
+    loadAllRunProjects()
+      .then((data) => { if (!cancelled) setAllRunProjects(data); })
+      .catch((err) => { if (!cancelled) console.error("[ProjectMapView] Failed to load run projects:", err); });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Single source of truth: projectId -> run
+  const projectRunLookup = useMemo(() => {
+    const lookup = new Map();
+    allRunProjects.forEach((rp) => {
+      const run = runs.find((r) => r.id === rp.run_id);
+      if (run) {
+        lookup.set(rp.project_id, run);
+      }
+    });
+    return lookup;
+  }, [allRunProjects, runs]);
 
   const refreshRuns = useCallback(async () => {
     try {
@@ -439,18 +461,6 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
         </div>
       )}
 
-      {mode === "projects" && origins.length > 0 && (
-        <div style={{ padding: "2px 10px", background: "#fff", borderBottom: "1px solid #e2e8f0", display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
-          <label style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", whiteSpace: "nowrap" }}>Origin:</label>
-          <select value={selectedOriginId || ""} onChange={(e) => setSelectedOriginId(e.target.value || null)} style={{ fontSize: "11px", padding: "2px 6px", borderRadius: "3px", border: "1px solid #e2e8f0", background: "#fff", color: "#1e293b", maxWidth: "240px" }}>
-            <option value="">Select origin...</option>
-            {origins.map((o) => (<option key={o.id} value={o.id}>{o.origin_name}</option>))}
-          </select>
-          {routeLoading && <span style={{ fontSize: "10px", color: "#64748b" }}>Calculating route...</span>}
-          {routeInfo && <span style={{ fontSize: "10px", color: "#1e293b" }}>{routeInfo.distance} · {routeInfo.duration}</span>}
-        </div>
-      )}
-
       <div style={{ flex: 1, display: "flex", position: "relative", overflow: "hidden", minHeight: 0 }}>
         <div style={{ width: "240px", minWidth: "240px", flexShrink: 0, zIndex: 10, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           {mode === "projects" ? (
@@ -461,11 +471,11 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
         </div>
 
         <div style={{ flex: 1, position: "relative", minHeight: 0, minWidth: 0 }}>
-          <ProjectMap projects={projects} selectedProjectId={selectedProjectId} onSelectProject={handleSelectProject} filters={filters} selectedOrigin={selectedOrigin} routeData={routeData} stateColorLookup={stateColorLookup} statuses={statuses} buildingCategories={buildingCategories} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} searchResults={searchResults} mode={mode} runs={runs} selectedRunId={selectedRunId} runProjects={runProjects} runRouteData={runRouteData} onAddToRun={handleAddProjectToRun} onRemoveFromRun={handleRemoveProjectFromRun} />
+          <ProjectMap projects={projects} selectedProjectId={selectedProjectId} onSelectProject={handleSelectProject} filters={filters} selectedOrigin={selectedOrigin} routeData={routeData} stateColorLookup={stateColorLookup} statuses={statuses} buildingCategories={buildingCategories} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} searchResults={searchResults} mode={mode} runs={runs} selectedRunId={selectedRunId} runProjects={runProjects} runRouteData={runRouteData} onAddToRun={handleAddProjectToRun} onRemoveFromRun={handleRemoveProjectFromRun} projectRunLookup={projectRunLookup} />
         </div>
 
         {mode === "projects" && selectedProject && (
-          <ProjectDetailDrawer project={selectedProject} statuses={statuses} buildingCategories={buildingCategories} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} onClose={handleCloseDrawer} onEdit={handleEdit} onDelete={() => setConfirmDeleteId(selectedProject.id)} routeInfo={routeInfo} />
+          <ProjectDetailDrawer project={selectedProject} statuses={statuses} buildingCategories={buildingCategories} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} projectRunLookup={projectRunLookup} onClose={handleCloseDrawer} onEdit={handleEdit} onDelete={() => setConfirmDeleteId(selectedProject.id)} routeInfo={routeInfo} />
         )}
         {mode === "runs" && selectedRun && (
           <RunDetailPanel run={selectedRun} runProjects={runProjects} runSegmentData={runSegmentData} onClose={handleCloseRunDetail} onEdit={handleEditRun} onDelete={() => setConfirmDeleteRunId(selectedRun.id)} onRemoveProject={handleRemoveProjectFromRun} onReorderStops={handleReorderStops} onRecalculate={handleRecalculate} recalculating={recalculating} onEditStopNote={handleEditStopNote} />

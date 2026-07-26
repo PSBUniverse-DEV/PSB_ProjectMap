@@ -4,11 +4,16 @@ import { useMemo } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faLocationDot, faCalendarDays, faBuilding, faDollarSign, faTag } from "@fortawesome/free-solid-svg-icons";
 
-export default function ProjectDetailDrawer({ project, statuses = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [], onClose, onEdit, onDelete, routeInfo = null }) {
+export default function ProjectDetailDrawer({ project, statuses = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [], projectRunLookup = new Map(), onClose, onEdit, onDelete, routeInfo = null }) {
   const statusName = useMemo(() => {
     if (!project) return "";
     return project.proj_s_project_status?.status_name || statuses.find((s) => s.status_id === project.status_id)?.status_name || "";
   }, [project, statuses]);
+  
+  const assignedRun = useMemo(() => {
+    if (!project) return null;
+    return projectRunLookup.get(project.id) || null;
+  }, [project, projectRunLookup]);
 
   const buildingCategoryName = useMemo(() => {
     if (!project) return "";
@@ -136,6 +141,21 @@ export default function ProjectDetailDrawer({ project, statuses = [], buildingCa
               <tr>
                 <td style={{ padding: "4px 0", fontSize: "11px", color: "#64748b", fontWeight: 500 }}>Invoice #</td>
                 <td style={{ padding: "4px 0", fontSize: "12px", color: "#1e293b", fontWeight: 600, textAlign: "right" }}>{project.invoice_number || "—"}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        {/* Assigned Run */}
+        <div style={{ marginBottom: "14px" }}>
+          <div style={{ fontSize: "10px", fontWeight: 700, color: "#27374f", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}><u>Assigned Run</u></div>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <tbody>
+              <tr>
+                <td style={{ padding: "4px 0", fontSize: "11px", color: "#f73d3d", fontWeight: 500 }}>📦 Run</td>
+                <td style={{ padding: "4px 0", fontSize: "12px", color: "#3b1e26", fontWeight: 600, textAlign: "right" }}>
+                  {assignedRun ? (assignedRun.run_name || `Run #${assignedRun.run_number || assignedRun.id}`) : "Not Assigned"}
+                </td>
               </tr>
             </tbody>
           </table>

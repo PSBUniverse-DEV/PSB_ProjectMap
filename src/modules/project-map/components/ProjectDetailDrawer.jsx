@@ -12,7 +12,8 @@ export default function ProjectDetailDrawer({ project, statuses = [], buildingCa
   
   const assignedRun = useMemo(() => {
     if (!project) return null;
-    return projectRunLookup.get(project.id) || null;
+    const assignment = projectRunLookup.get(project.id) || null;
+    return assignment?.run || null;
   }, [project, projectRunLookup]);
 
   const buildingCategoryName = useMemo(() => {

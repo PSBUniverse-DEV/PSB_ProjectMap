@@ -10,6 +10,15 @@ function getStatusColor(statusName, statuses = []) {
   return found?.display_color || "#6b7280";
 }
 
+function getOrdinalStop(sequence) {
+  if (sequence == null) return "";
+  const n = Number(sequence) + 1; // 0-based to 1-based
+  const s = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+  const suffix = s[(v - 20) % 10] || s[v] || s[0];
+  return `${n}${suffix} stop`;
+}
+
 export default function ProjectMap({
   projects = [],
   selectedProjectId,
@@ -31,11 +40,11 @@ export default function ProjectMap({
   onAddToRun = null,
   onRemoveFromRun = null,
   projectRunLookup = new Map(),
+  showLabels = true,
 }) {
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
-  const markersRef = useRef([]);
-  const markersMapRef = useRef({});
+  const markersMapRef = useRef({}); // id -> { marker, persistentPopup, hoverPopup }
   const originMarkerRef = useRef(null);
   const routeSourceRef = useRef("route-line");
   const initialFitDone = useRef(false);
@@ -50,6 +59,7 @@ export default function ProjectMap({
   const onAddToRunRef = useRef(onAddToRun);
   const onRemoveFromRunRef = useRef(onRemoveFromRun);
   const projectRunLookupRef = useRef(projectRunLookup);
+  const showLabelsRef = useRef(showLabels);
   
   // Keep refs in sync with props
   modeRef.current = mode;
@@ -59,12 +69,60 @@ export default function ProjectMap({
   onAddToRunRef.current = onAddToRun;
   onRemoveFromRunRef.current = onRemoveFromRun;
   projectRunLookupRef.current = projectRunLookup;
+  showLabelsRef.current = showLabels;
+
+  // Helper to extract calendar date (YYYY-MM-DD) from any date value
+  const toDateString = (value) => {
+    if (!value) return null;
+    if (typeof value === 'string') {
+      // If it's already a string, extract just the date part (YYYY-MM-DD)
+      return value.split('T')[0];
+    }
+    const d = new Date(value);
+    return d.toISOString().split('T')[0];
+  };
 
   // Filter projects (memoized to avoid recreating on every render)
   const filteredProjects = useMemo(() => projects.filter((p) => {
     if (filters.status && String(p.status_id) !== String(filters.status)) return false;
+    if (filters.permitStatus && String(p.permit_status_id) !== String(filters.permitStatus)) return false;
+    if (filters.welcomeCallStatus && String(p.welcome_call_status_id) !== String(filters.welcomeCallStatus)) return false;
     if (filters.dealer && p.dealer !== filters.dealer) return false;
     if (filters.state && p.state_code !== filters.state) return false;
+    
+    // Order Received date filter (compare calendar dates only)
+    if (filters.orderReceivedFrom || filters.orderReceivedTo) {
+      const projectDate = toDateString(p.order_received_at);
+      if (projectDate) {
+        if (filters.orderReceivedFrom && projectDate < filters.orderReceivedFrom) return false;
+        if (filters.orderReceivedTo && projectDate > filters.orderReceivedTo) return false;
+      } else if (filters.orderReceivedFrom || filters.orderReceivedTo) {
+        return false;
+      }
+    }
+    
+    // Scheduled date filter (compare calendar dates only)
+    if (filters.scheduledFrom || filters.scheduledTo) {
+      const projectDate = toDateString(p.scheduled_project_start);
+      if (projectDate) {
+        if (filters.scheduledFrom && projectDate < filters.scheduledFrom) return false;
+        if (filters.scheduledTo && projectDate > filters.scheduledTo) return false;
+      } else if (filters.scheduledFrom || filters.scheduledTo) {
+        return false;
+      }
+    }
+    
+    // Install date filter (compare calendar dates only)
+    if (filters.installFrom || filters.installTo) {
+      const projectDate = toDateString(p.install_start);
+      if (projectDate) {
+        if (filters.installFrom && projectDate < filters.installFrom) return false;
+        if (filters.installTo && projectDate > filters.installTo) return false;
+      } else if (filters.installFrom || filters.installTo) {
+        return false;
+      }
+    }
+    
     if (filters.search) {
       const q = filters.search.toLowerCase();
       const match =
@@ -161,9 +219,12 @@ export default function ProjectMap({
     mapRef.current = map;
 
     return () => {
-      Object.values(markersMapRef.current).forEach((m) => m.remove());
+      Object.values(markersMapRef.current).forEach((bundle) => {
+        try { bundle.persistentPopup?.remove(); } catch (e) {}
+        try { bundle.hoverPopup?.remove(); } catch (e) {}
+        try { bundle.marker?.remove(); } catch (e) {}
+      });
       markersMapRef.current = {};
-      markersRef.current = [];
       originMarkerRef.current = null;
       try { map.remove(); } catch (e) { }
       mapRef.current = null;
@@ -192,15 +253,24 @@ export default function ProjectMap({
       const statusColor = getStatusColor(statusName, statuses);
       const stateColor = stateColorLookup[project.state_code] || statusColor;
 
-      let marker = markersMapRef.current[id];
-      if (marker) {
-        marker.setLngLat([lng, lat]);
-        newMarkersMap[id] = marker;
-        return;
+      let marker = null;
+      const existingBundle = markersMapRef.current[id];
+      if (existingBundle) {
+        // Clean up all popups and marker before rebuilding
+        try { existingBundle.persistentPopup?.remove(); } catch (e) {}
+        try { existingBundle.hoverPopup?.remove(); } catch (e) {}
+        try { existingBundle.marker?.remove(); } catch (e) {}
       }
+      
+      // Close any open context menu
+      try { contextMenuPopupRef.current?.remove(); } catch (e) {}
+      contextMenuPopupRef.current = null;
 
-      const assignedRun = projectRunLookupRef.current.get(id) || null;
-      const assignedRunLabel = assignedRun ? assignedRun.run_name || `Run #${assignedRun.run_number || assignedRun.id}` : null;
+      const assignment = projectRunLookupRef.current.get(id) || null;
+      const assignedRun = assignment?.run || null;
+      const stopSequence = assignment?.stopSequence;
+      const assignedRunBase = assignedRun ? assignedRun.run_name || `Run #${assignedRun.run_number || assignedRun.id}` : null;
+      const assignedRunLabel = assignedRunBase && stopSequence != null ? `${assignedRunBase} (${getOrdinalStop(stopSequence)})` : assignedRunBase;
 
       const subtotalStr = project.project_subtotal != null
         ? `$${Number(project.project_subtotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -262,8 +332,12 @@ export default function ProjectMap({
         className: "project-persistent-label"
       })
         .setLngLat([lng, lat])
-        .setDOMContent(labelContent)
-        .addTo(map);
+        .setDOMContent(labelContent);
+      
+      // Only show persistent label if showLabels is true
+      if (showLabelsRef.current) {
+        persistentPopup.addTo(map);
+      }
 
       // Detailed hover popup (existing)
       const tooltip = document.createElement("div");
@@ -329,13 +403,13 @@ export default function ProjectMap({
 
       const markerEl = marker.getElement();
       markerEl.addEventListener("mouseenter", () => {
-        try { persistentPopup.remove(); } catch (e) {}
+        try { persistentPopup.getElement().style.display = "none"; } catch (e) {}
         try { hoverPopup.setLngLat(marker.getLngLat()).addTo(map); } catch (e) {}
       });
 
       markerEl.addEventListener("mouseleave", () => {
         try { hoverPopup.remove(); } catch (e) {}
-        try { persistentPopup.setLngLat(marker.getLngLat()).addTo(map); } catch (e) {}
+        try { persistentPopup.getElement().style.display = ""; } catch (e) {}
       });
 
       markerEl.addEventListener("click", () => {
@@ -343,18 +417,95 @@ export default function ProjectMap({
         onSelectProject?.(project.id);
       });
 
-      newMarkersMap[id] = marker;
+      // Right-click context menu for Add/Remove from Run
+      markerEl.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const currentMode = modeRef.current;
+        const currentSelectedRunId = selectedRunIdRef.current;
+        
+        // Only show in Runs mode with a selected run
+        if (currentMode !== "runs" || !currentSelectedRunId) return;
+        
+        // Close any existing context menu popup
+        if (contextMenuPopupRef.current) {
+          try { contextMenuPopupRef.current.remove(); } catch (ex) {}
+          contextMenuPopupRef.current = null;
+        }
+        
+        const assignment = projectRunLookupRef.current.get(id) || null;
+        const assignedRun = assignment?.run || null;
+        const isInCurrentRun = assignedRun && assignedRun.id === currentSelectedRunId;
+        const isInOtherRun = assignedRun && assignedRun.id !== currentSelectedRunId;
+        
+        const menuContent = document.createElement("div");
+        menuContent.style.cssText = `
+          background: rgba(255, 255, 255, 0.98);
+          border: 1px solid #e2e8f0;
+          border-radius: 6px;
+          padding: 4px 0;
+          font-size: 12px;
+          color: #1e293b;
+          box-shadow: 0 3px 14px rgba(0,0,0,0.18);
+          min-width: 180px;
+        `;
+        
+        if (isInCurrentRun) {
+          menuContent.innerHTML = `
+            <div style="padding: 6px 12px; cursor: pointer; color: #dc2626; font-weight: 500;" class="ctx-remove-run">❌ Remove from Run</div>
+          `;
+          menuContent.querySelector(".ctx-remove-run").addEventListener("click", () => {
+            const rp = runProjectsRef.current.find(rp => rp.project_id === id);
+            if (rp) onRemoveFromRunRef.current?.(rp.id);
+            try { contextMenuPopupRef.current?.remove(); } catch (ex) {}
+            contextMenuPopupRef.current = null;
+          });
+        } else if (isInOtherRun) {
+          menuContent.innerHTML = `
+            <div style="padding: 6px 12px; color: #64748b; font-size: 11px;">📦 Already assigned to:</div>
+            <div style="padding: 0 12px 6px; color: #6366f1; font-weight: 600; font-size: 12px;">${assignedRun.run_name || `Run #${assignedRun.run_number || assignedRun.id}`}</div>
+          `;
+        } else {
+          menuContent.innerHTML = `
+            <div style="padding: 6px 12px; cursor: pointer; color: #1e293b; font-weight: 500;" class="ctx-add-run">📦 Add to Run</div>
+          `;
+          menuContent.querySelector(".ctx-add-run").addEventListener("click", () => {
+            onAddToRunRef.current?.(id);
+            try { contextMenuPopupRef.current?.remove(); } catch (ex) {}
+            contextMenuPopupRef.current = null;
+          });
+        }
+        
+        const popup = new MapLibreGL.Popup({
+          anchor: "left",
+          offset: [12, 0],
+          closeButton: false,
+          closeOnClick: false,
+          className: "project-context-menu"
+        })
+          .setLngLat(marker.getLngLat())
+          .setDOMContent(menuContent)
+          .addTo(map);
+        
+        contextMenuPopupRef.current = popup;
+      });
+
+      // Store bundle with all associated popups
+      newMarkersMap[id] = { marker, persistentPopup, hoverPopup };
     });
 
     Object.keys(markersMapRef.current).forEach((id) => {
       if (!projectIds.has(Number(id))) {
-        try { markersMapRef.current[id].remove(); } catch (e) {}
+        const bundle = markersMapRef.current[id];
+        try { bundle.persistentPopup?.remove(); } catch (e) {}
+        try { bundle.hoverPopup?.remove(); } catch (e) {}
+        try { bundle.marker?.remove(); } catch (e) {}
         delete markersMapRef.current[id];
       }
     });
 
     markersMapRef.current = newMarkersMap;
-    markersRef.current = Object.values(newMarkersMap);
 
     if (!initialFitDone.current) {
       const targetProjects = searchResults || filteredProjects;
@@ -375,7 +526,7 @@ export default function ProjectMap({
       }
       initialFitDone.current = true;
     }
-  }, [filteredProjects, stateColorLookup, searchResults]);
+  }, [filteredProjects, stateColorLookup, searchResults, projectRunLookup, statuses, buildingCategories, permitStatuses, welcomeCallStatuses]);
 
   // Update origin marker (plain MapLibre default marker, no custom HTML)
   useEffect(() => {
@@ -468,6 +619,22 @@ export default function ProjectMap({
     const timer = setTimeout(() => { try { map.resize(); } catch (e) {} }, 350);
     return () => clearTimeout(timer);
   }, [selectedProjectId]);
+
+  // Show/hide persistent labels based on showLabels prop
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    Object.values(markersMapRef.current).forEach((bundle) => {
+      if (!bundle.persistentPopup) return;
+      try {
+        if (showLabels) {
+          bundle.persistentPopup.addTo(map);
+        } else {
+          bundle.persistentPopup.remove();
+        }
+      } catch (e) {}
+    });
+  }, [showLabels]);
 
   return (
     <div ref={mapContainerRef} style={{ width: "100%", height: "100%", minHeight: 0, position: "relative" }} />

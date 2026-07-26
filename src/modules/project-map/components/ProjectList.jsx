@@ -15,12 +15,59 @@ function getStatusColor(statusName, statuses = []) {
 }
 
 export default function ProjectList({ projects = [], selectedProjectId, onSelectProject, filters = {}, statuses = [] }) {
+  // Helper to extract calendar date (YYYY-MM-DD) from any date value
+  const toDateString = (value) => {
+    if (!value) return null;
+    if (typeof value === 'string') {
+      // If it's already a string, extract just the date part (YYYY-MM-DD)
+      return value.split('T')[0];
+    }
+    const d = new Date(value);
+    return d.toISOString().split('T')[0];
+  };
+
   const filteredProjects = useMemo(() => {
     return projects.filter((p) => {
       if (filters.status && String(p.status_id) !== String(filters.status)) return false;
+      if (filters.permitStatus && String(p.permit_status_id) !== String(filters.permitStatus)) return false;
+      if (filters.welcomeCallStatus && String(p.welcome_call_status_id) !== String(filters.welcomeCallStatus)) return false;
       if (filters.dealer && p.dealer !== filters.dealer) return false;
       if (filters.state && p.state_code !== filters.state) return false;
+      
+      // Order Received date filter (compare calendar dates only)
+      if (filters.orderReceivedFrom || filters.orderReceivedTo) {
+        const projectDate = toDateString(p.order_received_at);
+        if (projectDate) {
+          if (filters.orderReceivedFrom && projectDate < filters.orderReceivedFrom) return false;
+          if (filters.orderReceivedTo && projectDate > filters.orderReceivedTo) return false;
+        } else if (filters.orderReceivedFrom || filters.orderReceivedTo) {
+          return false;
+        }
+      }
+      
+      // Scheduled date filter (compare calendar dates only)
+      if (filters.scheduledFrom || filters.scheduledTo) {
+        const projectDate = toDateString(p.scheduled_project_start);
+        if (projectDate) {
+          if (filters.scheduledFrom && projectDate < filters.scheduledFrom) return false;
+          if (filters.scheduledTo && projectDate > filters.scheduledTo) return false;
+        } else if (filters.scheduledFrom || filters.scheduledTo) {
+          return false;
+        }
+      }
+      
+      // Install date filter (compare calendar dates only)
+      if (filters.installFrom || filters.installTo) {
+        const projectDate = toDateString(p.install_start);
+        if (projectDate) {
+          if (filters.installFrom && projectDate < filters.installFrom) return false;
+          if (filters.installTo && projectDate > filters.installTo) return false;
+          return false;
+        }
+      }
+      
       if (filters.search) {
+
         const q = filters.search.toLowerCase();
         const match =
           (p.client_name && p.client_name.toLowerCase().includes(q)) ||

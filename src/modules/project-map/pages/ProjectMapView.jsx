@@ -13,11 +13,14 @@ import RunForm from "../components/RunForm";
 import ProjectSelectorModal from "../components/ProjectSelectorModal";
 import FilterBar from "../components/FilterBar";
 import AddProjectForm from "../components/AddProjectForm";
+import FilterChips from "../components/FilterChips";
 
 export default function ProjectMapView({ projects = [], statuses = [], origins = [], states = [], runs: initialRuns = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [] }) {
   const router = useRouter();
   const [mode, setMode] = useState("projects");
+  const [showLabels, setShowLabels] = useState(true);
   const [filters, setFilters] = useState({});
+  const isInitializedRef = useRef(false);
   const [selectedProjectId, setSelectedProjectId] = useState(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingProject, setEditingProject] = useState(null);
@@ -31,7 +34,10 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
 
   // Runs state — local copy so we can update it after mutations
   const [runs, setRuns] = useState(initialRuns);
-  useEffect(() => { setRuns(initialRuns); }, [initialRuns]);
+  useEffect(() => { 
+    console.log("[DEBUG] initialRuns changed:", initialRuns); 
+    setRuns(initialRuns); 
+  }, [initialRuns]);
 
   const [selectedRunId, setSelectedRunId] = useState(null);
   const [showRunForm, setShowRunForm] = useState(false);
@@ -49,6 +55,20 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
 
   useEffect(() => { window.scrollTo(0, 0); }, []);
 
+  // Find the default "New Dealer Order" status ID
+  const defaultStatusId = useMemo(() => {
+    const status = statuses.find((s) => s.status_name === "New Dealer Order");
+    return status ? String(status.status_id) : null;
+  }, [statuses]);
+
+  // Set default status on initial mount
+  useEffect(() => {
+    if (defaultStatusId && !isInitializedRef.current) {
+      setFilters({ status: defaultStatusId });
+      isInitializedRef.current = true;
+    }
+  }, [defaultStatusId]);
+
   // Fetch all run projects for the Assigned Run lookup
   useEffect(() => {
     let cancelled = false;
@@ -58,13 +78,16 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
     return () => { cancelled = true; };
   }, []);
 
-  // Single source of truth: projectId -> run
+  // Single source of truth: projectId -> { run, stopSequence }
   const projectRunLookup = useMemo(() => {
     const lookup = new Map();
     allRunProjects.forEach((rp) => {
       const run = runs.find((r) => r.id === rp.run_id);
       if (run) {
-        lookup.set(rp.project_id, run);
+        lookup.set(rp.project_id, {
+          run,
+          stopSequence: rp.stop_sequence,
+        });
       }
     });
     return lookup;
@@ -79,6 +102,15 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
     }
   }, []);
 
+  const refreshRunProjects = useCallback(async () => {
+    try {
+      const freshRunProjects = await loadAllRunProjects();
+      setAllRunProjects(freshRunProjects);
+    } catch (err) {
+      console.error("[ProjectMapView] Failed to refresh run projects:", err);
+    }
+  }, []);
+
   const clearRunState = useCallback(() => {
     setSelectedRunId(null);
     setRunProjects([]);
@@ -89,31 +121,81 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
     setEditingStopNote(null);
   }, []);
 
+  const handleRemoveFilter = useCallback((filterKey) => {
+    const filterResets = {
+      status: "",
+      permitStatus: "",
+      welcomeCallStatus: "",
+      dealer: "",
+      state: "",
+      orderReceived: { orderReceivedFrom: "", orderReceivedTo: "" },
+      scheduled: { scheduledFrom: "", scheduledTo: "" },
+      install: { installFrom: "", installTo: "" },
+    };
+
+    const reset = filterResets[filterKey];
+    if (typeof reset === "object") {
+      setFilters({ ...filters, ...reset });
+    } else {
+      setFilters({ ...filters, [filterKey]: reset });
+    }
+  }, [filters]);
+
   const dealers = useMemo(() => projects.map((p) => p.dealer).filter(Boolean), [projects]);
   const projectStates = useMemo(() => projects.map((p) => p.state_code).filter(Boolean), [projects]);
+
+  // Helper to extract calendar date (YYYY-MM-DD) from any date value
+  const toDateString = (value) => {
+    if (!value) return null;
+    if (typeof value === 'string') {
+      // If it's already a string, extract just the date part (YYYY-MM-DD)
+      return value.split('T')[0];
+    }
+    const d = new Date(value);
+    return d.toISOString().split('T')[0];
+  };
 
   const filteredProjects = useMemo(() => {
     return projects.filter((p) => {
       if (filters.status && String(p.status_id) !== String(filters.status)) return false;
+      if (filters.permitStatus && String(p.permit_status_id) !== String(filters.permitStatus)) return false;
+      if (filters.welcomeCallStatus && String(p.welcome_call_status_id) !== String(filters.welcomeCallStatus)) return false;
       if (filters.dealer && p.dealer !== filters.dealer) return false;
       if (filters.state && p.state_code !== filters.state) return false;
-      if (filters.dateFrom) {
-        const from = new Date(filters.dateFrom);
-        const sched = p.scheduled_project_date ? new Date(p.scheduled_project_date) : null;
-        const install = p.install_date ? new Date(p.install_date) : null;
-        if (!sched && !install) return false;
-        if (sched && sched < from && (!install || install < from)) return false;
-        if (install && install < from && (!sched || sched < from)) return false;
+      
+      // Order Received date filter (compare calendar dates only)
+      if (filters.orderReceivedFrom || filters.orderReceivedTo) {
+        const projectDate = toDateString(p.order_received_at);
+        if (projectDate) {
+          if (filters.orderReceivedFrom && projectDate < filters.orderReceivedFrom) return false;
+          if (filters.orderReceivedTo && projectDate > filters.orderReceivedTo) return false;
+        } else if (filters.orderReceivedFrom || filters.orderReceivedTo) {
+          return false;
+        }
       }
-      if (filters.dateTo) {
-        const to = new Date(filters.dateTo);
-        to.setHours(23, 59, 59, 999);
-        const sched = p.scheduled_project_date ? new Date(p.scheduled_project_date) : null;
-        const install = p.install_date ? new Date(p.install_date) : null;
-        if (!sched && !install) return false;
-        if (sched && sched > to && (!install || install > to)) return false;
-        if (install && install > to && (!sched || sched > to)) return false;
+      
+      // Scheduled date filter (compare calendar dates only)
+      if (filters.scheduledFrom || filters.scheduledTo) {
+        const projectDate = toDateString(p.scheduled_project_start);
+        if (projectDate) {
+          if (filters.scheduledFrom && projectDate < filters.scheduledFrom) return false;
+          if (filters.scheduledTo && projectDate > filters.scheduledTo) return false;
+        } else if (filters.scheduledFrom || filters.scheduledTo) {
+          return false;
+        }
       }
+      
+      // Install date filter (compare calendar dates only)
+      if (filters.installFrom || filters.installTo) {
+        const projectDate = toDateString(p.install_start);
+        if (projectDate) {
+          if (filters.installFrom && projectDate < filters.installFrom) return false;
+          if (filters.installTo && projectDate > filters.installTo) return false;
+        } else if (filters.installFrom || filters.installTo) {
+          return false;
+        }
+      }
+      
       if (filters.search) {
         const q = filters.search.toLowerCase();
         const match =
@@ -255,6 +337,7 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
   }, [selectedRunId, selectedRun, refreshRuns]);
 
   const handleSelectRun = (id) => {
+    console.log("[DEBUG] handleSelectRun:", id);
     setSelectedRunId(id);
     setSelectedProjectId(null);
     setRunRouteData(null);
@@ -301,10 +384,11 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
       setRunProjects(projects);
       await updateRunStopsCount(selectedRunId, projects.length);
       await refreshRuns();
+      await refreshRunProjects();
     } catch (err) {
       console.error("[ProjectMapView] Failed to refresh run data:", err);
     }
-  }, [selectedRunId, refreshRuns, clearRunState]);
+  }, [selectedRunId, refreshRuns, refreshRunProjects, clearRunState]);
 
   const handleAddProjectToRun = async (projectId) => {
     if (!selectedRunId) return;
@@ -313,6 +397,7 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
       await addProjectToRun(selectedRunId, projectId, runProjects.length);
       toastSuccess("Project added to run.", "Runs");
       await refreshRunData();
+      await refreshRunProjects();
     } catch (err) {
       toastError(err?.message || "Failed to add project to run.", "Runs");
     } finally { setBusy(false); }
@@ -327,6 +412,7 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
       await removeProjectFromRun(runProjectId);
       toastSuccess("Project removed from run.", "Runs");
       await refreshRunData();
+      await refreshRunProjects();
     } catch (err) {
       toastError(err?.message || "Failed to remove project.", "Runs");
     } finally { setBusy(false); }
@@ -361,6 +447,7 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
       await Promise.all(promises);
       toastSuccess("Stop order updated.", "Runs");
       await refreshRunData();
+      await refreshRunProjects();
     } catch (err) {
       toastError(err?.message || "Failed to reorder stops.", "Runs");
     } finally { setBusy(false); }
@@ -368,12 +455,23 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
 
   // Load run details when selected
   useEffect(() => {
-    if (!selectedRunId) { setRunProjects([]); return; }
+    console.log("[DEBUG] loadRunDetails effect:", selectedRunId);
+    if (!selectedRunId) { 
+      console.log("[DEBUG] No selectedRunId, clearing runProjects");
+      setRunProjects([]); 
+      return; 
+    }
     let cancelled = false;
     setBusy(true);
     loadRunDetails(selectedRunId)
-      .then((details) => { if (!cancelled) setRunProjects(details.projects || []); })
-      .catch((err) => { if (!cancelled) toastError(err?.message || "Failed to load run details.", "Runs"); })
+      .then((details) => { 
+        console.log("[DEBUG] loadRunDetails result:", details); 
+        if (!cancelled) setRunProjects(details.projects || []); 
+      })
+      .catch((err) => { 
+        console.error("[DEBUG] loadRunDetails error:", err);
+        if (!cancelled) toastError(err?.message || "Failed to load run details.", "Runs"); 
+      })
       .finally(() => { if (!cancelled) setBusy(false); });
     return () => { cancelled = true; };
   }, [selectedRunId]);
@@ -442,9 +540,15 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
 
   return (
     <div style={{ display: "flex", flexDirection: "column", background: "#f8fafc", overflow: "hidden", height: "100vh" }}>
-      <div style={{ padding: "2px 10px", background: "#fff", borderBottom: "1px solid #e2e8f0", flexShrink: 0 }}>
-        <h2 style={{ margin: 0, fontSize: "12px", fontWeight: 600, color: "#1e293b", lineHeight: "1.2" }}>Projects Map</h2>
-        <p style={{ margin: "1px 0 0", fontSize: "9px", color: "#64748b", lineHeight: "1.2" }}>View and track project locations, schedules, and statuses on an interactive map.</p>
+      <div style={{ padding: "2px 10px", background: "#fff", borderBottom: "1px solid #e2e8f0", flexShrink: 0, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: "12px", fontWeight: 600, color: "#1e293b", lineHeight: "1.2" }}>Projects Map</h2>
+          <p style={{ margin: "1px 0 0", fontSize: "9px", color: "#64748b", lineHeight: "1.2" }}>View and track project locations, schedules, and statuses on an interactive map.</p>
+        </div>
+        <label style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "11px", color: "#1e293b", cursor: "pointer", whiteSpace: "nowrap" }}>
+          <input type="checkbox" checked={showLabels} onChange={(e) => setShowLabels(e.target.checked)} />
+          Show Labels
+        </label>
       </div>
 
       <div style={{ display: "flex", borderBottom: "1px solid #e2e8f0", background: "#fff", flexShrink: 0 }}>
@@ -453,12 +557,16 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
       </div>
 
       {mode === "projects" ? (
-        <FilterBar statuses={statuses} dealers={dealers} states={projectStates} filters={filters} onFilterChange={setFilters} onAddClick={() => { setEditingProject(null); setShowAddForm(true); }} />
+        <FilterBar statuses={statuses} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} dealers={dealers} states={projectStates} filters={filters} onFilterChange={setFilters} onAddClick={() => { setEditingProject(null); setShowAddForm(true); }} />
       ) : (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 10px", borderBottom: "1px solid #e2e8f0", background: "#fff", flexShrink: 0 }}>
           <span style={{ fontSize: "11px", color: "#64748b" }}>{runs.length} Run{runs.length !== 1 ? "s" : ""}</span>
           <button onClick={() => { setEditingRun(null); setShowRunForm(true); }} style={{ padding: "3px 10px", fontSize: "12px", borderRadius: "3px", border: "none", background: "#16a34a", color: "#fff", cursor: "pointer", whiteSpace: "nowrap" }}>+ New Run</button>
         </div>
+      )}
+
+      {mode === "projects" && (
+        <FilterChips filters={filters} onRemoveFilter={handleRemoveFilter} statuses={statuses} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} />
       )}
 
       <div style={{ flex: 1, display: "flex", position: "relative", overflow: "hidden", minHeight: 0 }}>
@@ -471,7 +579,7 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
         </div>
 
         <div style={{ flex: 1, position: "relative", minHeight: 0, minWidth: 0 }}>
-          <ProjectMap projects={projects} selectedProjectId={selectedProjectId} onSelectProject={handleSelectProject} filters={filters} selectedOrigin={selectedOrigin} routeData={routeData} stateColorLookup={stateColorLookup} statuses={statuses} buildingCategories={buildingCategories} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} searchResults={searchResults} mode={mode} runs={runs} selectedRunId={selectedRunId} runProjects={runProjects} runRouteData={runRouteData} onAddToRun={handleAddProjectToRun} onRemoveFromRun={handleRemoveProjectFromRun} projectRunLookup={projectRunLookup} />
+          <ProjectMap projects={projects} selectedProjectId={selectedProjectId} onSelectProject={handleSelectProject} filters={filters} selectedOrigin={selectedOrigin} routeData={routeData} stateColorLookup={stateColorLookup} statuses={statuses} buildingCategories={buildingCategories} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} searchResults={searchResults} mode={mode} runs={runs} selectedRunId={selectedRunId} runProjects={runProjects} runRouteData={runRouteData} onAddToRun={handleAddProjectToRun} onRemoveFromRun={handleRemoveProjectFromRun} projectRunLookup={projectRunLookup} showLabels={showLabels} />
         </div>
 
         {mode === "projects" && selectedProject && (

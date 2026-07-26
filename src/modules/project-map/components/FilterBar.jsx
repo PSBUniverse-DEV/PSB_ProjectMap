@@ -1,24 +1,10 @@
 "use client";
 
-import { useMemo } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faMagnifyingGlass } from "@fortawesome/free-solid-svg-icons";
+import FilterPanel from "./FilterPanel";
 
-export default function FilterBar({ statuses = [], dealers = [], states = [], filters = {}, onFilterChange, onAddClick }) {
-  const uniqueDealers = useMemo(() => {
-    const set = new Set(dealers.filter(Boolean));
-    return Array.from(set).sort().map((d) => ({ label: d, value: d }));
-  }, [dealers]);
-
-  const uniqueStates = useMemo(() => {
-    const set = new Set(states.filter(Boolean));
-    return Array.from(set).sort().map((s) => ({ label: s, value: s }));
-  }, [states]);
-
-  const statusOptions = useMemo(() => {
-    return statuses.map((s) => ({ label: s.status_name, value: String(s.status_id) }));
-  }, [statuses]);
-
+export default function FilterBar({ statuses = [], permitStatuses = [], welcomeCallStatuses = [], dealers = [], states = [], filters = {}, onFilterChange, onAddClick }) {
   return (
     <div style={{
       display: "flex",
@@ -55,76 +41,15 @@ export default function FilterBar({ statuses = [], dealers = [], states = [], fi
         />
       </div>
 
-      <select
-        value={filters.status || ""}
-        onChange={(e) => onFilterChange?.({ ...filters, status: e.target.value })}
-        style={{
-          border: "1px solid #e2e8f0",
-          borderRadius: "3px",
-          padding: "3px 8px",
-          fontSize: "12px",
-          background: "#fff",
-          minWidth: "120px",
-        }}
-      >
-        <option value="">All Statuses</option>
-        {statusOptions.map((opt) => (
-          <option key={opt.value} value={opt.value}>{opt.label}</option>
-        ))}
-      </select>
-
-      <select
-        value={filters.dealer || ""}
-        onChange={(e) => onFilterChange?.({ ...filters, dealer: e.target.value })}
-        style={{
-          border: "1px solid #e2e8f0",
-          borderRadius: "3px",
-          padding: "3px 8px",
-          fontSize: "12px",
-          background: "#fff",
-          minWidth: "120px",
-        }}
-      >
-        <option value="">All Dealers</option>
-        {uniqueDealers.map((opt) => (
-          <option key={opt.value} value={opt.value}>{opt.label}</option>
-        ))}
-      </select>
-
-      <select
-        value={filters.state || ""}
-        onChange={(e) => onFilterChange?.({ ...filters, state: e.target.value })}
-        style={{
-          border: "1px solid #e2e8f0",
-          borderRadius: "3px",
-          padding: "3px 8px",
-          fontSize: "12px",
-          background: "#fff",
-          minWidth: "120px",
-        }}
-      >
-        <option value="">All States</option>
-        {uniqueStates.map((opt) => (
-          <option key={opt.value} value={opt.value}>{opt.label}</option>
-        ))}
-      </select>
-
-      <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-        <label style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", whiteSpace: "nowrap" }}>From:</label>
-        <input
-          type="date"
-          value={filters.dateFrom || ""}
-          onChange={(e) => onFilterChange?.({ ...filters, dateFrom: e.target.value })}
-          style={{ border: "1px solid #e2e8f0", borderRadius: "3px", padding: "3px 4px", fontSize: "11px", width: "120px" }}
-        />
-        <label style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", whiteSpace: "nowrap" }}>To:</label>
-        <input
-          type="date"
-          value={filters.dateTo || ""}
-          onChange={(e) => onFilterChange?.({ ...filters, dateTo: e.target.value })}
-          style={{ border: "1px solid #e2e8f0", borderRadius: "3px", padding: "3px 4px", fontSize: "11px", width: "120px" }}
-        />
-      </div>
+      <FilterPanel
+        statuses={statuses}
+        permitStatuses={permitStatuses}
+        welcomeCallStatuses={welcomeCallStatuses}
+        dealers={dealers}
+        states={states}
+        filters={filters}
+        onFilterChange={onFilterChange}
+      />
 
       <button
         onClick={onAddClick}

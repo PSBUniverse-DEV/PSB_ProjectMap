@@ -14,6 +14,8 @@ import ProjectSelectorModal from "../components/ProjectSelectorModal";
 import FilterBar from "../components/FilterBar";
 import AddProjectForm from "../components/AddProjectForm";
 import FilterChips from "../components/FilterChips";
+import RunFilterPanel from "../components/RunFilterPanel";
+import RunFilterChips from "../components/RunFilterChips";
 
 export default function ProjectMapView({ projects = [], statuses = [], origins = [], states = [], runs: initialRuns = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [] }) {
   const router = useRouter();
@@ -52,13 +54,18 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
   const [recalculating, setRecalculating] = useState(false);
   const [editingStopNote, setEditingStopNote] = useState(null);
   const [allRunProjects, setAllRunProjects] = useState([]);
+  const [runFilters, setRunFilters] = useState({});
+  const [runSearch, setRunSearch] = useState("");
+  const [isLoadingRunDetails, setIsLoadingRunDetails] = useState(false);
+  const runRequestIdRef = useRef(0);
+  const runProjectsRef = useRef([]);
 
   useEffect(() => { window.scrollTo(0, 0); }, []);
 
   // Find the default "New Dealer Order" status ID
   const defaultStatusId = useMemo(() => {
     const status = statuses.find((s) => s.status_name === "New Dealer Order");
-    return status ? String(status.status_id) : null;
+    return status ? String(status.status_id) : "";
   }, [statuses]);
 
   // Set default status on initial mount
@@ -141,6 +148,14 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
     }
   }, [filters]);
 
+  const handleRemoveRunFilter = useCallback((filterKey) => {
+    if (filterKey === "status") {
+      setRunFilters({ ...runFilters, status: "" });
+    } else if (filterKey === "runDate") {
+      setRunFilters({ ...runFilters, runDateFrom: "", runDateTo: "" });
+    }
+  }, [runFilters]);
+
   const dealers = useMemo(() => projects.map((p) => p.dealer).filter(Boolean), [projects]);
   const projectStates = useMemo(() => projects.map((p) => p.state_code).filter(Boolean), [projects]);
 
@@ -157,11 +172,22 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
 
   const filteredProjects = useMemo(() => {
     return projects.filter((p) => {
-      if (filters.status && String(p.status_id) !== String(filters.status)) return false;
-      if (filters.permitStatus && String(p.permit_status_id) !== String(filters.permitStatus)) return false;
-      if (filters.welcomeCallStatus && String(p.welcome_call_status_id) !== String(filters.welcomeCallStatus)) return false;
-      if (filters.dealer && p.dealer !== filters.dealer) return false;
-      if (filters.state && p.state_code !== filters.state) return false;
+      // Single-select scalar filters
+      if (filters.status && String(p.status_id) !== filters.status) {
+        return false;
+      }
+      if (filters.permitStatus && String(p.permit_status_id) !== filters.permitStatus) {
+        return false;
+      }
+      if (filters.welcomeCallStatus && String(p.welcome_call_status_id) !== filters.welcomeCallStatus) {
+        return false;
+      }
+      if (filters.dealer && p.dealer !== filters.dealer) {
+        return false;
+      }
+      if (filters.state && p.state_code !== filters.state) {
+        return false;
+      }
       
       // Order Received date filter (compare calendar dates only)
       if (filters.orderReceivedFrom || filters.orderReceivedTo) {
@@ -238,6 +264,57 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
     if (!selectedRunId) return null;
     return runs.find((r) => r.id === selectedRunId) || null;
   }, [selectedRunId, runs]);
+
+  // Filter runs by search and filters
+  const filteredRuns = useMemo(() => {
+    return runs.filter((run) => {
+      // Status filter
+      if (
+        runFilters.status &&
+        run.status !== runFilters.status
+      ) {
+        return false;
+      }
+
+      // Run date range filter
+      const runDate = toDateString(run.run_date);
+      if (
+        runFilters.runDateFrom &&
+        runDate &&
+        runDate < runFilters.runDateFrom
+      ) {
+        return false;
+      }
+
+      if (
+        runFilters.runDateTo &&
+        runDate &&
+        runDate > runFilters.runDateTo
+      ) {
+        return false;
+      }
+
+      // Search filter
+      if (runSearch) {
+        const q = runSearch.toLowerCase();
+        const searchable = [
+          run.run_name,
+          run.proj_s_origin_addresses?.origin_name,
+          run.team_assigned,
+          run.vehicle_assigned,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+
+        if (!searchable.includes(q)) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [runs, runFilters, runSearch]);
 
   const selectedOrigin = useMemo(() => {
     if (!selectedOriginId) return null;
@@ -338,8 +415,11 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
 
   const handleSelectRun = (id) => {
     console.log("[DEBUG] handleSelectRun:", id);
+    const requestId = ++runRequestIdRef.current;
+    setIsLoadingRunDetails(true);
     setSelectedRunId(id);
     setSelectedProjectId(null);
+    setRunProjects([]);
     setRunRouteData(null);
     setRunSegmentData(null);
     setRunRouteLoading(false);
@@ -453,26 +533,48 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
     } finally { setBusy(false); }
   };
 
-  // Load run details when selected
+  // Clear selected run if it's no longer in filtered list
+  useEffect(() => {
+    if (selectedRunId && !filteredRuns.find((r) => r.id === selectedRunId)) {
+      setSelectedRunId(null);
+      setRunProjects([]);
+      setRunRouteData(null);
+      setRunSegmentData(null);
+    }
+  }, [filteredRuns, selectedRunId]);
+
+  // Load run details when selected — with race condition protection
   useEffect(() => {
     console.log("[DEBUG] loadRunDetails effect:", selectedRunId);
     if (!selectedRunId) { 
       console.log("[DEBUG] No selectedRunId, clearing runProjects");
       setRunProjects([]); 
+      setIsLoadingRunDetails(false);
       return; 
     }
+    const requestId = ++runRequestIdRef.current;
     let cancelled = false;
+    setIsLoadingRunDetails(true);
     setBusy(true);
     loadRunDetails(selectedRunId)
       .then((details) => { 
         console.log("[DEBUG] loadRunDetails result:", details); 
-        if (!cancelled) setRunProjects(details.projects || []); 
+        if (!cancelled && requestId === runRequestIdRef.current) {
+          setRunProjects(details.projects || []); 
+        }
       })
       .catch((err) => { 
         console.error("[DEBUG] loadRunDetails error:", err);
-        if (!cancelled) toastError(err?.message || "Failed to load run details.", "Runs"); 
+        if (!cancelled && requestId === runRequestIdRef.current) {
+          toastError(err?.message || "Failed to load run details.", "Runs"); 
+        }
       })
-      .finally(() => { if (!cancelled) setBusy(false); });
+      .finally(() => { 
+        if (!cancelled && requestId === runRequestIdRef.current) {
+          setBusy(false); 
+          setIsLoadingRunDetails(false);
+        }
+      });
     return () => { cancelled = true; };
   }, [selectedRunId]);
 
@@ -559,8 +661,22 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
       {mode === "projects" ? (
         <FilterBar statuses={statuses} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} dealers={dealers} states={projectStates} filters={filters} onFilterChange={setFilters} onAddClick={() => { setEditingProject(null); setShowAddForm(true); }} />
       ) : (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 10px", borderBottom: "1px solid #e2e8f0", background: "#fff", flexShrink: 0 }}>
-          <span style={{ fontSize: "11px", color: "#64748b" }}>{runs.length} Run{runs.length !== 1 ? "s" : ""}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "4px 10px", borderBottom: "1px solid #e2e8f0", background: "#fff", flexShrink: 0 }}>
+          <input
+            type="text"
+            placeholder="🔍 Search runs..."
+            value={runSearch}
+            onChange={(e) => setRunSearch(e.target.value)}
+            style={{
+              flex: 1,
+              padding: "4px 8px",
+              fontSize: "12px",
+              border: "1px solid #e2e8f0",
+              borderRadius: "3px",
+              outline: "none",
+            }}
+          />
+          <RunFilterPanel runFilters={runFilters} onFilterChange={setRunFilters} />
           <button onClick={() => { setEditingRun(null); setShowRunForm(true); }} style={{ padding: "3px 10px", fontSize: "12px", borderRadius: "3px", border: "none", background: "#16a34a", color: "#fff", cursor: "pointer", whiteSpace: "nowrap" }}>+ New Run</button>
         </div>
       )}
@@ -569,12 +685,16 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
         <FilterChips filters={filters} onRemoveFilter={handleRemoveFilter} statuses={statuses} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} />
       )}
 
+      {mode === "runs" && (
+        <RunFilterChips runFilters={runFilters} onRemoveFilter={handleRemoveRunFilter} />
+      )}
+
       <div style={{ flex: 1, display: "flex", position: "relative", overflow: "hidden", minHeight: 0 }}>
         <div style={{ width: "240px", minWidth: "240px", flexShrink: 0, zIndex: 10, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           {mode === "projects" ? (
             <ProjectList projects={projects} selectedProjectId={selectedProjectId} onSelectProject={handleSelectProject} filters={filters} statuses={statuses} />
           ) : (
-            <RunList runs={runs} selectedRunId={selectedRunId} onSelectRun={handleSelectRun} />
+            <RunList runs={filteredRuns} selectedRunId={selectedRunId} onSelectRun={handleSelectRun} isLoading={isLoadingRunDetails} />
           )}
         </div>
 
@@ -586,7 +706,7 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
           <ProjectDetailDrawer project={selectedProject} statuses={statuses} buildingCategories={buildingCategories} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} projectRunLookup={projectRunLookup} onClose={handleCloseDrawer} onEdit={handleEdit} onDelete={() => setConfirmDeleteId(selectedProject.id)} routeInfo={routeInfo} />
         )}
         {mode === "runs" && selectedRun && (
-          <RunDetailPanel run={selectedRun} runProjects={runProjects} runSegmentData={runSegmentData} onClose={handleCloseRunDetail} onEdit={handleEditRun} onDelete={() => setConfirmDeleteRunId(selectedRun.id)} onRemoveProject={handleRemoveProjectFromRun} onReorderStops={handleReorderStops} onRecalculate={handleRecalculate} recalculating={recalculating} onEditStopNote={handleEditStopNote} />
+          <RunDetailPanel run={selectedRun} runProjects={runProjects} runSegmentData={runSegmentData} onClose={handleCloseRunDetail} onEdit={handleEditRun} onDelete={() => setConfirmDeleteRunId(selectedRun.id)} onRemoveProject={handleRemoveProjectFromRun} onReorderStops={handleReorderStops} onRecalculate={handleRecalculate} recalculating={recalculating} onEditStopNote={handleEditStopNote} isLoading={isLoadingRunDetails} />
         )}
       </div>
 

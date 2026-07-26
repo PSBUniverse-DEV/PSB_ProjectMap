@@ -203,6 +203,16 @@ export default function ProjectMap({
           },
         });
 
+        // Close context menu when clicking on the map
+        map.on("click", () => {
+          if (contextMenuPopupRef.current) {
+            try {
+              contextMenuPopupRef.current.remove();
+            } catch (e) {}
+            contextMenuPopupRef.current = null;
+          }
+        });
+
       } catch (err) {
         console.error("[ProjectMap] Failed to add layers:", err);
       }
@@ -463,7 +473,7 @@ export default function ProjectMap({
           });
         } else if (isInOtherRun) {
           menuContent.innerHTML = `
-            <div style="padding: 6px 12px; color: #64748b; font-size: 11px;">📦 Already assigned to:</div>
+            <div style="padding: 0 12px 6px; color: #64748b; font-size: 11px;">📦 Already assigned to:</div>
             <div style="padding: 0 12px 6px; color: #6366f1; font-weight: 600; font-size: 12px;">${assignedRun.run_name || `Run #${assignedRun.run_number || assignedRun.id}`}</div>
           `;
         } else {
@@ -481,7 +491,7 @@ export default function ProjectMap({
           anchor: "left",
           offset: [12, 0],
           closeButton: false,
-          closeOnClick: false,
+          closeOnClick: true,
           className: "project-context-menu"
         })
           .setLngLat(marker.getLngLat())

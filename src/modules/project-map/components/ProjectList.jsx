@@ -123,9 +123,6 @@ export default function ProjectList({ projects = [], selectedProjectId, onSelect
                     {project.client_name || "Untitled"}
                   </span>
                 </div>
-                <div style={{ marginBottom: "2px" }}>
-                  <StatusBadge tone={getStatusTone(statusName)}>{statusName || "No Status"}</StatusBadge>
-                </div>
                 <div style={{ fontSize: "10px", color: "#64748b" }}>
                   {project.city && project.state ? `${project.city}, ${project.state}` : project.formatted_address || "No location"}
                 </div>

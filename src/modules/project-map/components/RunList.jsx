@@ -1,20 +1,6 @@
 "use client";
 
 import { useMemo } from "react";
-import { StatusBadge } from "@/shared/components/ui";
-
-function getStatusTone(status) {
-  if (!status) return "secondary";
-  const map = {
-    "Draft": "secondary",
-    "Planned": "info",
-    "Scheduled": "warning",
-    "In Progress": "primary",
-    "Completed": "success",
-    "Cancelled": "danger",
-  };
-  return map[status] || "secondary";
-}
 
 function formatCurrency(value) {
   if (value == null) return "";
@@ -36,7 +22,7 @@ function formatDate(dateStr) {
   }
 }
 
-export default function RunList({ runs = [], selectedRunId, onSelectRun }) {
+export default function RunList({ runs = [], selectedRunId, onSelectRun, isLoading = false }) {
   const sortedRuns = useMemo(() => {
     return [...runs].sort((a, b) => {
       const dateA = a.run_date ? new Date(a.run_date) : new Date(0);
@@ -67,15 +53,16 @@ export default function RunList({ runs = [], selectedRunId, onSelectRun }) {
             return (
               <div
                 key={run.id}
-                onClick={() => onSelectRun?.(run.id)}
+                onClick={() => !isLoading && onSelectRun?.(run.id)}
                 style={{
                   padding: "7px 8px",
                   marginBottom: "3px",
                   background: isSelected ? "#dce8f2" : "#fff",
                   border: `1px solid ${isSelected ? "#93c5fd" : "#e2e8f0"}`,
                   borderRadius: "4px",
-                  cursor: "pointer",
+                  cursor: isLoading ? "not-allowed" : "pointer",
                   transition: "all 0.15s",
+                  opacity: isLoading ? 0.7 : 1,
                 }}
               >
                 <div style={{ fontWeight: 600, fontSize: "11px", color: "#1e293b", marginBottom: "1px" }}>
@@ -84,25 +71,26 @@ export default function RunList({ runs = [], selectedRunId, onSelectRun }) {
                 <div style={{ fontSize: "10px", color: "#64748b", marginBottom: "2px" }}>
                   {formatDate(run.run_date) || "No date"} · {originName}
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: "4px", marginBottom: "3px" }}>
-                  <StatusBadge tone={getStatusTone(run.status)}>{run.status || "Draft"}</StatusBadge>
-                </div>
-                <div style={{ fontSize: "9px", color: "#94a3b8", display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                  <span>📍 {projectCount} stop{projectCount !== 1 ? "s" : ""}</span>
-                  {hasData && (
-                    <>
-                      {run.estimated_distance != null && (
-                        <span>📏 {(run.estimated_distance / 1000).toFixed(1)} km</span>
-                      )}
-                      {run.estimated_mileage != null && (
-                        <span>🛣️ {formatMileage(run.estimated_mileage)}</span>
-                      )}
-                      {run.estimated_subtotal != null && (
-                        <span>💰 {formatCurrency(run.estimated_subtotal)}</span>
-                      )}
-                    </>
-                  )}
-                </div>
+                {isLoading && isSelected ? (
+                  <div style={{ fontSize: "10px", color: "#3b82f6", fontStyle: "italic" }}>Loading...</div>
+                ) : (
+                  <div style={{ fontSize: "9px", color: "#94a3b8", display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                    <span>📍 {projectCount} stop{projectCount !== 1 ? "s" : ""}</span>
+                    {hasData && (
+                      <>
+                        {run.estimated_distance != null && (
+                          <span>📏 {(run.estimated_distance / 1000).toFixed(1)} km</span>
+                        )}
+                        {run.estimated_mileage != null && (
+                          <span>🛣️ {formatMileage(run.estimated_mileage)}</span>
+                        )}
+                        {run.estimated_subtotal != null && (
+                          <span>💰 {formatCurrency(run.estimated_subtotal)}</span>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })

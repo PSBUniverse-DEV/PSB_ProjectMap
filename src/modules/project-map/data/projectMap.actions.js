@@ -84,6 +84,661 @@ export async function deleteSetupRow(tableKey, id) {
   return { success: true };
 }
 
+// ─── Project Status Specific Actions ─────────────────────────
+
+export async function createProjectStatus(data) {
+  const supabase = getSupabaseAdmin();
+
+  // Validate required fields
+  if (!data.status_name || !String(data.status_name).trim()) {
+    throw new Error("Status name is required.");
+  }
+
+  // Check for duplicate name
+  const { data: existing } = await supabase
+    .from("proj_s_project_status")
+    .select("status_id")
+    .eq("status_name", String(data.status_name).trim())
+    .maybeSingle();
+
+  if (existing) {
+    throw new Error("A project status with this name already exists.");
+  }
+
+  // Get the highest display_order to auto-increment
+  const { data: maxOrder } = await supabase
+    .from("proj_s_project_status")
+    .select("display_order")
+    .order("display_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const nextOrder = (maxOrder?.display_order ?? 0) + 1;
+
+  const payload = {
+    status_name: String(data.status_name).trim(),
+    status_description: data.status_description ? String(data.status_description).trim() : null,
+    display_color: data.display_color ? String(data.display_color).trim() : null,
+    display_order: nextOrder,
+    is_active: data.is_active === true || data.is_active === "true" || data.is_active === "1",
+  };
+
+  const { data: result, error } = await supabase
+    .from("proj_s_project_status")
+    .insert(payload)
+    .select("*")
+    .single();
+
+  if (error) throw new Error(error.message);
+  return result;
+}
+
+export async function updateProjectStatus(statusId, data) {
+  const supabase = getSupabaseAdmin();
+  const id = Number(statusId);
+  if (!id) throw new Error("status_id is required.");
+
+  // Validate required fields
+  if (data.status_name !== undefined && !String(data.status_name).trim()) {
+    throw new Error("Status name is required.");
+  }
+
+  // Check for duplicate name (exclude current record)
+  if (data.status_name !== undefined) {
+    const trimmedName = String(data.status_name).trim();
+    const { data: existing } = await supabase
+      .from("proj_s_project_status")
+      .select("status_id")
+      .eq("status_name", trimmedName)
+      .neq("status_id", id)
+      .maybeSingle();
+
+    if (existing) {
+      throw new Error("A project status with this name already exists.");
+    }
+  }
+
+  const payload = {};
+  if (data.status_name !== undefined) payload.status_name = String(data.status_name).trim();
+  if (data.status_description !== undefined) payload.status_description = data.status_description ? String(data.status_description).trim() : null;
+  if (data.display_color !== undefined) payload.display_color = data.display_color ? String(data.display_color).trim() : null;
+  if (data.display_order !== undefined) payload.display_order = Number(data.display_order);
+  if (data.is_active !== undefined) payload.is_active = data.is_active === true || data.is_active === "true" || data.is_active === "1";
+
+  const { data: result, error } = await supabase
+    .from("proj_s_project_status")
+    .update(payload)
+    .eq("status_id", id)
+    .select("*")
+    .single();
+
+  if (error) throw new Error(error.message);
+  return result;
+}
+
+export async function toggleProjectStatusActive(statusId, isActive) {
+  const supabase = getSupabaseAdmin();
+  const id = Number(statusId);
+  if (!id) throw new Error("status_id is required.");
+
+  const active = isActive === true || isActive === "true" || isActive === "1";
+
+  const { data, error } = await supabase
+    .from("proj_s_project_status")
+    .update({ is_active: active })
+    .eq("status_id", id)
+    .select("*")
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function reorderProjectStatuses(updates) {
+  if (!Array.isArray(updates) || updates.length === 0) {
+    throw new Error("At least one update is required.");
+  }
+
+  const supabase = getSupabaseAdmin();
+
+  // Validate all entries have status_id and display_order
+  for (const u of updates) {
+    if (u.status_id == null || u.display_order == null) {
+      throw new Error("Each update must have status_id and display_order.");
+    }
+  }
+
+  // Batch update using a transaction-like approach
+  const errors = [];
+  for (const u of updates) {
+    const { error } = await supabase
+      .from("proj_s_project_status")
+      .update({ display_order: Number(u.display_order) })
+      .eq("status_id", Number(u.status_id));
+
+    if (error) errors.push(error.message);
+  }
+
+  if (errors.length > 0) {
+    throw new Error(`Failed to update display order: ${errors.join(", ")}`);
+  }
+
+  return { success: true };
+}
+
+export async function softDeleteProjectStatus(statusId) {
+  const supabase = getSupabaseAdmin();
+  const id = Number(statusId);
+  if (!id) throw new Error("status_id is required.");
+
+  // Check if the status is referenced by any projects
+  const { data: referencedProjects, error: refError } = await supabase
+    .from("proj_t_projects")
+    .select("id")
+    .eq("status_id", id)
+    .limit(1);
+
+  if (refError) throw new Error(refError.message);
+
+  // Soft delete by setting is_active = false
+  const { data, error } = await supabase
+    .from("proj_s_project_status")
+    .update({ is_active: false })
+    .eq("status_id", id)
+    .select("*")
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+// ─── Origin Address Specific Actions ─────────────────────────
+
+export async function createOriginAddress(data) {
+  const supabase = getSupabaseAdmin();
+
+  // Validate required fields
+  if (!data.origin_name || !String(data.origin_name).trim()) {
+    throw new Error("Origin name is required.");
+  }
+  if (!data.formatted_address || !String(data.formatted_address).trim()) {
+    throw new Error("Formatted address is required.");
+  }
+
+  // Check for duplicate origin_name
+  const trimmedName = String(data.origin_name).trim();
+  const { data: existing } = await supabase
+    .from("proj_s_origin_addresses")
+    .select("id")
+    .eq("origin_name", trimmedName)
+    .maybeSingle();
+
+  if (existing) {
+    throw new Error("An origin address with this name already exists.");
+  }
+
+  const payload = {
+    origin_name: trimmedName,
+    formatted_address: String(data.formatted_address).trim(),
+    address_line_1: data.address_line_1 ? String(data.address_line_1).trim() : null,
+    city: data.city ? String(data.city).trim() : null,
+    state: data.state ? String(data.state).trim() : null,
+    state_code: data.state_code ? String(data.state_code).trim() : null,
+    postal_code: data.postal_code ? String(data.postal_code).trim() : null,
+    country: data.country ? String(data.country).trim() : null,
+    latitude: data.latitude != null ? Number(data.latitude) : null,
+    longitude: data.longitude != null ? Number(data.longitude) : null,
+    is_active: data.is_active === true || data.is_active === "true" || data.is_active === "1",
+  };
+
+  const { data: result, error } = await supabase
+    .from("proj_s_origin_addresses")
+    .insert(payload)
+    .select("*")
+    .single();
+
+  if (error) throw new Error(error.message);
+  return result;
+}
+
+export async function updateOriginAddress(id, data) {
+  const supabase = getSupabaseAdmin();
+  const originId = Number(id);
+  if (!originId) throw new Error("id is required.");
+
+  // Validate required fields
+  if (data.origin_name !== undefined && !String(data.origin_name).trim()) {
+    throw new Error("Origin name is required.");
+  }
+  if (data.formatted_address !== undefined && !String(data.formatted_address).trim()) {
+    throw new Error("Formatted address is required.");
+  }
+
+  // Check for duplicate origin_name (exclude current record)
+  if (data.origin_name !== undefined) {
+    const trimmedName = String(data.origin_name).trim();
+    const { data: existing } = await supabase
+      .from("proj_s_origin_addresses")
+      .select("id")
+      .eq("origin_name", trimmedName)
+      .neq("id", originId)
+      .maybeSingle();
+
+    if (existing) {
+      throw new Error("An origin address with this name already exists.");
+    }
+  }
+
+  const payload = {};
+  if (data.origin_name !== undefined) payload.origin_name = String(data.origin_name).trim();
+  if (data.formatted_address !== undefined) payload.formatted_address = String(data.formatted_address).trim();
+  if (data.address_line_1 !== undefined) payload.address_line_1 = data.address_line_1 ? String(data.address_line_1).trim() : null;
+  if (data.city !== undefined) payload.city = data.city ? String(data.city).trim() : null;
+  if (data.state !== undefined) payload.state = data.state ? String(data.state).trim() : null;
+  if (data.state_code !== undefined) payload.state_code = data.state_code ? String(data.state_code).trim() : null;
+  if (data.postal_code !== undefined) payload.postal_code = data.postal_code ? String(data.postal_code).trim() : null;
+  if (data.country !== undefined) payload.country = data.country ? String(data.country).trim() : null;
+  if (data.latitude !== undefined) payload.latitude = data.latitude != null ? Number(data.latitude) : null;
+  if (data.longitude !== undefined) payload.longitude = data.longitude != null ? Number(data.longitude) : null;
+  if (data.is_active !== undefined) payload.is_active = data.is_active === true || data.is_active === "true" || data.is_active === "1";
+
+  const { data: result, error } = await supabase
+    .from("proj_s_origin_addresses")
+    .update(payload)
+    .eq("id", originId)
+    .select("*")
+    .single();
+
+  if (error) throw new Error(error.message);
+  return result;
+}
+
+export async function toggleOriginAddressActive(id, isActive) {
+  const supabase = getSupabaseAdmin();
+  const originId = Number(id);
+  if (!originId) throw new Error("id is required.");
+
+  const active = isActive === true || isActive === "true" || isActive === "1";
+
+  const { data, error } = await supabase
+    .from("proj_s_origin_addresses")
+    .update({ is_active: active })
+    .eq("id", originId)
+    .select("*")
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function softDeleteOriginAddress(id) {
+  const supabase = getSupabaseAdmin();
+  const originId = Number(id);
+  if (!originId) throw new Error("id is required.");
+
+  // Check if the origin address is referenced by any runs
+  const { data: referencedRuns, error: refError } = await supabase
+    .from("proj_t_runs")
+    .select("id")
+    .eq("origin_id", originId)
+    .limit(1);
+
+  if (refError) throw new Error(refError.message);
+
+  // Soft delete by setting is_active = false
+  const { data, error } = await supabase
+    .from("proj_s_origin_addresses")
+    .update({ is_active: false })
+    .eq("id", originId)
+    .select("*")
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+// ─── States Specific Actions ────────────────────────────────
+
+export async function createState(data) {
+  const supabase = getSupabaseAdmin();
+
+  // Validate required fields
+  if (!data.state_name || !String(data.state_name).trim()) {
+    throw new Error("State name is required.");
+  }
+  if (!data.state_code || !String(data.state_code).trim()) {
+    throw new Error("State code is required.");
+  }
+
+  // Check for duplicate name
+  const trimmedName = String(data.state_name).trim();
+  const { data: existingName } = await supabase
+    .from("proj_s_states")
+    .select("id")
+    .eq("state_name", trimmedName)
+    .maybeSingle();
+  if (existingName) {
+    throw new Error("A state with this name already exists.");
+  }
+
+  // Check for duplicate code
+  const trimmedCode = String(data.state_code).trim().toUpperCase();
+  const { data: existingCode } = await supabase
+    .from("proj_s_states")
+    .select("id")
+    .eq("state_code", trimmedCode)
+    .maybeSingle();
+  if (existingCode) {
+    throw new Error("A state with this code already exists.");
+  }
+
+  // Get the highest display_order to auto-increment
+  const { data: maxOrder } = await supabase
+    .from("proj_s_states")
+    .select("display_order")
+    .order("display_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const nextOrder = data.display_order != null ? Number(data.display_order) : (maxOrder?.display_order ?? 0) + 1;
+
+  const payload = {
+    state_name: trimmedName,
+    state_code: trimmedCode,
+    display_color: data.display_color ? String(data.display_color).trim() : null,
+    display_order: nextOrder,
+    is_active: data.is_active === true || data.is_active === "true" || data.is_active === "1",
+  };
+
+  const { data: result, error } = await supabase
+    .from("proj_s_states")
+    .insert(payload)
+    .select("*")
+    .single();
+
+  if (error) throw new Error(error.message);
+  return result;
+}
+
+export async function updateState(id, data) {
+  const supabase = getSupabaseAdmin();
+  const stateId = Number(id);
+  if (!stateId) throw new Error("id is required.");
+
+  // Validate required fields
+  if (data.state_name !== undefined && !String(data.state_name).trim()) {
+    throw new Error("State name is required.");
+  }
+  if (data.state_code !== undefined && !String(data.state_code).trim()) {
+    throw new Error("State code is required.");
+  }
+
+  // Check for duplicate name (exclude current record)
+  if (data.state_name !== undefined) {
+    const trimmedName = String(data.state_name).trim();
+    const { data: existing } = await supabase
+      .from("proj_s_states")
+      .select("id")
+      .eq("state_name", trimmedName)
+      .neq("id", stateId)
+      .maybeSingle();
+    if (existing) {
+      throw new Error("A state with this name already exists.");
+    }
+  }
+
+  // Check for duplicate code (exclude current record)
+  if (data.state_code !== undefined) {
+    const trimmedCode = String(data.state_code).trim().toUpperCase();
+    const { data: existing } = await supabase
+      .from("proj_s_states")
+      .select("id")
+      .eq("state_code", trimmedCode)
+      .neq("id", stateId)
+      .maybeSingle();
+    if (existing) {
+      throw new Error("A state with this code already exists.");
+    }
+  }
+
+  const payload = {};
+  if (data.state_name !== undefined) payload.state_name = String(data.state_name).trim();
+  if (data.state_code !== undefined) payload.state_code = String(data.state_code).trim().toUpperCase();
+  if (data.display_color !== undefined) payload.display_color = data.display_color ? String(data.display_color).trim() : null;
+  if (data.display_order !== undefined) payload.display_order = Number(data.display_order);
+  if (data.is_active !== undefined) payload.is_active = data.is_active === true || data.is_active === "true" || data.is_active === "1";
+
+  const { data: result, error } = await supabase
+    .from("proj_s_states")
+    .update(payload)
+    .eq("id", stateId)
+    .select("*")
+    .single();
+
+  if (error) throw new Error(error.message);
+  return result;
+}
+
+export async function toggleStateActive(id, isActive) {
+  const supabase = getSupabaseAdmin();
+  const stateId = Number(id);
+  if (!stateId) throw new Error("id is required.");
+
+  const active = isActive === true || isActive === "true" || isActive === "1";
+
+  const { data, error } = await supabase
+    .from("proj_s_states")
+    .update({ is_active: active })
+    .eq("id", stateId)
+    .select("*")
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function reorderStates(updates) {
+  if (!Array.isArray(updates) || updates.length === 0) {
+    throw new Error("At least one update is required.");
+  }
+
+  const supabase = getSupabaseAdmin();
+
+  for (const u of updates) {
+    if (u.id == null || u.display_order == null) {
+      throw new Error("Each update must have id and display_order.");
+    }
+  }
+
+  const errors = [];
+  for (const u of updates) {
+    const { error } = await supabase
+      .from("proj_s_states")
+      .update({ display_order: Number(u.display_order) })
+      .eq("id", Number(u.id));
+
+    if (error) errors.push(error.message);
+  }
+
+  if (errors.length > 0) {
+    throw new Error(`Failed to update display order: ${errors.join(", ")}`);
+  }
+
+  return { success: true };
+}
+
+export async function softDeleteState(id) {
+  const supabase = getSupabaseAdmin();
+  const stateId = Number(id);
+  if (!stateId) throw new Error("id is required.");
+
+  // Check if the state is referenced by any projects or origin addresses
+  const [projectsRef, originsRef] = await Promise.all([
+    supabase.from("proj_t_projects").select("id").eq("state_code", stateId).limit(1),
+    supabase.from("proj_s_origin_addresses").select("id").eq("state_code", stateId).limit(1),
+  ]);
+
+  if (projectsRef.error) throw new Error(projectsRef.error.message);
+  if (originsRef.error) throw new Error(originsRef.error.message);
+
+  // Soft delete by setting is_active = false
+  const { data, error } = await supabase
+    .from("proj_s_states")
+    .update({ is_active: false })
+    .eq("id", stateId)
+    .select("*")
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+// ─── Generic Lookup Table Actions ────────────────────────────
+
+const LOOKUP_TABLES = {
+  buildingCategories: { table: "proj_s_building_categories", pk: "id", nameField: "building_category_name", descField: "description" },
+  permitStatuses: { table: "proj_s_permit_status", pk: "id", nameField: "status_name", descField: "description" },
+  welcomeCallStatuses: { table: "proj_s_welcome_call_status", pk: "id", nameField: "status_name", descField: "description" },
+};
+
+function resolveLookupTable(tableKey) {
+  const entry = LOOKUP_TABLES[tableKey];
+  if (!entry) throw new Error(`Unknown lookup table key: "${tableKey}"`);
+  return entry;
+}
+
+export async function createLookupRow(tableKey, data) {
+  const { table, pk, nameField, descField } = resolveLookupTable(tableKey);
+  const supabase = getSupabaseAdmin();
+
+  const name = data[nameField] ? String(data[nameField]).trim() : "";
+  if (!name) {
+    throw new Error("Name is required.");
+  }
+  if (name.length > 100) {
+    throw new Error("Name must be 100 characters or less.");
+  }
+
+  // Check for duplicate name
+  const { data: existing } = await supabase
+    .from(table)
+    .select(pk)
+    .eq(nameField, name)
+    .maybeSingle();
+
+  if (existing) {
+    throw new Error("A record with this name already exists.");
+  }
+
+  // Get the highest display_order to auto-increment
+  const { data: maxOrder } = await supabase
+    .from(table)
+    .select("display_order")
+    .order("display_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const nextOrder = (maxOrder?.display_order ?? 0) + 1;
+
+  const payload = {
+    [nameField]: name,
+    [descField]: data[descField] ? String(data[descField]).trim() : null,
+    display_order: nextOrder,
+    is_active: data.is_active === true || data.is_active === "true" || data.is_active === "1",
+  };
+
+  const { data: result, error } = await supabase.from(table).insert(payload).select("*").single();
+  if (error) throw new Error(error.message);
+  return result;
+}
+
+export async function updateLookupRow(tableKey, id, data) {
+  const { table, pk, nameField, descField } = resolveLookupTable(tableKey);
+  const supabase = getSupabaseAdmin();
+  const rowId = Number(id);
+  if (!rowId) throw new Error(`${pk} is required.`);
+
+  if (data[nameField] !== undefined) {
+    const name = String(data[nameField]).trim();
+    if (!name) throw new Error("Name is required.");
+
+    // Check for duplicate name (exclude current record)
+    const { data: existing } = await supabase
+      .from(table)
+      .select(pk)
+      .eq(nameField, name)
+      .neq(pk, rowId)
+      .maybeSingle();
+
+    if (existing) {
+      throw new Error("A record with this name already exists.");
+    }
+  }
+
+  const payload = {};
+  if (data[nameField] !== undefined) payload[nameField] = String(data[nameField]).trim();
+  if (data[descField] !== undefined) payload[descField] = data[descField] ? String(data[descField]).trim() : null;
+  if (data.display_order !== undefined) payload.display_order = Number(data.display_order);
+  if (data.is_active !== undefined) payload.is_active = data.is_active === true || data.is_active === "true" || data.is_active === "1";
+
+  const { data: result, error } = await supabase.from(table).update(payload).eq(pk, rowId).select("*").single();
+  if (error) throw new Error(error.message);
+  return result;
+}
+
+export async function toggleLookupRowActive(tableKey, id, isActive) {
+  const { table, pk } = resolveLookupTable(tableKey);
+  const supabase = getSupabaseAdmin();
+  const rowId = Number(id);
+  if (!rowId) throw new Error(`${pk} is required.`);
+
+  const active = isActive === true || isActive === "true" || isActive === "1";
+
+  const { data, error } = await supabase.from(table).update({ is_active: active }).eq(pk, rowId).select("*").single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function reorderLookupRows(tableKey, updates) {
+  const { table, pk } = resolveLookupTable(tableKey);
+  if (!Array.isArray(updates) || updates.length === 0) {
+    throw new Error("At least one update is required.");
+  }
+
+  const supabase = getSupabaseAdmin();
+  for (const u of updates) {
+    if (u[pk] == null || u.display_order == null) {
+      throw new Error(`Each update must have ${pk} and display_order.`);
+    }
+  }
+
+  const errors = [];
+  for (const u of updates) {
+    const { error } = await supabase
+      .from(table)
+      .update({ display_order: Number(u.display_order) })
+      .eq(pk, Number(u[pk]));
+
+    if (error) errors.push(error.message);
+  }
+
+  if (errors.length > 0) {
+    throw new Error(`Failed to update display order: ${errors.join(", ")}`);
+  }
+  return { success: true };
+}
+
+export async function softDeleteLookupRow(tableKey, id) {
+  const { table, pk } = resolveLookupTable(tableKey);
+  const supabase = getSupabaseAdmin();
+  const rowId = Number(id);
+  if (!rowId) throw new Error(`${pk} is required.`);
+
+  const { data, error } = await supabase.from(table).update({ is_active: false }).eq(pk, rowId).select("*").single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 // ─── Lookup Table Loaders ──────────────────────────────────
 
 export async function loadBuildingCategories() {

@@ -34,12 +34,32 @@ export async function loadProjectMapSetup() {
 
   const queries = {
     projects: projectsQuery,
-    projectStatuses: supabase.from("proj_s_project_status").select("*").order("status_id"),
+    projectStatuses: supabase
+      .from("proj_s_project_status")
+      .select("*")
+      .order("display_order", { ascending: true })
+      .order("status_name", { ascending: true }),
     originAddresses: supabase.from("proj_s_origin_addresses").select("*").order("origin_name"),
-    states: supabase.from("proj_s_states").select("*").order("display_order"),
-    buildingCategories: supabase.from("proj_s_building_categories").select("*").order("display_order"),
-    permitStatuses: supabase.from("proj_s_permit_status").select("*").order("display_order"),
-    welcomeCallStatuses: supabase.from("proj_s_welcome_call_status").select("*").order("display_order"),
+    states: supabase
+      .from("proj_s_states")
+      .select("*")
+      .order("display_order", { ascending: true })
+      .order("state_name", { ascending: true }),
+    buildingCategories: supabase
+      .from("proj_s_building_categories")
+      .select("*")
+      .order("display_order", { ascending: true })
+      .order("building_category_name", { ascending: true }),
+    permitStatuses: supabase
+      .from("proj_s_permit_status")
+      .select("*")
+      .order("display_order", { ascending: true })
+      .order("status_name", { ascending: true }),
+    welcomeCallStatuses: supabase
+      .from("proj_s_welcome_call_status")
+      .select("*")
+      .order("display_order", { ascending: true })
+      .order("status_name", { ascending: true }),
   };
 
   const keys = Object.keys(queries);

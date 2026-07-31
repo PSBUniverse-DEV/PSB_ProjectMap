@@ -8,6 +8,10 @@ import SetupWorkspaceLayout from "./SetupWorkspaceLayout";
 import SetupSidebar from "./SetupSidebar";
 import SetupToolbar from "./SetupToolbar";
 import SetupFormModal from "./SetupFormModal";
+import ProjectStatusesGrid from "../../components/ProjectStatusesGrid";
+import OriginAddressesGrid from "../../components/OriginAddressesGrid";
+import StatesGrid from "../../components/StatesGrid";
+import LookupTableGrid from "../../components/LookupTableGrid";
 
 // ─── Table Definitions ─────────────────────────────────────────────
 
@@ -314,6 +318,51 @@ export default function ProjectMapSetupView({ setup = {} }) {
 
   const singularName = tableDef?.label?.replace(/s$/, "") || "Item";
 
+  // ─── Custom Tab Components ────────────────────────────────
+  const isCustomTab = ["projectStatuses", "originAddresses", "states", "buildingCategories", "permitStatuses", "welcomeCallStatuses"].includes(activeTab);
+
+  // Lookup table configs
+  const lookupTableConfigs = {
+    buildingCategories: {
+      title: "Building Categories",
+      singularName: "Building Category",
+      nameField: "building_category_name",
+      nameLabel: "Category Name",
+      descField: "description",
+      descLabel: "Description",
+      searchFields: "building_category_name,description",
+      hasColor: false,
+    },
+    permitStatuses: {
+      title: "Permit Statuses",
+      singularName: "Permit Status",
+      nameField: "status_name",
+      nameLabel: "Status Name",
+      descField: "description",
+      descLabel: "Description",
+      searchFields: "status_name,description",
+      hasColor: false,
+    },
+    welcomeCallStatuses: {
+      title: "Welcome Call Statuses",
+      singularName: "Welcome Call Status",
+      nameField: "status_name",
+      nameLabel: "Status Name",
+      descField: "description",
+      descLabel: "Description",
+      searchFields: "status_name,description",
+      hasColor: false,
+    },
+  };
+
+  const getLookupActions = (tableKey) => ({
+    onCreate: (payload) => createLookupRow(tableKey, payload),
+    onUpdate: (id, payload) => updateLookupRow(tableKey, id, payload),
+    onToggle: (id, isActive) => toggleLookupRowActive(tableKey, id, isActive),
+    onReorder: (updates) => reorderLookupRows(tableKey, updates),
+    onDelete: (id) => softDeleteLookupRow(tableKey, id),
+  });
+
   return (
     <div className="setup-workspace-root">
       <SetupWorkspaceLayout
@@ -325,51 +374,72 @@ export default function ProjectMapSetupView({ setup = {} }) {
           />
         }
         toolbar={
-          <SetupToolbar
-            tableName={tableDef?.label || ""}
-            recordCount={rows.length}
-            searchValue={searchValue}
-            onSearchChange={(v) => { setSearchValue(v); }}
-            onAdd={openAdd}
-            addLabel={`Add ${singularName}`}
-          />
+          !isCustomTab && (
+            <SetupToolbar
+              tableName={tableDef?.label || ""}
+              recordCount={rows.length}
+              searchValue={searchValue}
+              onSearchChange={(v) => { setSearchValue(v); }}
+              onAdd={openAdd}
+              addLabel={`Add ${singularName}`}
+            />
+          )
         }
       >
-        {tableDef && (
-          <div className="setup-grid-wrap">
-            <TableZ
-              data={filteredRows}
-              columns={columns}
-              rowIdKey={tableDef.pk}
-              actions={actions}
-              hideSearch
-              emptyMessage={`No ${tableDef.label.toLowerCase()} found.`}
-            />
-          </div>
+        {activeTab === "projectStatuses" ? (
+          <ProjectStatusesGrid data={setup.projectStatuses || []} />
+        ) : activeTab === "originAddresses" ? (
+          <OriginAddressesGrid data={setup.originAddresses || []} />
+        ) : activeTab === "states" ? (
+          <StatesGrid data={setup.states || []} />
+        ) : activeTab === "buildingCategories" || activeTab === "permitStatuses" || activeTab === "welcomeCallStatuses" ? (
+          <LookupTableGrid
+            tableKey={activeTab}
+            data={setup[activeTab] || []}
+            config={lookupTableConfigs[activeTab]}
+            {...getLookupActions(activeTab)}
+          />
+        ) : (
+          tableDef && (
+            <div className="setup-grid-wrap">
+              <TableZ
+                data={filteredRows}
+                columns={columns}
+                rowIdKey={tableDef.pk}
+                actions={actions}
+                hideSearch
+                emptyMessage={`No ${tableDef.label.toLowerCase()} found.`}
+              />
+            </div>
+          )
         )}
       </SetupWorkspaceLayout>
 
-      {/* Add / Edit Modal */}
-      <SetupFormModal
-        show={!!modalMode}
-        mode={modalMode}
-        tableName={singularName}
-        fields={fields}
-        draft={draft}
-        busy={busy}
-        onDraftChange={handleDraftChange}
-        onSave={handleSave}
-        onClose={closeModal}
-      />
+      {/* Add / Edit Modal (for generic tables only) */}
+      {!isCustomTab && (
+        <SetupFormModal
+          show={!!modalMode}
+          mode={modalMode}
+          tableName={singularName}
+          fields={fields}
+          draft={draft}
+          busy={busy}
+          onDraftChange={handleDraftChange}
+          onSave={handleSave}
+          onClose={closeModal}
+        />
+      )}
 
-      {/* Delete Confirmation */}
-      <Modal show={!!confirmDelete} onHide={() => setConfirmDelete(null)} title="Confirm Delete">
-        <p className="setup-delete-msg">Delete this row? This cannot be undone.</p>
-        <div className="setup-delete-actions">
-          <Button variant="secondary" onClick={() => setConfirmDelete(null)}>Cancel</Button>
-          <Button variant="danger" loading={busy} onClick={handleDelete}>Delete</Button>
-        </div>
-      </Modal>
+      {/* Delete Confirmation (for generic tables only) */}
+      {!isCustomTab && (
+        <Modal show={!!confirmDelete} onHide={() => setConfirmDelete(null)} title="Confirm Delete">
+          <p className="setup-delete-msg">Delete this row? This cannot be undone.</p>
+          <div className="setup-delete-actions">
+            <Button variant="secondary" onClick={() => setConfirmDelete(null)}>Cancel</Button>
+            <Button variant="danger" loading={busy} onClick={handleDelete}>Delete</Button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Modal, toastError, toastSuccess } from "@/shared/components/ui";
 import { deleteProject, calculateRoute, calculateMultiStopRoute, calculateSegmentRoutes, deleteRun, removeProjectFromRun, loadRunDetails, updateStopSequence, addProjectToRun, updateRun, getProjectRunAssignment, updateStopNote, updateRunStopsCount, loadRuns, loadAllRunProjects } from "../data/projectMap.actions";
+import { reverseGeocode } from "../utils/geocoding";
 import ProjectMap from "../components/ProjectMap";
 import ProjectList from "../components/ProjectList";
 import ProjectDetailDrawer from "../components/ProjectDetailDrawer";
@@ -13,6 +14,7 @@ import RunForm from "../components/RunForm";
 import ProjectSelectorModal from "../components/ProjectSelectorModal";
 import FilterBar from "../components/FilterBar";
 import AddProjectForm from "../components/AddProjectForm";
+import MapSearch from "../components/MapSearch";
 import FilterChips from "../components/FilterChips";
 import RunFilterPanel from "../components/RunFilterPanel";
 import RunFilterChips from "../components/RunFilterChips";
@@ -26,12 +28,17 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
   const [selectedProjectId, setSelectedProjectId] = useState(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingProject, setEditingProject] = useState(null);
+  const [initialLocation, setInitialLocation] = useState(null);
+  const [tempMarker, setTempMarker] = useState(null);
+  const [searchMarker, setSearchMarker] = useState(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [mapSearchResults, setMapSearchResults] = useState([]);
+  const [searchResults, setSearchResults] = useState(null); // For filter search (project list)
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [busy, setBusy] = useState(false);
   const [selectedOriginId, setSelectedOriginId] = useState(null);
   const [routeData, setRouteData] = useState(null);
   const [routeLoading, setRouteLoading] = useState(false);
-  const [searchResults, setSearchResults] = useState(null);
   const prevSearchRef = useRef("");
 
   // Runs state — local copy so we can update it after mutations
@@ -249,7 +256,7 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
           (p.state && p.state.toLowerCase().includes(q));
         return match && (p.site_latitude || p.address_latitude) != null && (p.site_longitude || p.address_longitude) != null;
       });
-      setSearchResults(matched.length > 0 ? matched : null);
+      setSearchResults(matched.length > 0 ? matched : null); // This is for the filter search (project list)
     } else {
       setSearchResults(null);
     }
@@ -335,6 +342,99 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
     if (selectedProject) { setEditingProject(selectedProject); setShowAddForm(true); }
   };
 
+  const handleMapRightClick = async (lng, lat) => {
+    setTempMarker({ lat, lng, loading: true, error: null });
+    
+    const addressData = await reverseGeocode(lat, lng);
+    
+    // Validate address data - must have formatted_address and address_line_1
+    const isValidAddress = addressData && 
+                          addressData.formatted_address && 
+                          addressData.address_line_1;
+    
+    if (isValidAddress) {
+      // Preserve the exact clicked coordinates as the site location.
+      // The reverse geocoder's coordinates go into address_* fields only.
+      setInitialLocation({
+        formatted_address: addressData.formatted_address,
+        address_line_1: addressData.address_line_1,
+        city: addressData.city,
+        state: addressData.state,
+        state_code: addressData.state_code,
+        postal_code: addressData.postal_code,
+        country: addressData.country,
+        address_latitude: addressData.latitude,
+        address_longitude: addressData.longitude,
+        site_latitude: lat,   // Exact position where the user clicked
+        site_longitude: lng,  // Exact position where the user clicked
+        location_source: "map_click",
+        location_confirmed: true,
+      });
+      setShowAddForm(true);
+    } else {
+      // Invalid location - clear temp marker and show error
+      setTempMarker(null);
+      toastError("No address detected. Please select a valid location.", "Location");
+    }
+  };
+
+  const handleMapSearchChange = (query, results) => {
+    setSearchQuery(query);
+    setMapSearchResults(results || []);
+  };
+
+  const handleMapSearchSelect = (result) => {
+    if (!result) {
+      // Cancellation - clear everything
+      setSearchMarker(null);
+      setSearchQuery("");
+      setMapSearchResults([]);
+      return;
+    }
+
+    setSearchMarker({
+      lat: result.latitude,
+      lng: result.longitude,
+      data: result,
+    });
+    
+    // Clear the map search results after selection
+    setMapSearchResults([]);
+  };
+
+  const clearMapSearch = () => {
+    setSearchMarker(null);
+    setSearchQuery("");
+    setMapSearchResults([]);
+  };
+
+  const handleSearchMarkerClick = (data) => {
+    // If data is null, it's a cancellation request
+    if (!data) {
+      setSearchMarker(null);
+      return;
+    }
+
+    // For search results, the searched location IS the exact site location,
+    // so both site and address coordinates are the same.
+    setInitialLocation({
+      formatted_address: data.formatted_address,
+      address_line_1: data.address_line_1,
+      city: data.city,
+      state: data.state,
+      state_code: data.state_code,
+      postal_code: data.postal_code,
+      country: data.country,
+      address_latitude: data.latitude,
+      address_longitude: data.longitude,
+      site_latitude: data.latitude,
+      site_longitude: data.longitude,
+      location_source: "map_click",
+      location_confirmed: true,
+    });
+    setShowAddForm(true);
+  };
+
   const handleDelete = async () => {
     if (!confirmDeleteId) return;
     setBusy(true);
@@ -349,8 +449,8 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
     } finally { setBusy(false); }
   };
 
-  const handleSaved = () => { setShowAddForm(false); setEditingProject(null); router.refresh(); };
-  const handleCloseForm = () => { setShowAddForm(false); setEditingProject(null); };
+  const handleSaved = () => { setShowAddForm(false); setEditingProject(null); setInitialLocation(null); setTempMarker(null); clearMapSearch(); router.refresh(); };
+  const handleCloseForm = () => { setShowAddForm(false); setEditingProject(null); setInitialLocation(null); setTempMarker(null); clearMapSearch(); };
 
   const handleRecalculate = useCallback(async () => {
     if (!selectedRunId) return;
@@ -689,6 +789,17 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
         <RunFilterChips runFilters={runFilters} onRemoveFilter={handleRemoveRunFilter} />
       )}
 
+      {mode === "projects" && (
+        <div style={{ padding: "4px 10px", background: "#fff", borderBottom: "1px solid #e2e8f0", flexShrink: 0 }}>
+          <MapSearch 
+            value={searchQuery} 
+            onChange={handleMapSearchChange} 
+            onSelect={handleMapSearchSelect} 
+            results={mapSearchResults}
+          />
+        </div>
+      )}
+
       <div style={{ flex: 1, display: "flex", position: "relative", overflow: "hidden", minHeight: 0 }}>
         <div style={{ width: "240px", minWidth: "240px", flexShrink: 0, zIndex: 10, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           {mode === "projects" ? (
@@ -699,7 +810,7 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
         </div>
 
         <div style={{ flex: 1, position: "relative", minHeight: 0, minWidth: 0 }}>
-          <ProjectMap projects={projects} selectedProjectId={selectedProjectId} onSelectProject={handleSelectProject} filters={filters} selectedOrigin={selectedOrigin} routeData={routeData} stateColorLookup={stateColorLookup} statuses={statuses} buildingCategories={buildingCategories} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} searchResults={searchResults} mode={mode} runs={runs} selectedRunId={selectedRunId} runProjects={runProjects} runRouteData={runRouteData} onAddToRun={handleAddProjectToRun} onRemoveFromRun={handleRemoveProjectFromRun} projectRunLookup={projectRunLookup} showLabels={showLabels} />
+          <ProjectMap projects={projects} selectedProjectId={selectedProjectId} onSelectProject={handleSelectProject} filters={filters} selectedOrigin={selectedOrigin} routeData={routeData} stateColorLookup={stateColorLookup} statuses={statuses} buildingCategories={buildingCategories} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} searchResults={searchResults} mode={mode} runs={runs} selectedRunId={selectedRunId} runProjects={runProjects} runRouteData={runRouteData} onAddToRun={handleAddProjectToRun} onRemoveFromRun={handleRemoveProjectFromRun} projectRunLookup={projectRunLookup} showLabels={showLabels} onMapRightClick={handleMapRightClick} tempMarker={tempMarker} searchMarker={searchMarker} onSearchMarkerClick={handleSearchMarkerClick} />
         </div>
 
         {mode === "projects" && selectedProject && (
@@ -711,7 +822,7 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
       </div>
 
       {mode === "projects" && (
-        <AddProjectForm show={showAddForm} mode={editingProject ? "edit" : "add"} project={editingProject} statuses={statuses} buildingCategories={buildingCategories} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} onClose={handleCloseForm} onSaved={handleSaved} />
+        <AddProjectForm show={showAddForm} mode={editingProject ? "edit" : "add"} project={editingProject} statuses={statuses} buildingCategories={buildingCategories} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} onClose={handleCloseForm} onSaved={handleSaved} initialLocation={initialLocation} />
       )}
 
       {mode === "runs" && (

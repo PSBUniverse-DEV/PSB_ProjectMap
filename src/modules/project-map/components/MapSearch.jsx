@@ -1,19 +1,14 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { forwardGeocode } from "../utils/geocoding";
 
-const GEOAPIFY_API_KEY = process.env.NEXT_PUBLIC_GEOAPIFY_API_KEY || "";
-
-export default function LocationSearch({ onSelect, selectedLocation, query: externalQuery, onQueryChange }) {
-  const [suggestions, setSuggestions] = useState([]);
-  const [loading, setLoading] = useState(false);
+export default function MapSearch({ value, onChange, onSelect, results = [] }) {
+  const [query, setQuery] = useState(value || "");
   const [showDropdown, setShowDropdown] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const wrapperRef = useRef(null);
-  const justSelectedRef = useRef(false);
-
-  // Use external query if provided, otherwise internal state
-  const query = externalQuery ?? "";
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -26,63 +21,35 @@ export default function LocationSearch({ onSelect, selectedLocation, query: exte
     return () => document.removeEventListener("click", handleClickOutside);
   }, []);
 
+  // Sync internal query state with external value prop
+  useEffect(() => {
+    setQuery(value || "");
+  }, [value]);
+
   /**
    * Performs the geocoding search explicitly.
    * Only called when the user presses Enter or clicks the Search button.
    * Prevents unnecessary API requests while typing.
    */
   const performSearch = async () => {
-    // Skip search if user just selected a suggestion
-    if (justSelectedRef.current) {
-      justSelectedRef.current = false;
-      return;
-    }
-
-    if (!query || query.length < 3 || loading) {
-      return;
-    }
-
-    if (!GEOAPIFY_API_KEY) {
-      setSuggestions([]);
-      setShowDropdown(true);
-      setSearched(true);
-      return;
-    }
+    if (!query || query.trim().length < 2 || loading) return;
 
     setLoading(true);
     setSearched(true);
     setShowDropdown(true);
     try {
-      const url = new URL("https://api.geoapify.com/v1/geocode/autocomplete");
-      url.searchParams.set("text", query);
-      url.searchParams.set("apiKey", GEOAPIFY_API_KEY);
-      url.searchParams.set("limit", "50");
-      url.searchParams.set("bias", "countrycode:none"); // Disable country bias for global search
-
-      const res = await fetch(url.toString());
-      if (!res.ok) {
-        throw new Error(`Geocoding failed: ${res.status}`);
+      const data = await forwardGeocode(query.trim(), 50);
+      // Call parent's onChange with results
+      if (onChange) {
+        onChange(query, data);
       }
-      const data = await res.json();
-
-      const features = (data.features || []).map((f) => ({
-        formatted_address: f.properties.formatted || "",
-        address_line_1: f.properties.address_line1 || "",
-        city: f.properties.city || "",
-        state: f.properties.state || "",
-        state_code: f.properties.state_code || "",
-        postal_code: f.properties.postcode || "",
-        country: f.properties.country || "",
-        latitude: f.properties.lat || null,
-        longitude: f.properties.lon || null,
-      }));
-
-      setSuggestions(features);
       // Keep dropdown open to show results or "no results" message
       setShowDropdown(true);
     } catch (err) {
-      // Silently fail — geocoding is optional
-      setSuggestions([]);
+      console.error("[MapSearch] Search failed:", err);
+      if (onChange) {
+        onChange(query, []);
+      }
       setShowDropdown(true);
     } finally {
       setLoading(false);
@@ -96,13 +63,25 @@ export default function LocationSearch({ onSelect, selectedLocation, query: exte
     }
   };
 
-  const handleSelect = (suggestion) => {
-    console.log("[LocationSearch] handleSelect called with:", suggestion);
-    justSelectedRef.current = true;
-    onQueryChange?.(suggestion.formatted_address);
+  const handleSelect = (result) => {
+    const displayText = result.formatted_address || result.address_line_1;
+    setQuery(displayText);
     setShowDropdown(false);
     setSearched(false);
-    onSelect?.(suggestion);
+    if (onChange) {
+      onChange(displayText, []); // Clear results after selection
+    }
+    onSelect?.(result);
+  };
+
+  const handleClear = () => {
+    setQuery("");
+    setShowDropdown(false);
+    setSearched(false);
+    if (onChange) {
+      onChange("", []); // Clear both query and results
+    }
+    onSelect?.(null); // Signal cancellation to parent
   };
 
   // Loading spinner with proper animation
@@ -122,47 +101,69 @@ export default function LocationSearch({ onSelect, selectedLocation, query: exte
         <div style={{ position: "relative", flex: 1 }}>
           <input
             type="text"
-            placeholder="Search address, road, city, or location..."
+            placeholder="🔍 Search address, city, ZIP, place..."
             value={query}
-            onChange={(e) => {
-              onQueryChange?.(e.target.value);
-            }}
+            onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            onFocus={() => suggestions.length > 0 && setShowDropdown(true)}
+            onFocus={() => results.length > 0 && setShowDropdown(true)}
             disabled={loading}
             style={{
               width: "100%",
               border: "1px solid #e2e8f0",
               borderRadius: "4px",
-              padding: "8px 12px",
-              fontSize: "13px",
+              padding: "6px 10px",
+              fontSize: "12px",
               outline: "none",
               background: loading ? "#f8fafc" : "#fff",
+              paddingRight: query ? "28px" : "10px",
               opacity: loading ? 0.7 : 1,
             }}
           />
-          {loading && (
-            <span style={{ position: "absolute", right: "10px", top: "50%", transform: "translateY(-50%)" }}>
+          {loading ? (
+            <span style={{ position: "absolute", right: "8px", top: "50%", transform: "translateY(-50%)" }}>
               <span style={spinnerStyle} />
             </span>
+          ) : (
+            query && (
+              <button
+                onClick={handleClear}
+                style={{
+                  position: "absolute",
+                  right: "6px",
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  background: "none",
+                  border: "none",
+                  color: "#94a3b8",
+                  cursor: "pointer",
+                  fontSize: "16px",
+                  lineHeight: 1,
+                  padding: "2px 4px",
+                  borderRadius: "3px",
+                }}
+                title="Clear search"
+              >
+                ×
+              </button>
+            )
           )}
         </div>
         <button
           onClick={performSearch}
-          disabled={loading || !query || query.trim().length < 3}
+          disabled={loading || !query || query.trim().length < 2}
           style={{
-            padding: "8px 14px",
+            padding: "6px 14px",
             border: "none",
             borderRadius: "4px",
             background: loading ? "#94a3b8" : "#16a34a",
             color: "#fff",
-            cursor: loading || !query || query.trim().length < 3 ? "not-allowed" : "pointer",
+            cursor: loading || !query || query.trim().length < 2 ? "not-allowed" : "pointer",
             fontSize: "12px",
             fontWeight: 600,
             whiteSpace: "nowrap",
           }}
         >
-          {loading ? "Searching..." : "🔍 Search"}
+          {loading ? "Searching..." : "Search"}
         </button>
       </div>
 
@@ -170,20 +171,22 @@ export default function LocationSearch({ onSelect, selectedLocation, query: exte
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
 
       {showDropdown && (
-        <div style={{
-          position: "absolute",
-          top: "100%",
-          left: 0,
-          right: 0,
-          background: "#fff",
-          border: "1px solid #e2e8f0",
-          borderRadius: "4px",
-          marginTop: "4px",
-          maxHeight: "240px",
-          overflowY: "auto",
-          zIndex: 1100,
-          boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
-        }}>
+        <div
+          style={{
+            position: "absolute",
+            top: "100%",
+            left: 0,
+            right: 0,
+            background: "#fff",
+            border: "1px solid #e2e8f0",
+            borderRadius: "4px",
+            marginTop: "4px",
+            maxHeight: "240px",
+            overflowY: "auto",
+            zIndex: 1100,
+            boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+          }}
+        >
           {loading ? (
             <div style={{ padding: "14px 12px", textAlign: "center", fontSize: "12px", color: "#64748b" }}>
               <span style={{ marginRight: "6px", verticalAlign: "middle" }}>
@@ -191,22 +194,25 @@ export default function LocationSearch({ onSelect, selectedLocation, query: exte
               </span>
               Searching locations...
             </div>
-          ) : suggestions.length > 0 ? (
-            suggestions.map((s, idx) => (
+          ) : results && results.length > 0 ? (
+            results.map((r, idx) => (
               <div
                 key={idx}
-                onClick={() => handleSelect(s)}
+                onClick={() => handleSelect(r)}
                 style={{
                   padding: "10px 12px",
                   cursor: "pointer",
-                  borderBottom: idx < suggestions.length - 1 ? "1px solid #f1f5f9" : "none",
+                  borderBottom:
+                    idx < results.length - 1 ? "1px solid #f1f5f9" : "none",
                 }}
               >
                 <div style={{ fontSize: "13px", color: "#1e293b" }}>
-                  {s.formatted_address || s.address_line_1 || s.label}
+                  {r.formatted_address || r.address_line_1}
                 </div>
                 <div style={{ fontSize: "11px", color: "#64748b" }}>
-                  {[s.address_line_1, s.city, s.state_code, s.postal_code].filter(Boolean).join(", ")}
+                  {[r.city, r.state, r.postal_code, r.country]
+                    .filter(Boolean)
+                    .join(", ")}
                 </div>
               </div>
             ))
@@ -215,10 +221,10 @@ export default function LocationSearch({ onSelect, selectedLocation, query: exte
               <div style={{ fontWeight: 600, marginBottom: "6px" }}>No locations found.</div>
               <div style={{ fontSize: "11px", lineHeight: 1.6 }}>
                 Try:
-                <br />• Full address
+                <br />• Complete address
+                <br />• ZIP code
                 <br />• Landmark
-                <br />• Business name
-                <br />• City + State
+                <br />• City + Country
               </div>
             </div>
           ) : null}

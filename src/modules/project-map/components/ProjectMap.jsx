@@ -41,6 +41,10 @@ export default function ProjectMap({
   onRemoveFromRun = null,
   projectRunLookup = new Map(),
   showLabels = true,
+  onMapRightClick = null,
+  tempMarker = null,
+  searchMarker = null,
+  onSearchMarkerClick = null,
 }) {
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
@@ -50,6 +54,10 @@ export default function ProjectMap({
   const initialFitDone = useRef(false);
   const mapInitAttemptedRef = useRef(false);
   const contextMenuPopupRef = useRef(null);
+  const tempMarkerRef = useRef(null);
+  const isContextMenuOpenRef = useRef(false);
+  const searchMarkerRef = useRef(null);
+  const searchMarkerPopupRef = useRef(null);
   
   // Refs for closure-dependent values used in marker event handlers
   const modeRef = useRef(mode);
@@ -60,6 +68,7 @@ export default function ProjectMap({
   const onRemoveFromRunRef = useRef(onRemoveFromRun);
   const projectRunLookupRef = useRef(projectRunLookup);
   const showLabelsRef = useRef(showLabels);
+  const onSearchMarkerClickRef = useRef(onSearchMarkerClick);
   
   // Keep refs in sync with props
   modeRef.current = mode;
@@ -70,6 +79,7 @@ export default function ProjectMap({
   onRemoveFromRunRef.current = onRemoveFromRun;
   projectRunLookupRef.current = projectRunLookup;
   showLabelsRef.current = showLabels;
+  onSearchMarkerClickRef.current = onSearchMarkerClick;
 
   // Helper to extract calendar date (YYYY-MM-DD) from any date value
   const toDateString = (value) => {
@@ -205,12 +215,75 @@ export default function ProjectMap({
 
         // Close context menu when clicking on the map
         map.on("click", () => {
-          if (contextMenuPopupRef.current) {
+          if (contextMenuPopupRef.current && !isContextMenuOpenRef.current) {
             try {
               contextMenuPopupRef.current.remove();
             } catch (e) {}
             contextMenuPopupRef.current = null;
           }
+          isContextMenuOpenRef.current = false;
+        });
+
+        // Right-click handler for adding project from map (only in projects mode)
+        map.on("contextmenu", (e) => {
+          // Only show "Add Project Here" in projects mode
+          if (modeRef.current !== "projects") {
+            return;
+          }
+
+          e.preventDefault();
+          
+          // Close any existing context menu
+          if (contextMenuPopupRef.current) {
+            try {
+              contextMenuPopupRef.current.remove();
+            } catch (ex) {}
+            contextMenuPopupRef.current = null;
+          }
+
+          const { lng, lat } = e.lngLat;
+          
+          const menuContent = document.createElement("div");
+          menuContent.style.cssText = `
+            background: rgba(255, 255, 255, 0.98);
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            padding: 6px 0;
+            font-size: 12px;
+            color: #1e293b;
+            box-shadow: 0 3px 14px rgba(0,0,0,0.18);
+            min-width: 180px;
+          `;
+          
+          menuContent.innerHTML = `
+            <div style="padding: 6px 12px; cursor: pointer; color: #1e293b; font-weight: 500;" class="ctx-add-project">📍 Add Project Here</div>
+          `;
+          
+          menuContent.querySelector(".ctx-add-project").addEventListener("click", () => {
+            isContextMenuOpenRef.current = true;
+            try {
+              contextMenuPopupRef.current?.remove();
+            } catch (ex) {}
+            contextMenuPopupRef.current = null;
+            
+            if (onMapRightClick) {
+              onMapRightClick(lng, lat);
+            }
+          });
+          
+          const popup = new MapLibreGL.Popup({
+            anchor: "left",
+            offset: [12, 0],
+            closeButton: false,
+            closeOnClick: true,
+            className: "project-context-menu"
+          })
+            .setLngLat([lng, lat])
+            .setDOMContent(menuContent)
+            .addTo(map);
+          
+          isContextMenuOpenRef.current = true;
+          contextMenuPopupRef.current = popup;
         });
 
       } catch (err) {
@@ -236,6 +309,12 @@ export default function ProjectMap({
       });
       markersMapRef.current = {};
       originMarkerRef.current = null;
+      try { tempMarkerRef.current?.remove(); } catch (e) {}
+      tempMarkerRef.current = null;
+      try { searchMarkerRef.current?.remove(); } catch (e) {}
+      searchMarkerRef.current = null;
+      try { searchMarkerPopupRef.current?.remove(); } catch (e) {}
+      searchMarkerPopupRef.current = null;
       try { map.remove(); } catch (e) { }
       mapRef.current = null;
       initialFitDone.current = false;
@@ -621,6 +700,133 @@ export default function ProjectMap({
 
     try { map.flyTo({ center: [lng, lat], zoom: 14 }); } catch (e) {}
   }, [selectedProjectId, projects, routeData]);
+
+  // Handle temporary marker for "Add Project from Map" (right-click - orange)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    // Remove existing temp marker
+    if (tempMarkerRef.current) {
+      try { tempMarkerRef.current.remove(); } catch (e) {}
+      tempMarkerRef.current = null;
+    }
+
+    if (tempMarker && tempMarker.lat != null && tempMarker.lng != null) {
+      try {
+        // Create temporary marker with orange color for right-click
+        tempMarkerRef.current = new MapLibreGL.Marker({
+          color: "#f97316",
+          scale: 1.2
+        })
+          .setLngLat([tempMarker.lng, tempMarker.lat])
+          .addTo(map);
+
+        // Center map on temp marker
+        map.flyTo({ center: [tempMarker.lng, tempMarker.lat], zoom: 14 });
+      } catch (e) {
+        console.error("[ProjectMap] Failed to add temp marker:", e);
+      }
+    }
+  }, [tempMarker]);
+
+  // Handle search marker (white marker for map search)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    // Remove existing search marker and popup
+    if (searchMarkerRef.current) {
+      try { searchMarkerRef.current.remove(); } catch (e) {}
+      searchMarkerRef.current = null;
+    }
+    if (searchMarkerPopupRef.current) {
+      try { searchMarkerPopupRef.current.remove(); } catch (e) {}
+      searchMarkerPopupRef.current = null;
+    }
+
+    if (searchMarker && searchMarker.lat != null && searchMarker.lng != null) {
+      try {
+        // Create white marker for search
+        searchMarkerRef.current = new MapLibreGL.Marker({
+          color: "#ffffff",
+          scale: 1.2
+        })
+          .setLngLat([searchMarker.lng, searchMarker.lat])
+          .addTo(map);
+
+        // Create popup with location info and Create Project button
+        const popupContent = document.createElement("div");
+        popupContent.style.cssText = `
+          background: rgba(255, 255, 255, 0.98);
+          border: 1px solid #e2e8f0;
+          border-radius: 6px;
+          padding: 10px 12px;
+          font-size: 11px;
+          color: #1e293b;
+          box-shadow: 0 3px 14px rgba(0,0,0,0.18);
+          min-width: 200px;
+        `;
+        
+        const locationName = searchMarker.data?.formatted_address || searchMarker.data?.address_line_1 || "Selected Location";
+        
+        popupContent.innerHTML = `
+          <div style="font-weight: 600; margin-bottom: 6px; font-size: 12px;">${locationName}</div>
+          <button style="
+            width: 100%;
+            padding: 6px 12px;
+            background: #16a34a;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 600;
+            margin-bottom: 4px;
+          " class="create-project-btn">Create Project</button>
+          <button style="
+            width: 100%;
+            padding: 6px 12px;
+            background: #fff;
+            color: #64748b;
+            border: 1px solid #e2e8f0;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 600;
+          " class="cancel-search-btn">Cancel Search</button>
+        `;
+        
+        popupContent.querySelector(".create-project-btn").addEventListener("click", () => {
+          if (onSearchMarkerClickRef.current) {
+            onSearchMarkerClickRef.current(searchMarker.data);
+          }
+        });
+        
+        popupContent.querySelector(".cancel-search-btn").addEventListener("click", () => {
+          if (onSearchMarkerClickRef.current) {
+            // Pass null to signal cancellation
+            onSearchMarkerClickRef.current(null);
+          }
+        });
+        
+        const popup = new MapLibreGL.Popup({
+          closeButton: false,
+          closeOnClick: false,
+          anchor: "top",
+          offset: 12,
+          className: "search-marker-popup"
+        })
+          .setLngLat([searchMarker.lng, searchMarker.lat])
+          .setDOMContent(popupContent)
+          .addTo(map);
+        
+        searchMarkerPopupRef.current = popup;
+      } catch (e) {
+        console.error("[ProjectMap] Failed to add search marker:", e);
+      }
+    }
+  }, [searchMarker]);
 
   // Resize map when drawer opens/closes
   useEffect(() => {

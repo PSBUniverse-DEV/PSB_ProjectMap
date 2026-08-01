@@ -13,6 +13,7 @@ import {
   softDeleteOriginAddress,
 } from "../data/projectMap.actions";
 import LocationSearch from "./LocationSearch";
+import MapLocationPicker from "./MapLocationPicker";
 
 /**
  * OriginAddressesGrid — Dedicated admin grid for managing origin addresses.
@@ -38,6 +39,7 @@ export default function OriginAddressesGrid({ data = [], onRefresh }) {
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [locationQuery, setLocationQuery] = useState("");
+  const [showMapPicker, setShowMapPicker] = useState(false);
 
   // ─── Local data (for optimistic updates) ──────────────────
   const [localData, setLocalData] = useState(null);
@@ -146,6 +148,27 @@ export default function OriginAddressesGrid({ data = [], onRefresh }) {
       longitude: loc.longitude ?? null,
     }));
     // Update the location query to show the selected address in the search box
+    setLocationQuery(loc.formatted_address || "");
+  }, []);
+
+  /**
+   * Handles a location chosen from the map picker modal.
+   * Populates the same address fields as LocationSearch,
+   * using the map-chosen coordinates.
+   */
+  const handleMapLocationChoose = useCallback((loc) => {
+    setModalDraft((prev) => ({
+      ...prev,
+      formatted_address: loc.formatted_address || "",
+      address_line_1: loc.address_line_1 || "",
+      city: loc.city || "",
+      state: loc.state || "",
+      state_code: loc.state_code || "",
+      postal_code: loc.postal_code || "",
+      country: loc.country || "",
+      latitude: loc.latitude ?? loc.site_latitude ?? null,
+      longitude: loc.longitude ?? loc.site_longitude ?? null,
+    }));
     setLocationQuery(loc.formatted_address || "");
   }, []);
 
@@ -368,12 +391,24 @@ export default function OriginAddressesGrid({ data = [], onRefresh }) {
           {/* Address Search */}
           <Form.Group className="oag-modal-field">
             <Form.Label className="oag-modal-label">Search Address</Form.Label>
-            <LocationSearch
-              onSelect={handleLocationSelect}
-              selectedLocation={modalDraft}
-              query={locationQuery}
-              onQueryChange={setLocationQuery}
-            />
+            <div style={{ display: "flex", gap: "6px", alignItems: "flex-start" }}>
+              <div style={{ flex: 1 }}>
+                <LocationSearch
+                  onSelect={handleLocationSelect}
+                  selectedLocation={modalDraft}
+                  query={locationQuery}
+                  onQueryChange={setLocationQuery}
+                />
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                style={{ whiteSpace: "nowrap", padding: "8px 12px", fontSize: "12px" }}
+                onClick={() => setShowMapPicker(true)}
+              >
+                🗺️ Choose Map
+              </Button>
+            </div>
           </Form.Group>
 
           {/* Active Status */}
@@ -397,6 +432,14 @@ export default function OriginAddressesGrid({ data = [], onRefresh }) {
           </div>
         </div>
       </Modal>
+
+      {/* Map location picker - rendered at root level to avoid nested modal issues */}
+      <MapLocationPicker
+        show={showMapPicker}
+        onHide={() => setShowMapPicker(false)}
+        onChoose={handleMapLocationChoose}
+        initialLocation={modalDraft.latitude != null ? modalDraft : null}
+      />
 
       {/* ─── Delete Confirmation ─────────────────────────────── */}
       <Modal show={!!confirmDelete} onHide={() => setConfirmDelete(null)} title="Delete Origin Address">

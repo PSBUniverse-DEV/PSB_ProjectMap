@@ -5,7 +5,7 @@ import { Button, Modal, toastError, toastSuccess } from "@/shared/components/ui"
 import { createProject, updateProject } from "../data/projectMap.actions";
 import LocationSearch from "./LocationSearch";
 
-export default function AddProjectForm({ show, mode, project, statuses = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [], onClose, onSaved }) {
+export default function AddProjectForm({ show, mode, project, statuses = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [], onClose, onSaved, initialLocation = null }) {
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({
     client_name: "",
@@ -40,7 +40,7 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
   // Separate query state for LocationSearch so it can be controlled independently
   const [locationQuery, setLocationQuery] = useState("");
 
-  // Populate form when editing
+  // Populate form when editing or when initialLocation is provided
   useEffect(() => {
     if (project) {
       // Build display address from available fields if formatted_address is missing
@@ -75,6 +75,38 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
         location_confirmed: Boolean(project.location_confirmed),
       });
       setLocationQuery(address);
+    } else if (initialLocation) {
+      // Populate from map click
+      setForm({
+        client_name: "",
+        status_id: "",
+        dealer: "",
+        building_category_id: "",
+        permit_status_id: "",
+        welcome_call_status_id: "",
+        invoice_number: "",
+        project_subtotal: "",
+        order_received_at: "",
+        scheduled_project_start: "",
+        scheduled_project_end: "",
+        install_start: "",
+        install_end: "",
+        project_notes: "",
+        formatted_address: initialLocation.formatted_address || "",
+        address_line_1: initialLocation.address_line_1 || "",
+        city: initialLocation.city || "",
+        state: initialLocation.state || "",
+        state_code: initialLocation.state_code || "",
+        postal_code: initialLocation.postal_code || "",
+        country: initialLocation.country || "",
+        address_latitude: initialLocation.address_latitude,
+        address_longitude: initialLocation.address_longitude,
+        site_latitude: initialLocation.site_latitude,
+        site_longitude: initialLocation.site_longitude,
+        location_source: "map_click",
+        location_confirmed: true,
+      });
+      setLocationQuery(initialLocation.formatted_address || "");
     } else {
       setForm({
         client_name: "",
@@ -107,13 +139,16 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
       });
       setLocationQuery("");
     }
-  }, [project, show]);
+  }, [project, show, initialLocation]);
 
   const handleChange = (field, value) => {
     setForm((f) => ({ ...f, [field]: value }));
   };
 
   const handleLocationSelect = (location) => {
+    // When the user manually selects a new address in the form,
+    // both the site and address coordinates are set to the selected location.
+    // (site_* = physical location, address_* = postal address - typically same for search results)
     setForm((f) => ({
       ...f,
       formatted_address: location.formatted_address || f.formatted_address,
@@ -121,10 +156,12 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
       city: location.city || f.city,
       state: location.state || f.state,
       state_code: location.state_code || f.state_code,
-      postal_code: location.postcode || f.postal_code,
+      postal_code: location.postal_code || f.postal_code,
       country: location.country || f.country,
       address_latitude: location.latitude ?? f.address_latitude,
       address_longitude: location.longitude ?? f.address_longitude,
+      site_latitude: location.latitude ?? f.site_latitude,
+      site_longitude: location.longitude ?? f.site_longitude,
       location_source: "geoapify",
       location_confirmed: true,
     }));

@@ -122,7 +122,7 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
 
       return `
         <div style="border: 1px solid #e2e8f0; border-radius: 4px; padding: 8px 10px; margin-bottom: 8px; page-break-inside: avoid; background: #fff;">
-          <div style="font-size: 12px; font-weight: 700; color: #1e293b; margin-bottom: 4px;">Stop #${stopNum}: ${proj.client_name || "Untitled"}</div>
+          <div style="font-size: 12px; font-weight: 700; color: #1e293b; margin-bottom: 4px;">Stop #${stopNum}: ${proj.client_name || "Untitled"}${proj.invoice_number ? ` (Invoice #: ${proj.invoice_number})` : ""}</div>
 
           <table style="width: 100%; border-collapse: collapse; font-size: 10px;">
             <tr>

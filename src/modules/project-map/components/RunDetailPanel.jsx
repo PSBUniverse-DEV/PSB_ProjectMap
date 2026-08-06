@@ -122,36 +122,38 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
       })() : "—";
 
       return `
-        <div style="border: 1px solid #e2e8f0; border-radius: 4px; padding: 8px 10px; margin-bottom: 8px; page-break-inside: avoid; background: #fff;">
-          <div style="font-size: 12px; font-weight: 700; color: #1e293b; margin-bottom: 4px;">Stop #${stopNum}: ${proj.client_name || "Untitled"}${proj.invoice_number ? ` (Invoice #: ${proj.invoice_number})` : ""}</div>
-
-          <table style="width: 100%; border-collapse: collapse; font-size: 10px;">
-            <tr>
-              <td style="padding: 1px 4px; width: 33%;"><span style="font-size: 8px; color: #94a3b8;">Client</span><br style="font-size: 0;">${proj.client_name || "—"}</td>
-              <td style="padding: 1px 4px; width: 33%;"><span style="font-size: 8px; color: #94a3b8;">Dealer</span><br style="font-size: 0;">${proj.dealer || "—"}</td>
-              <td style="padding: 1px 4px; width: 33%;"><span style="font-size: 8px; color: #94a3b8;">Building</span><br style="font-size: 0;">${proj.proj_s_building_categories?.building_category_name || "—"}</td>
-            </tr>
-          </table>
-
-          <table style="width: 100%; border-collapse: collapse; font-size: 10px; margin-top: 2px;">
-            <tr>
-              <td style="padding: 1px 4px; width: 60%;"><span style="font-size: 8px; color: #94a3b8;">Address</span><br style="font-size: 0;">${address}</td>
-              <td style="padding: 1px 4px; width: 40%;"><span style="font-size: 8px; color: #94a3b8;">State</span><br style="font-size: 0;">${proj.state || proj.state_code ? `${proj.state || ""}${proj.state_code ? " (" + proj.state_code + ")" : ""}` : "—"}</td>
-            </tr>
-          </table>
-
-          <table style="width: 100%; border-collapse: collapse; font-size: 10px; margin-top: 2px;">
-            <tr>
-              <td style="padding: 1px 4px; width: 30%;"><span style="font-size: 8px; color: #94a3b8;">${distanceLabel}</span><br style="font-size: 0;">${segDistance}</td>
-              <td style="padding: 1px 4px; width: 20%;"><span style="font-size: 8px; color: #94a3b8;">Arrival From</span><br style="font-size: 0;">${installStartFormatted}</td>
-              <td style="padding: 1px 4px; width: 20%;"><span style="font-size: 8px; color: #94a3b8;">Arrival By</span><br style="font-size: 0;">${installEndFormatted}</td>
-              <td style="padding: 1px 4px; width: 15%;"><span style="font-size: 8px; color: #94a3b8;">Travel</span><br style="font-size: 0;">${segDuration}</td>
-              <td style="padding: 1px 4px; width: 15%; text-align: right;"><span style="font-size: 8px; color: #94a3b8;">Subtotal</span><br style="font-size: 0;"><span style="font-weight: 700; color: #16a34a;">${sub}</span></td>
-            </tr>
-          </table>
-
+        <div class="stop">
+          <div class="stop-badge">${stopNum}</div>
+          <div class="stop-main">
+            <div class="stop-primary">
+              <div class="client-line">${proj.client_name || "Untitled"} ${proj.invoice_number ? `&mdash; Invoice #${proj.invoice_number}` : ""} ${proj.proj_s_building_categories?.building_category_name ? `&mdash; ${proj.proj_s_building_categories.building_category_name}` : ""}</div>
+              <div class="address-line">${address} <span class="state">${proj.state || proj.state_code ? `· ${proj.state || ""}${proj.state_code ? " (" + proj.state_code + ")" : ""}` : ""}</span></div>
+            </div>
+            <div class="stop-window">
+              <div class="field">
+                <div class="field-label">${distanceLabel}</div>
+                <div class="field-value num">${segDistance}</div>
+              </div>
+              <div class="field">
+                <div class="field-label">Travel time</div>
+                <div class="field-value num">${segDuration}</div>
+              </div>
+              <div class="field">
+                <div class="field-label">Arrival from</div>
+                <div class="field-value num">${installStartFormatted}</div>
+              </div>
+              <div class="field">
+                <div class="field-label">Arrival by</div>
+                <div class="field-value num">${installEndFormatted}</div>
+              </div>
+            </div>
+            <div class="stop-money">
+              <div class="subtotal-label">Subtotal</div>
+              <div class="subtotal-value num">${sub}</div>
+            </div>
+          </div>
           ${notes ? `
-          <div style="font-size: 9px; color: #475569; background: #f8fafc; padding: 3px 5px; border-radius: 2px; border: 1px solid #e2e8f0; margin-top: 4px; white-space: pre-wrap; line-height: 1.3;">${notes}</div>
+          <div class="stop-notes">${notes}</div>
           ` : ""}
         </div>
       `;
@@ -161,62 +163,243 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Run Record - ${run.run_name || `Run #${run.run_number || "?"}`}</title>
+        <meta charset="UTF-8">
+        <title>Run Manifest — #${run.run_number || "?"} — ${run.run_date || "Unscheduled"}</title>
         <style>
+          :root {
+            --ink: #0f1720;
+            --body: #1e293b;
+            --muted: #64748b;
+            --faint: #94a3b8;
+            --line: #e2e8f0;
+            --line-strong: #cbd5e1;
+            --accent: #1e3a5f;
+            --money: #15803d;
+            --money-bg: #f0fdf4;
+          }
           * { box-sizing: border-box; margin: 0; padding: 0; }
-          body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 11px; color: #1e293b; padding: 16px; max-width: 210mm; margin: 0 auto; }
-          @page { size: A4 portrait; margin: 12mm 15mm; }
-          @media print { body { padding: 0; } .no-print { display: none; } }
+          html, body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: var(--body);
+            background: #fff;
+            font-size: 11px;
+            line-height: 1.35;
+            -webkit-font-smoothing: antialiased;
+          }
+          body { padding: 20px; max-width: 210mm; margin: 0 auto; }
+          @page { size: A4 portrait; margin: 12mm 14mm; }
+          @media print {
+            body { padding: 0; }
+            .no-print { display: none !important; }
+          }
+          .num { font-variant-numeric: tabular-nums; }
+          .toolbar {
+            display: flex; justify-content: center; gap: 8px;
+            margin-bottom: 16px; padding: 8px;
+            background: #f0f9ff; border: 1px solid #93c5fd; border-radius: 6px;
+          }
+          .toolbar button {
+            padding: 6px 18px; font-size: 12px; font-weight: 600; border-radius: 4px; cursor: pointer;
+          }
+          .btn-primary { border: none; background: var(--ink); color: #fff; }
+          .btn-secondary { border: 1px solid var(--line); background: #fff; color: var(--ink); }
+          .doc-header {
+            display: flex; align-items: flex-end; justify-content: space-between;
+            padding-bottom: 10px; margin-bottom: 10px;
+            border-bottom: 2px solid var(--ink);
+          }
+          .doc-kicker {
+            font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+            color: var(--muted); margin-bottom: 3px;
+          }
+          .doc-title { font-size: 20px; font-weight: 800; color: var(--ink); letter-spacing: -0.3px; }
+          .doc-meta { text-align: right; font-size: 10px; color: var(--muted); }
+          .doc-meta .run-date { font-size: 13px; font-weight: 700; color: var(--ink); }
+          .info-strip {
+            display: grid;
+            grid-template-columns: 1.3fr 1.6fr 0.9fr 0.9fr 1.1fr;
+            border: 1px solid var(--line);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 4px;
+          }
+          .info-cell {
+            padding: 7px 10px;
+            border-right: 1px solid var(--line);
+          }
+          .info-cell:last-child { border-right: none; }
+          .info-cell.revenue { background: var(--money-bg); }
+          .info-label {
+            font-size: 8.5px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase;
+            color: var(--faint); margin-bottom: 2px;
+          }
+          .info-value { font-size: 11.5px; font-weight: 600; color: var(--ink); }
+          .info-value.small { font-size: 10px; font-weight: 500; line-height: 1.3; }
+          .info-value.money { font-size: 14px; font-weight: 800; color: var(--money); }
+          .printed-line {
+            font-size: 8.5px; color: var(--faint); text-align: right; margin-bottom: 14px;
+          }
+          .stops-header {
+            display: flex; align-items: center; justify-content: space-between;
+            font-size: 9px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;
+            color: var(--muted); padding-bottom: 4px; margin-bottom: 6px;
+            border-bottom: 1px solid var(--line-strong);
+          }
+          .stop {
+            display: grid;
+            grid-template-columns: 26px 1fr;
+            gap: 10px;
+            padding: 11px 0;
+            border-bottom: 1px solid var(--line);
+            page-break-inside: avoid;
+            align-items: center;
+          }
+          .stop:last-child { border-bottom: none; }
+          .stop-badge {
+            width: 22px; height: 22px; border-radius: 50%;
+            background: var(--accent); color: #fff;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 10px; font-weight: 700;
+            align-self: start;
+          }
+          .stop-main {
+            display: grid;
+            grid-template-columns: 1.05fr 1.55fr 0.55fr;
+            gap: 12px;
+            align-items: center;
+          }
+          .stop-primary .client-line {
+            font-size: 12.5px; font-weight: 700; color: var(--ink);
+          }
+          .stop-primary .client-line .invoice {
+            font-size: 10px; font-weight: 500; color: var(--muted); margin-left: 4px;
+          }
+          .stop-primary .building-pill {
+            display: inline-block; margin-top: 3px;
+            font-size: 8.5px; font-weight: 600; color: var(--accent);
+            background: #eaf0f6; border-radius: 3px; padding: 1px 6px;
+          }
+          .stop-primary .address-line {
+            font-size: 10.5px; color: var(--muted); margin-top: 5px; line-height: 1.45;
+          }
+          .stop-primary .address-line .state {
+            color: var(--faint);
+          }
+          .stop-window {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            column-gap: 12px;
+            row-gap: 6px;
+          }
+          .stop-window .field-label {
+            font-size: 8px; font-weight: 700; letter-spacing: 0.3px; text-transform: uppercase;
+            color: var(--faint); margin-bottom: 1px;
+          }
+          .stop-window .field-value {
+            white-space: nowrap;
+            font-size: 10.5px; font-weight: 600; color: var(--ink);
+          }
+          .stop-window .field-value.muted-val {
+            color: var(--faint); font-weight: 500;
+          }
+          .stop-money { text-align: right; }
+          .stop-money .subtotal-label {
+            font-size: 8.5px; font-weight: 700; letter-spacing: 0.3px; text-transform: uppercase;
+            color: var(--faint); margin-bottom: 2px;
+          }
+          .stop-money .subtotal-value {
+            font-size: 13px; font-weight: 800; color: var(--money);
+          }
+          .stop-notes {
+            grid-column: 2 / 3;
+            margin-top: 5px;
+            font-size: 9.5px; color: var(--body);
+            background: #f8fafc; border: 1px solid var(--line); border-radius: 3px;
+            padding: 4px 7px; white-space: pre-wrap; line-height: 1.35;
+          }
+          .signoff {
+            margin-top: 26px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+          }
+          .sig-line {
+            border-top: 1px solid var(--ink);
+            padding-top: 5px;
+            text-align: center;
+            font-size: 8.5px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;
+            color: var(--muted);
+          }
+          .sig-date {
+            margin: 18px auto 0; max-width: 220px;
+            border-top: 1px solid var(--ink);
+            padding-top: 5px; text-align: center;
+            font-size: 8.5px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;
+            color: var(--muted);
+          }
+          .doc-footer {
+            margin-top: 18px; padding-top: 6px; border-top: 1px solid var(--line);
+            display: flex; justify-content: space-between;
+            font-size: 8px; color: var(--faint);
+          }
         </style>
       </head>
       <body>
-        <div class="no-print" style="margin-bottom: 12px; padding: 8px; background: #f0f9ff; border: 1px solid #93c5fd; border-radius: 4px; text-align: center;">
-          <button onclick="window.print()" style="padding: 6px 20px; font-size: 13px; font-weight: 600; border: none; background: #1e293b; color: #fff; border-radius: 4px; cursor: pointer;">🖨 Print Manifest</button>
-          <button onclick="window.close()" style="margin-left: 6px; padding: 6px 20px; font-size: 13px; font-weight: 600; border: 1px solid #e2e8f0; background: #fff; color: #1e293b; border-radius: 4px; cursor: pointer;">Close</button>
+        <div class="no-print toolbar">
+          <button class="btn-primary" onclick="window.print()">Print manifest</button>
+          <button class="btn-secondary" onclick="window.close()">Close</button>
         </div>
 
-        <div style="text-align: center; margin-bottom: 12px;">
-          <div style="font-size: 18px; font-weight: 800; color: #1e293b;">RUN RECORD</div>
-          <div style="font-size: 10px; color: #64748b;">Delivery Manifest</div>
+        <div class="doc-header">
+          <div>
+            <div class="doc-kicker">Delivery manifest</div>
+            <div class="doc-title">Run #${run.run_number || "?"} &mdash; ${run.run_date ? new Date(run.run_date).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : "Unscheduled"}</div>
+          </div>
+          <div class="doc-meta">
+            <div class="run-date num">${run.run_date || "—"}</div>
+            <div>${runProjects.length} stop${runProjects.length !== 1 ? "s" : ""}</div>
+          </div>
         </div>
 
-        <div style="border: 2px solid #1e293b; border-radius: 4px; padding: 10px; margin-bottom: 14px;">
-          <div style="font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">Run Information</div>
-          <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
-            <tr>
-              <td style="padding: 2px 4px; width: 33%;"><span style="font-size: 9px; color: #94a3b8;">Run Name</span><br style="font-size: 0; font-weight: 600;">${run.run_name || `Run #${run.run_number || "?"}`}</td>
-              <td style="padding: 2px 4px; width: 33%;"><span style="font-size: 9px; color: #94a3b8;">Origin Address</span><br style="font-size: 0; font-weight: 600;">${originAddress}</td>
-              <td style="padding: 2px 4px; width: 33%;"><span style="font-size: 9px; color: #94a3b8;">Run Date</span><br style="font-size: 0; font-weight: 600;">${run.run_date || "—"}</td>
-            </tr>
-            <tr>
-              <td style="padding: 2px 4px;"><span style="font-size: 9px; color: #94a3b8;">Team Assigned</span><br style="font-size: 0; font-weight: 600;">${run.team_assigned || "—"}</td>
-              <td style="padding: 2px 4px;"><span style="font-size: 9px; color: #94a3b8;">Vehicle Assigned</span><br style="font-size: 0; font-weight: 600;">${run.vehicle_assigned || "—"}</td>
-              <td style="padding: 2px 4px;"><span style="font-size: 9px; color: #94a3b8;">Total Stops</span><br style="font-size: 0; font-weight: 600;">${runProjects.length}</td>
-            </tr>
-            <tr>
-              <td style="padding: 2px 4px;"><span style="font-size: 9px; color: #94a3b8;">Estimated Distance</span><br style="font-size: 0; font-weight: 600;">${totalDistance}</td>
-              <td style="padding: 2px 4px;"><span style="font-size: 9px; color: #94a3b8;">Estimated Mileage</span><br style="font-size: 0; font-weight: 600;">${totalMileage}</td>
-              <td style="padding: 2px 4px;"><span style="font-size: 9px; color: #94a3b8;">Estimated Travel Time</span><br style="font-size: 0; font-weight: 600;">${totalDuration}</td>
-            </tr>
-            <tr>
-              <td colspan="3" style="padding: 2px 4px;"><span style="font-size: 9px; color: #94a3b8;">Total Revenue</span><br style="font-size: 0;"><span style="font-weight: 700; color: #16a34a;">${formatCurrency(totalRevenue)}</span></td>
-            </tr>
-          </table>
-          <div style="font-size: 9px; color: #94a3b8; margin-top: 4px; padding-top: 4px; border-top: 1px solid #e2e8f0;">Printed: ${printDate}</div>
+        <div class="info-strip">
+          <div class="info-cell">
+            <div class="info-label">Origin address</div>
+            <div class="info-value small">${originAddress}</div>
+          </div>
+          <div class="info-cell">
+            <div class="info-label">Installer</div>
+            <div class="info-value small">${run.team_assigned || "&mdash;"}</div>
+          </div>
+          <div class="info-cell">
+            <div class="info-label">Total stops</div>
+            <div class="info-value num">${runProjects.length}</div>
+          </div>
+          <div class="info-cell">
+            <div class="info-label">Run date</div>
+            <div class="info-value num">${run.run_date ? new Date(run.run_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "&mdash;"}</div>
+          </div>
+          <div class="info-cell revenue">
+            <div class="info-label">Total revenue</div>
+            <div class="info-value money num">${formatCurrency(totalRevenue)}</div>
+          </div>
+        </div>
+        <div class="printed-line">Printed ${printDate}</div>
+
+        <div class="stops-header">
+          <span>Stop details</span>
         </div>
 
-        <div style="font-size: 11px; font-weight: 700; color: #1e293b; margin-bottom: 8px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">Stop Details</div>
+        ${stopsHtml || '<div style="color: var(--muted); font-style: italic;">No stops assigned to this run.</div>'}
 
-        ${stopsHtml || '<div style="color: #64748b; font-style: italic;">No stops assigned to this run.</div>'}
+        <div class="signoff">
+          <div class="sig-line">Prepared by</div>
+          <div class="sig-line">Received by</div>
+        </div>
+        <div class="sig-date">Date</div>
 
-        <div style="margin-top: 24px;">
-          <table style="width: 100%; border-collapse: collapse;">
-            <tr>
-              <td style="border-top: 1px solid #1e293b; padding-top: 6px; text-align: center; width: 50%;"><span style="font-size: 9px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Prepared By</span></td>
-              <td style="border-top: 1px solid #1e293b; padding-top: 6px; text-align: center; width: 50%;"><span style="font-size: 9px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Received By</span></td>
-            </tr>
-          </table>
-          <div style="margin: 16px auto 0; max-width: 200px; border-top: 1px solid #1e293b; padding-top: 6px; text-align: center;"><span style="font-size: 9px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Date</span></div>
+        <div class="doc-footer">
+          <span>PSBUniverse &middot; Project Map</span>
+          <span>Run #${run.run_number || "?"}</span>
         </div>
       </body>
       </html>
@@ -287,20 +470,12 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
               <div style={{ fontSize: "10px", color: "#64748b", marginTop: "1px", lineHeight: 1.4 }}>{run.proj_s_origin_addresses?.formatted_address || run.proj_s_origin_addresses?.address_line_1 || ""}</div>
             </div>
 
-            {(run.team_assigned || run.vehicle_assigned) && (
+            {run.team_assigned && (
               <div style={{ display: "flex", gap: "10px", marginBottom: "10px" }}>
-                {run.team_assigned && (
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "1px" }}>👥 Team</div>
-                    <div style={{ fontSize: "11px", color: "#1e293b" }}>{run.team_assigned}</div>
-                  </div>
-                )}
-                {run.vehicle_assigned && (
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "1px" }}>🚛 Vehicle</div>
-                    <div style={{ fontSize: "11px", color: "#1e293b" }}>{run.vehicle_assigned}</div>
-                  </div>
-                )}
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "1px" }}>👥 Installer</div>
+                  <div style={{ fontSize: "11px", color: "#1e293b" }}>{run.team_assigned}</div>
+                </div>
               </div>
             )}
 

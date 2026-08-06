@@ -190,25 +190,15 @@ export default function RunForm({ show, mode, run, origins = [], statuses = [], 
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "8px" }}>
           <div>
-            <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Team Assigned</label>
+            <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Installer</label>
             <input
               type="text"
               value={form.team_assigned}
               onChange={(e) => handleChange("team_assigned", e.target.value)}
               style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px" }}
-              placeholder="e.g. Team A"
-            />
-          </div>
-          <div>
-            <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Vehicle Assigned</label>
-            <input
-              type="text"
-              value={form.vehicle_assigned}
-              onChange={(e) => handleChange("vehicle_assigned", e.target.value)}
-              style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px" }}
-              placeholder="e.g. Truck 3"
+              placeholder="e.g. John Smith"
             />
           </div>
         </div>

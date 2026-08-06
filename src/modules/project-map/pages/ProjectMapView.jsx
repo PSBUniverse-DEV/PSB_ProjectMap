@@ -735,9 +735,9 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
 
   const routeInfo = useMemo(() => {
     if (!routeData) return null;
-    const distKm = (routeData.distance / 1000).toFixed(1);
+    const distMi = (routeData.distance / 1609.344).toFixed(1);
     const mins = Math.round(routeData.duration / 60);
-    return { distance: `${distKm} km`, duration: `${mins} min${mins !== 1 ? "s" : ""}` };
+    return { distance: `${distMi} mi`, duration: `${mins} min${mins !== 1 ? "s" : ""}` };
   }, [routeData]);
 
   return (

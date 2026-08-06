@@ -369,10 +369,10 @@ export default function FilterPanel({
                 </div>
               </div>
 
-              {/* Install */}
+              {/* Arrival */}
               <div style={{ flex: 1 }}>
                 <label style={{ display: "block", fontSize: "10px", fontWeight: 600, color: "#64748b", marginBottom: "3px" }}>
-                  Install
+                  Arrival
                 </label>
                 <div style={{ display: "flex", gap: "6px" }}>
                   <input

@@ -183,14 +183,8 @@ export default function ProjectDetailDrawer({ project, statuses = [], buildingCa
                 <td style={{ padding: "4px 0", fontSize: "11px", color: "#64748b", fontWeight: 500 }}>Order Received</td>
                 <td style={{ padding: "4px 0", fontSize: "12px", color: "#1e293b", fontWeight: 600, textAlign: "right" }}>{formatDateTime(project.order_received_at)}</td>
               </tr>
-              <tr style={{ borderBottom: "1px solid #f2f2f2" }}>
-                <td style={{ padding: "4px 0", fontSize: "11px", color: "#64748b", fontWeight: 500 }}>Scheduled</td>
-                <td style={{ padding: "4px 0", fontSize: "12px", color: "#1e293b", fontWeight: 600, textAlign: "right" }}>
-                  {formatDateTime(project.scheduled_project_start)}{project.scheduled_project_end ? ` → ${formatDateTime(project.scheduled_project_end)}` : ""}
-                </td>
-              </tr>
               <tr>
-                <td style={{ padding: "4px 0", fontSize: "11px", color: "#64748b", fontWeight: 500 }}>Install</td>
+                <td style={{ padding: "4px 0", fontSize: "11px", color: "#64748b", fontWeight: 500 }}>Arrival</td>
                 <td style={{ padding: "4px 0", fontSize: "12px", color: "#1e293b", fontWeight: 600, textAlign: "right" }}>
                   {formatDateTime(project.install_start)}{project.install_end ? ` → ${formatDateTime(project.install_end)}` : ""}
                 </td>

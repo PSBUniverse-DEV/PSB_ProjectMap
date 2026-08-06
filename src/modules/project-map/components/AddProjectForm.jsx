@@ -357,25 +357,7 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
           <div style={{ fontSize: "11px", fontWeight: 600, color: "#1e293b", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Scheduling</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
             <div>
-              <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Scheduled Start</label>
-              <input
-                type="datetime-local"
-                value={form.scheduled_project_start}
-                onChange={(e) => handleChange("scheduled_project_start", e.target.value)}
-                style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px" }}
-              />
-            </div>
-            <div>
-              <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Scheduled End</label>
-              <input
-                type="datetime-local"
-                value={form.scheduled_project_end}
-                onChange={(e) => handleChange("scheduled_project_end", e.target.value)}
-                style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px" }}
-              />
-            </div>
-            <div>
-              <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Install Start</label>
+              <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Arrival From</label>
               <input
                 type="datetime-local"
                 value={form.install_start}
@@ -384,7 +366,7 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
               />
             </div>
             <div>
-              <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Install End</label>
+              <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Arrival By</label>
               <input
                 type="datetime-local"
                 value={form.install_end}

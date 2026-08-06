@@ -225,10 +225,10 @@ export default function RunForm({ show, mode, run, origins = [], statuses = [], 
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px" }}>
           <div>
-            <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Est. Distance (m)</label>
+            <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Est. Distance (mi)</label>
             <input
               type="text"
-              value={form.estimated_distance ? `${Number(form.estimated_distance).toLocaleString()} m` : "—"}
+              value={form.estimated_distance ? `${(Number(form.estimated_distance) / 1609.344).toFixed(1)} mi` : "—"}
               readOnly
               style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px", background: "#f8fafc", color: "#64748b" }}
             />

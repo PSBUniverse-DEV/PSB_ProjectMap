@@ -472,8 +472,7 @@ export default function ProjectMap({
         <div style="font-size: 9px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 3px; letter-spacing: 0.4px;">Schedule</div>
         <table style="width: 100%; border-collapse: collapse; margin-bottom: ${projectNotes ? "8px" : "0"};">
           <tr><td style="font-size: 10px; color: #94a3b8; padding-bottom: 2px;">Order Received</td><td style="font-size: 10px; color: #1e293b; font-weight: 600; text-align: right; padding-bottom: 2px;">${formatDate(project.order_received_at)}</td></tr>
-          <tr><td style="font-size: 10px; color: #94a3b8; padding-bottom: 2px;">Scheduled</td><td style="font-size: 10px; color: #1e293b; font-weight: 600; text-align: right; padding-bottom: 2px;">${formatDate(project.scheduled_project_start)}${project.scheduled_project_end ? " → " + formatDate(project.scheduled_project_end) : ""}</td></tr>
-          <tr><td style="font-size: 10px; color: #94a3b8; padding-bottom: 2px;">Install</td><td style="font-size: 10px; color: #1e293b; font-weight: 600; text-align: right; padding-bottom: 2px;">${formatDate(project.install_start)}${project.install_end ? " → " + formatDate(project.install_end) : ""}</td></tr>
+          <tr><td style="font-size: 10px; color: #94a3b8; padding-bottom: 2px;">Arrival</td><td style="font-size: 10px; color: #1e293b; font-weight: 600; text-align: right; padding-bottom: 2px;">${formatDate(project.install_start)}${project.install_end ? " → " + formatDate(project.install_end) : ""}</td></tr>
         </table>
 
         ${projectNotes ? `

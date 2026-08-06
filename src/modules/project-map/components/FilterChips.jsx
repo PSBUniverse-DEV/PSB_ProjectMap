@@ -82,7 +82,7 @@ export default function FilterChips({
       const to = filters.installTo ? filters.installTo : "—";
       labels.push({
         key: "install",
-        label: `Install: ${from} to ${to}`,
+        label: `Arrival: ${from} to ${to}`,
       });
     }
 

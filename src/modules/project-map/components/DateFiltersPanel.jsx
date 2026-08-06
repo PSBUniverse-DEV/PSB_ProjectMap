@@ -206,10 +206,10 @@ export default function DateFiltersPanel({ filters = {}, onFilterChange }) {
             </div>
           </div>
 
-          {/* Install */}
+          {/* Arrival */}
           <div style={{ marginBottom: "12px" }}>
             <label style={{ display: "block", fontSize: "11px", fontWeight: 600, color: "#1e293b", marginBottom: "4px" }}>
-              Install
+              Arrival
             </label>
             <div style={{ display: "flex", gap: "8px" }}>
               <input

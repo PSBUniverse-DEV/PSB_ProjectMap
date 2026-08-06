@@ -79,7 +79,7 @@ export default function RunList({ runs = [], selectedRunId, onSelectRun, isLoadi
                     {hasData && (
                       <>
                         {run.estimated_distance != null && (
-                          <span>📏 {(run.estimated_distance / 1000).toFixed(1)} km</span>
+                          <span>📏 {(run.estimated_distance / 1609.344).toFixed(1)} mi</span>
                         )}
                         {run.estimated_mileage != null && (
                           <span>🛣️ {formatMileage(run.estimated_mileage)}</span>

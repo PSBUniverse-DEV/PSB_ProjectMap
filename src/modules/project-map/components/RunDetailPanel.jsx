@@ -5,7 +5,7 @@ import { StatusBadge } from "@/shared/components/ui";
 
 function formatDistance(meters) {
   if (meters == null) return "—";
-  return `${(meters / 1000).toFixed(1)} km`;
+  return `${(meters / 1609.344).toFixed(1)} mi`;
 }
 
 function formatDuration(seconds) {
@@ -110,6 +110,16 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
         } catch { return "—"; }
       })() : "—";
 
+      const installEndFormatted = proj.install_end ? (() => {
+        try {
+          const d = new Date(proj.install_end);
+          const date = d.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric" });
+          const day = d.toLocaleString("en-US", { weekday: "short" });
+          const time = d.toLocaleString("en-US", { hour: "numeric", minute: "2-digit" });
+          return `${date} | ${day} | ${time}`;
+        } catch { return "—"; }
+      })() : "—";
+
       return `
         <div style="border: 1px solid #e2e8f0; border-radius: 4px; padding: 8px 10px; margin-bottom: 8px; page-break-inside: avoid; background: #fff;">
           <div style="font-size: 12px; font-weight: 700; color: #1e293b; margin-bottom: 4px;">Stop #${stopNum}: ${proj.client_name || "Untitled"}</div>
@@ -132,7 +142,8 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
           <table style="width: 100%; border-collapse: collapse; font-size: 10px; margin-top: 2px;">
             <tr>
               <td style="padding: 1px 4px; width: 30%;"><span style="font-size: 8px; color: #94a3b8;">${distanceLabel}</span><br style="font-size: 0;">${segDistance}</td>
-              <td style="padding: 1px 4px; width: 40%;"><span style="font-size: 8px; color: #94a3b8;">Install</span><br style="font-size: 0;">${installStartFormatted}</td>
+              <td style="padding: 1px 4px; width: 20%;"><span style="font-size: 8px; color: #94a3b8;">Arrival From</span><br style="font-size: 0;">${installStartFormatted}</td>
+              <td style="padding: 1px 4px; width: 20%;"><span style="font-size: 8px; color: #94a3b8;">Arrival By</span><br style="font-size: 0;">${installEndFormatted}</td>
               <td style="padding: 1px 4px; width: 15%;"><span style="font-size: 8px; color: #94a3b8;">Travel</span><br style="font-size: 0;">${segDuration}</td>
               <td style="padding: 1px 4px; width: 15%; text-align: right;"><span style="font-size: 8px; color: #94a3b8;">Subtotal</span><br style="font-size: 0;"><span style="font-weight: 700; color: #16a34a;">${sub}</span></td>
             </tr>

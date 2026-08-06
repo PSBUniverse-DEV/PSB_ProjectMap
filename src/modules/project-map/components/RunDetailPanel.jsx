@@ -187,9 +187,9 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
             -webkit-font-smoothing: antialiased;
           }
           body { padding: 20px; max-width: 210mm; margin: 0 auto; }
-          @page { size: A4 portrait; margin: 12mm 14mm; }
+          @page { size: A4 portrait; margin: 0; }
           @media print {
-            body { padding: 0; }
+            body { padding: 12mm 14mm; }
             .no-print { display: none !important; }
           }
           .num { font-variant-numeric: tabular-nums; }
@@ -351,13 +351,14 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
         </div>
 
         <div class="doc-header">
-          <div>
-            <div class="doc-kicker">Delivery manifest</div>
-            <div class="doc-title">Run #${run.run_number || "?"} &mdash; ${run.run_date ? new Date(run.run_date).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : "Unscheduled"}</div>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <img src="/images/psb-logo.png" alt="PSBUniverse" style="height: 32px; width: auto; display: block;" />
+            <div>
+              <div class="doc-title">Run #${run.run_number || "?"} &mdash; ${run.run_date ? new Date(run.run_date).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : "Unscheduled"}</div>
+            </div>
           </div>
           <div class="doc-meta">
             <div class="run-date num">${run.run_date || "—"}</div>
-            <div>${runProjects.length} stop${runProjects.length !== 1 ? "s" : ""}</div>
           </div>
         </div>
 

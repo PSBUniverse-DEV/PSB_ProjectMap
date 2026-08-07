@@ -3,7 +3,8 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Modal, toastError, toastSuccess } from "@/shared/components/ui";
-import { deleteProject, calculateRoute, calculateMultiStopRoute, calculateSegmentRoutes, deleteRun, removeProjectFromRun, loadRunDetails, updateStopSequence, addProjectToRun, updateRun, updateProject, getProjectRunAssignment, updateStopNote, updateRunStopsCount, loadRuns, loadAllRunProjects } from "../data/projectMap.actions";
+import { deleteProject, calculateRoute, calculateMultiStopRoute, deleteRun, removeProjectFromRun, loadRunDetails, updateStopSequence, addProjectToRun, updateRun, updateProject, getProjectRunAssignment, updateStopNote, updateRunStopsCount, loadRuns, loadAllRunProjects } from "../data/projectMap.actions";
+import { computeRunSegmentData } from "../utils/runSegments";
 import { reverseGeocode } from "../utils/geocoding";
 import ProjectMap from "../components/ProjectMap";
 import ProjectList from "../components/ProjectList";
@@ -481,15 +482,10 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
       if (!origin || origin.latitude == null || origin.longitude == null) {
         toastError("Run has no origin address with valid coordinates.", "Recalculate"); return;
       }
-      const coords = [{ lat: Number(origin.latitude), lng: Number(origin.longitude) }];
-      freshProjects.forEach((rp) => {
-        const proj = rp.proj_t_projects || {};
-        const lat = Number(proj.site_latitude ?? proj.address_latitude);
-        const lng = Number(proj.site_longitude ?? proj.address_longitude);
-        if (Number.isFinite(lat) && Number.isFinite(lng)) coords.push({ lat, lng });
-      });
-      if (coords.length < 2) { toastError("Not enough valid coordinates to calculate a route.", "Recalculate"); return; }
-      const data = await calculateSegmentRoutes(coords);
+      const data = await computeRunSegmentData(selectedRun, freshProjects);
+      if (!data) {
+        toastError("Not enough valid coordinates to calculate a route.", "Recalculate"); return;
+      }
       if (data.hasPartialFailure) setShowRouteErrorModal(true);
       setRunRouteData({ distance: data.totalDistance, duration: data.totalDuration, geometry: data.geometry });
       setRunSegmentData(data);
@@ -820,22 +816,14 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
     }
     const origin = selectedRun?.proj_s_origin_addresses;
     if (!origin || origin.latitude == null || origin.longitude == null) { setRunRouteData(null); return; }
-    const originLat = Number(origin.latitude);
-    const originLng = Number(origin.longitude);
     let cancelled = false;
     setRunRouteLoading(true);
-    const coords = [];
-    if (Number.isFinite(originLat) && Number.isFinite(originLng)) coords.push({ lat: originLat, lng: originLng });
-    runProjects.forEach((rp) => {
-      const proj = rp.proj_t_projects || {};
-      const lat = Number(proj.site_latitude ?? proj.address_latitude);
-      const lng = Number(proj.site_longitude ?? proj.address_longitude);
-      if (Number.isFinite(lat) && Number.isFinite(lng)) coords.push({ lat, lng });
-    });
-    if (coords.length < 2) { setRunRouteData(null); setRunSegmentData(null); setRunRouteLoading(false); return; }
-    calculateSegmentRoutes(coords)
+    computeRunSegmentData(selectedRun, runProjects)
       .then((data) => {
         if (!cancelled) {
+          if (!data) {
+            setRunRouteData(null); setRunSegmentData(null); setRunRouteLoading(false); return;
+          }
           if (data.hasPartialFailure) setShowRouteErrorModal(true);
           setRunRouteData({ distance: data.totalDistance, duration: data.totalDuration, geometry: data.geometry });
           setRunSegmentData(data);

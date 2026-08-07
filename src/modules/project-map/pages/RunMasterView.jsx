@@ -15,6 +15,7 @@ import { Button, Modal, toastError, TableZ } from "@/shared/components/ui";
 import { resolveRunStatusOptions, getRunStatusColor } from "../data/projectMap.data";
 import { loadRunDetails, loadRuns } from "../data/projectMap.actions";
 import { generateRunManifestPrint } from "../utils/printRunManifest";
+import { computeRunSegmentData } from "../utils/runSegments";
 import RunForm from "../components/RunForm";
 
 export default function RunMasterView({ runs = [], origins = [], statuses = [], runStatuses = [] }) {
@@ -45,10 +46,7 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
   );
 
   const getRunStopsCount = useCallback(
-    (run) => {
-      if (Array.isArray(run.runs_stops)) return run.runs_stops.length;
-      return run.stop_count || run.stops_count || 0;
-    },
+    (run) => run.stops ?? 0,
     []
   );
 
@@ -107,7 +105,14 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
         toastError("Unable to load run details for printing.", "Print");
         return;
       }
-      generateRunManifestPrint(detail.run, detail.projects || []);
+      const projects = detail.projects || [];
+      let runSegmentData = null;
+      try {
+        runSegmentData = await computeRunSegmentData(detail.run, projects);
+      } catch (err) {
+        console.error("[RunMasterView] Segment calculation failed:", err);
+      }
+      generateRunManifestPrint(detail.run, projects, runSegmentData);
     } catch (err) {
       console.error("[RunMasterView] Print failed:", err);
       toastError(err?.message || "Failed to print manifest.", "Print");

@@ -3,6 +3,7 @@
 
 import { useMemo, useState, useRef } from "react";
 import { StatusBadge } from "@/shared/components/ui";
+import { formatProjectDescriptionForDisplay } from "../data/projectMap.data";
 
 function formatDistance(meters) {
   if (meters == null) return "—";
@@ -28,7 +29,7 @@ function formatMileage(miles) {
   return `${Number(miles).toFixed(1)} mi`;
 }
 
-export default function RunDetailPanel({ run, runProjects = [], runSegmentData = null, onClose, onEdit, onDelete, onRemoveProject, onReorderStops, onRecalculate, recalculating = false, onEditStopNote, isLoading = false }) {
+export default function RunDetailPanel({ run, runProjects = [], runSegmentData = null, onClose, onEdit, onDelete, onRemoveProject, onReorderStops, onRecalculate, recalculating = false, onEditStopNote, onEditStopDate, onEditStopInvoice, isLoading = false }) {
   if (!run) return null;
 
   const [dragIndex, setDragIndex] = useState(null);
@@ -88,6 +89,7 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
 
     const stopsHtml = runProjects.map((rp, idx) => {
       const proj = rp.proj_t_projects || {};
+      const projDimDisplay = formatProjectDescriptionForDisplay(proj.dimension);
       const stopNum = idx + 1;
       const segment = runSegmentDataRef.current?.segments?.[idx];
       const segDistance = segment ? formatDistance(segment.distance) : "—";
@@ -128,7 +130,7 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
             <div class="stop-primary">
               <div class="client-line">${proj.client_name || "Untitled"} ${proj.invoice_number ? `&mdash; Invoice #${proj.invoice_number}` : ""} ${proj.proj_s_building_categories?.building_category_name ? `&mdash; ${proj.proj_s_building_categories.building_category_name}` : ""}</div>
               <div class="address-line">${address} <span class="state">${proj.state || proj.state_code ? `· ${proj.state || ""}${proj.state_code ? " (" + proj.state_code + ")" : ""}` : ""}</span></div>
-              ${proj.dimension ? `<div class="address-line" style="margin-top: 2px;">Dimensions: ${proj.dimension}</div>` : ""}
+              ${projDimDisplay ? `<div class="address-line" style="margin-top: 2px;">Dimensions: ${projDimDisplay}</div>` : ""}
             </div>
             <div class="stop-window">
               <div class="field">
@@ -531,8 +533,22 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
                                   <div style={{ fontWeight: 600, fontSize: "11px", color: "#1e293b", marginBottom: "1px" }}>{idx + 1}. {proj.client_name || "Untitled"}</div>
                                   <div style={{ fontSize: "9px", color: "#64748b" }}>{proj.city && proj.state ? `${proj.city}, ${proj.state}` : proj.formatted_address || "No address"}</div>
                                   <div style={{ fontSize: "10px", color: "#16a34a", fontWeight: 500, marginTop: "2px" }}>{sub}</div>
-                                  <div style={{ marginTop: "3px" }}>
+                                  <div style={{ marginTop: "3px", display: "flex", gap: "8px", alignItems: "center" }}>
                                     <button onClick={() => onEditStopNote?.(rp)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "10px", padding: "0", color: rp.notes ? "#6366f1" : "#94a3b8", fontWeight: rp.notes ? 600 : 400 }} title={rp.notes ? "Edit note" : "Add note"}>{rp.notes ? "📝 Note" : "📄 Note"}</button>
+                                    <button
+                                      onClick={() => onEditStopDate?.(rp)}
+                                      style={{ background: "none", border: "none", cursor: "pointer", fontSize: "10px", padding: "0", color: (rp.proj_t_projects?.install_start || rp.proj_t_projects?.install_end) ? "#6366f1" : "#94a3b8", fontWeight: (rp.proj_t_projects?.install_start || rp.proj_t_projects?.install_end) ? 600 : 400 }}
+                                      title={(rp.proj_t_projects?.install_start || rp.proj_t_projects?.install_end) ? "Edit arrival window" : "Add arrival window"}
+                                    >
+                                      {(rp.proj_t_projects?.install_start || rp.proj_t_projects?.install_end) ? "📅 Date" : "🗓️ Date"}
+                                    </button>
+                                    <button
+                                      onClick={() => onEditStopInvoice?.(rp)}
+                                      style={{ background: "none", border: "none", cursor: "pointer", fontSize: "10px", padding: "0", color: rp.proj_t_projects?.invoice_number ? "#6366f1" : "#94a3b8", fontWeight: rp.proj_t_projects?.invoice_number ? 600 : 400 }}
+                                      title={rp.proj_t_projects?.invoice_number ? "Edit invoice #" : "Add invoice #"}
+                                    >
+                                      🧾 Invoice
+                                    </button>
                                   </div>
                                 </div>
                                 <button onClick={() => onRemoveProject?.(rp.id)} style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: "12px", padding: "0", lineHeight: 1 }} title="Remove from run">×</button>

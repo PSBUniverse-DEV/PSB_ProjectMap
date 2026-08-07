@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Button, Modal, toastError, toastSuccess } from "@/shared/components/ui";
 import { createProject, updateProject } from "../data/projectMap.actions";
-import { formatDimension, parseDimension } from "../data/projectMap.data";
+import { formatProjectDescription, parseProjectDescription } from "../data/projectMap.data";
 import LocationSearch from "./LocationSearch";
 
 export default function AddProjectForm({ show, mode, project, statuses = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [], onClose, onSaved, initialLocation = null }) {
@@ -13,11 +13,13 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
     status_id: "",
     dealer: "",
     building_category_id: "",
-    // Transient dimension inputs — NOT real columns. Only the combined
-    // `dimension` string is persisted on save. (see formatDimension)
+    // Transient description inputs — NOT real columns. Only the combined
+    // `dimension` string is persisted on save. (see formatProjectDescription)
+    roof_style: "",
     dimension_width: "",
     dimension_length: "",
     dimension_height: "",
+    framing_gauge: "",
     permit_status_id: "",
     welcome_call_status_id: "",
     invoice_number: "",
@@ -51,12 +53,23 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
     if (project) {
       // Build display address from available fields if formatted_address is missing
       const address = project.formatted_address || [project.address_line_1, project.city, project.state, project.postal_code, project.country].filter(Boolean).join(", ") || "";
+
+      // Split the stored description string back into the editable fields.
+      // NOTE: parseProjectDescription() returns { roofStyle, width, length,
+      // height, framingGauge }, which does NOT match the form's field names
+      // (roof_style / dimension_width / ... / framing_gauge), so we map each
+      // value explicitly — never spread the result or fields go blank on edit.
+      const parsed = parseProjectDescription(project.dimension);
       setForm({
         client_name: project.client_name || "",
         status_id: project.status_id ? String(project.status_id) : "",
         dealer: project.dealer || "",
         building_category_id: project.building_category_id ? String(project.building_category_id) : "",
-        ...parseDimension(project.dimension),
+        roof_style: parsed.roofStyle,
+        dimension_width: parsed.width,
+        dimension_length: parsed.length,
+        dimension_height: parsed.height,
+        framing_gauge: parsed.framingGauge,
         permit_status_id: project.permit_status_id ? String(project.permit_status_id) : "",
         welcome_call_status_id: project.welcome_call_status_id ? String(project.welcome_call_status_id) : "",
         invoice_number: project.invoice_number || "",
@@ -89,9 +102,11 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
         status_id: "",
         dealer: "",
         building_category_id: "",
+        roof_style: "",
         dimension_width: "",
         dimension_length: "",
         dimension_height: "",
+        framing_gauge: "",
         permit_status_id: "",
         welcome_call_status_id: "",
         invoice_number: "",
@@ -123,9 +138,11 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
         status_id: "",
         dealer: "",
         building_category_id: "",
+        roof_style: "",
         dimension_width: "",
         dimension_length: "",
         dimension_height: "",
+        framing_gauge: "",
         permit_status_id: "",
         welcome_call_status_id: "",
         invoice_number: "",
@@ -193,15 +210,15 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
 
     setBusy(true);
     try {
-      // Split out the three transient dimension inputs — they are NOT real
+      // Split out the transient description inputs — they are NOT real
       // columns. Build the single combined `dimension` string via
-      // formatDimension() and persist only that.
-      const { dimension_width, dimension_length, dimension_height, ...restForm } = form;
+      // formatProjectDescription() and persist only that.
+      const { roof_style, dimension_width, dimension_length, dimension_height, framing_gauge, ...restForm } = form;
       const payload = {
         ...restForm,
         status_id: form.status_id ? Number(form.status_id) : null,
         project_subtotal: form.project_subtotal !== "" ? Number(form.project_subtotal) : null,
-        dimension: formatDimension(dimension_width, dimension_length, dimension_height),
+        dimension: formatProjectDescription(roof_style, dimension_width, dimension_length, dimension_height, framing_gauge),
       };
 
       if (mode === "edit" && project?.id) {
@@ -229,7 +246,7 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
         {/* Section 1: Customer Information */}
         <div style={{ background: "#f8fafc", padding: "10px", borderRadius: "4px", border: "1px solid #e2e8f0" }}>
           <div style={{ fontSize: "11px", fontWeight: 600, color: "#1e293b", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Customer Information</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
             <div>
               <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>
                 Client Name <span style={{ color: "#dc2626" }}>*</span>
@@ -242,66 +259,93 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
                 placeholder="Enter client name"
               />
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+            <div>
+              <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Dealer</label>
+              <input
+                type="text"
+                value={form.dealer}
+                onChange={(e) => handleChange("dealer", e.target.value)}
+                style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px" }}
+                placeholder="Dealer name"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Section 1b: Project Description */}
+        <div style={{ background: "#f8fafc", padding: "10px", borderRadius: "4px", border: "1px solid #e2e8f0" }}>
+          <div style={{ fontSize: "11px", fontWeight: 600, color: "#1e293b", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Project Description</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            <div>
+              <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Building Category</label>
+              <select
+                value={form.building_category_id}
+                onChange={(e) => handleChange("building_category_id", e.target.value)}
+                style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px", background: "#fff" }}
+              >
+                <option value="">Select category...</option>
+                {buildingCategories.map((cat) => (
+                  <option key={cat.id} value={String(cat.id)}>{cat.building_category_name}</option>
+                ))}
+              </select>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr 1fr", gap: "8px" }}>
               <div>
-                <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Dealer</label>
+                <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Roof Style</label>
                 <input
                   type="text"
-                  value={form.dealer}
-                  onChange={(e) => handleChange("dealer", e.target.value)}
+                  value={form.roof_style}
+                  onChange={(e) => handleChange("roof_style", e.target.value.toUpperCase())}
                   style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px" }}
-                  placeholder="Dealer name"
+                  placeholder="e.g. VERTICAL ROOF"
                 />
               </div>
-              <div>
-                <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Building Category</label>
-                <select
-                  value={form.building_category_id}
-                  onChange={(e) => handleChange("building_category_id", e.target.value)}
-                  style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px", background: "#fff" }}
-                >
-                  <option value="">Select category...</option>
-                  {buildingCategories.map((cat) => (
-                    <option key={cat.id} value={String(cat.id)}>{cat.building_category_name}</option>
-                  ))}
-                </select>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px" }}>
+                <div>
+                  <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Width (ft)</label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    value={form.dimension_width}
+                    onChange={(e) => handleChange("dimension_width", e.target.value)}
+                    style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px" }}
+                    placeholder="—"
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Length (ft)</label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    value={form.dimension_length}
+                    onChange={(e) => handleChange("dimension_length", e.target.value)}
+                    style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px" }}
+                    placeholder="—"
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Height (ft)</label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    value={form.dimension_height}
+                    onChange={(e) => handleChange("dimension_height", e.target.value)}
+                    style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px" }}
+                    placeholder="—"
+                  />
+                </div>
               </div>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px" }}>
               <div>
-                <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Width (ft)</label>
+                <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Framing Gauge</label>
                 <input
-                  type="number"
-                  step="0.5"
-                  min="0"
-                  value={form.dimension_width}
-                  onChange={(e) => handleChange("dimension_width", e.target.value)}
+                  type="text"
+                  value={form.framing_gauge}
+                  onChange={(e) => handleChange("framing_gauge", e.target.value.toUpperCase())}
                   style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px" }}
-                  placeholder="—"
-                />
-              </div>
-              <div>
-                <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Length (ft)</label>
-                <input
-                  type="number"
-                  step="0.5"
-                  min="0"
-                  value={form.dimension_length}
-                  onChange={(e) => handleChange("dimension_length", e.target.value)}
-                  style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px" }}
-                  placeholder="—"
-                />
-              </div>
-              <div>
-                <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Height (ft)</label>
-                <input
-                  type="number"
-                  step="0.5"
-                  min="0"
-                  value={form.dimension_height}
-                  onChange={(e) => handleChange("dimension_height", e.target.value)}
-                  style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px" }}
-                  placeholder="—"
+                  placeholder="e.g. 14 GA"
                 />
               </div>
             </div>

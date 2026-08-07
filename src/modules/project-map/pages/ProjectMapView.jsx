@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Modal, toastError, toastSuccess } from "@/shared/components/ui";
-import { deleteProject, calculateRoute, calculateMultiStopRoute, calculateSegmentRoutes, deleteRun, removeProjectFromRun, loadRunDetails, updateStopSequence, addProjectToRun, updateRun, getProjectRunAssignment, updateStopNote, updateRunStopsCount, loadRuns, loadAllRunProjects } from "../data/projectMap.actions";
+import { deleteProject, calculateRoute, calculateMultiStopRoute, calculateSegmentRoutes, deleteRun, removeProjectFromRun, loadRunDetails, updateStopSequence, addProjectToRun, updateRun, updateProject, getProjectRunAssignment, updateStopNote, updateRunStopsCount, loadRuns, loadAllRunProjects } from "../data/projectMap.actions";
 import { reverseGeocode } from "../utils/geocoding";
 import ProjectMap from "../components/ProjectMap";
 import ProjectList from "../components/ProjectList";
@@ -65,6 +65,8 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
   const [showRouteErrorModal, setShowRouteErrorModal] = useState(false);
   const [recalculating, setRecalculating] = useState(false);
   const [editingStopNote, setEditingStopNote] = useState(null);
+  const [editingStopDate, setEditingStopDate] = useState(null);
+  const [editingStopInvoice, setEditingStopInvoice] = useState(null);
   const [allRunProjects, setAllRunProjects] = useState([]);
   const [runFilters, setRunFilters] = useState({});
   const [runSearch, setRunSearch] = useState("");
@@ -658,6 +660,97 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
     } finally { setBusy(false); }
   };
 
+  const handleEditStopDate = (runProject) => {
+    const proj = runProject.proj_t_projects || {};
+    // datetime-local inputs require "YYYY-MM-DDTHH:mm" with no seconds/offset
+    const toLocalInput = (val) => {
+      if (!val) return "";
+      return String(val).slice(0, 16);
+    };
+    setEditingStopDate({
+      projectId: runProject.project_id,
+      clientName: proj.client_name || "Untitled",
+      installStart: toLocalInput(proj.install_start),
+      installEnd: toLocalInput(proj.install_end),
+    });
+  };
+
+  const handleSaveStopDate = async () => {
+    if (!editingStopDate) return;
+    setBusy(true);
+    try {
+      await updateProject(editingStopDate.projectId, {
+        install_start: editingStopDate.installStart || null,
+        install_end: editingStopDate.installEnd || null,
+        updated_by: null,
+      });
+
+      // Targeted local state patch so the UI reflects the change
+      // immediately (button icon flips to "filled"), without a reload.
+      setProjects((prev) =>
+        prev.map((p) =>
+          p.id === editingStopDate.projectId
+            ? { ...p, install_start: editingStopDate.installStart || null, install_end: editingStopDate.installEnd || null }
+            : p
+        )
+      );
+      setRunProjects((prev) =>
+        prev.map((rp) =>
+          rp.project_id === editingStopDate.projectId
+            ? { ...rp, proj_t_projects: { ...rp.proj_t_projects, install_start: editingStopDate.installStart || null, install_end: editingStopDate.installEnd || null } }
+            : rp
+        )
+      );
+
+      setEditingStopDate(null);
+      toastSuccess("Arrival window updated.", "Runs");
+    } catch (err) {
+      toastError(err?.message || "Failed to update arrival window.", "Runs");
+    } finally { setBusy(false); }
+  };
+
+  const handleEditStopInvoice = (runProject) => {
+    const proj = runProject.proj_t_projects || {};
+    setEditingStopInvoice({
+      projectId: runProject.project_id,
+      clientName: proj.client_name || runProject.clientName || "",
+      invoiceNumber: proj.invoice_number || "",
+    });
+  };
+
+  const handleSaveStopInvoice = async () => {
+    if (!editingStopInvoice) return;
+    setBusy(true);
+    try {
+      await updateProject(editingStopInvoice.projectId, {
+        invoice_number: editingStopInvoice.invoiceNumber || null,
+        updated_by: null,
+      });
+
+      // Targeted local state patch so the button's color/weight updates
+      // immediately, without a full reload.
+      setProjects((prev) =>
+        prev.map((p) =>
+          p.id === editingStopInvoice.projectId
+            ? { ...p, invoice_number: editingStopInvoice.invoiceNumber || null }
+            : p
+        )
+      );
+      setRunProjects((prev) =>
+        prev.map((rp) =>
+          rp.project_id === editingStopInvoice.projectId
+            ? { ...rp, proj_t_projects: { ...rp.proj_t_projects, invoice_number: editingStopInvoice.invoiceNumber || null } }
+            : rp
+        )
+      );
+
+      setEditingStopInvoice(null);
+      toastSuccess("Invoice number updated.", "Runs");
+    } catch (err) {
+      toastError(err?.message || "Failed to update invoice number.", "Runs");
+    } finally { setBusy(false); }
+  };
+
   const handleReorderStops = async (fromIndex, toIndex) => {
     if (!selectedRunId || runProjects.length === 0) return;
     setBusy(true);
@@ -859,7 +952,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
           <ProjectDetailDrawer project={selectedProject} statuses={statuses} buildingCategories={buildingCategories} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} projectRunLookup={projectRunLookup} onClose={handleCloseDrawer} onEdit={handleEdit} onDelete={() => setConfirmDeleteId(selectedProject.id)} routeInfo={routeInfo} />
         )}
         {mode === "runs" && selectedRun && (
-          <RunDetailPanel run={selectedRun} runProjects={runProjects} runSegmentData={runSegmentData} onClose={handleCloseRunDetail} onEdit={handleEditRun} onDelete={() => setConfirmDeleteRunId(selectedRun.id)} onRemoveProject={handleRemoveProjectFromRun} onReorderStops={handleReorderStops} onRecalculate={handleRecalculate} recalculating={recalculating} onEditStopNote={handleEditStopNote} isLoading={isLoadingRunDetails} />
+          <RunDetailPanel run={selectedRun} runProjects={runProjects} runSegmentData={runSegmentData} onClose={handleCloseRunDetail} onEdit={handleEditRun} onDelete={() => setConfirmDeleteRunId(selectedRun.id)} onRemoveProject={handleRemoveProjectFromRun} onReorderStops={handleReorderStops} onRecalculate={handleRecalculate} recalculating={recalculating} onEditStopNote={handleEditStopNote} onEditStopDate={handleEditStopDate} onEditStopInvoice={handleEditStopInvoice} isLoading={isLoadingRunDetails} />
         )}
       </div>
 
@@ -915,6 +1008,64 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
             <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
               <Button variant="secondary" onClick={() => setEditingStopNote(null)}>Cancel</Button>
               <Button variant="primary" loading={busy} onClick={handleSaveStopNote}>Save</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal show={!!editingStopDate} onHide={() => setEditingStopDate(null)} title="Arrival Window">
+        {editingStopDate && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            <div>
+              <div style={{ fontSize: "12px", fontWeight: 600, color: "#1e293b" }}>{editingStopDate.clientName}</div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+              <div>
+                <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Arrival From</label>
+                <input
+                  type="datetime-local"
+                  value={editingStopDate.installStart}
+                  onChange={(e) => setEditingStopDate({ ...editingStopDate, installStart: e.target.value })}
+                  style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px" }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Arrival By</label>
+                <input
+                  type="datetime-local"
+                  value={editingStopDate.installEnd}
+                  onChange={(e) => setEditingStopDate({ ...editingStopDate, installEnd: e.target.value })}
+                  style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px" }}
+                />
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
+              <Button variant="secondary" onClick={() => setEditingStopDate(null)}>Cancel</Button>
+              <Button variant="primary" loading={busy} onClick={handleSaveStopDate}>Save</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal show={!!editingStopInvoice} onHide={() => setEditingStopInvoice(null)} title="Invoice Number">
+        {editingStopInvoice && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            <div>
+              <div style={{ fontSize: "12px", fontWeight: 600, color: "#1e293b" }}>{editingStopInvoice.clientName}</div>
+            </div>
+            <div>
+              <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Invoice #</label>
+              <input
+                type="text"
+                value={editingStopInvoice.invoiceNumber}
+                onChange={(e) => setEditingStopInvoice({ ...editingStopInvoice, invoiceNumber: e.target.value })}
+                style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px" }}
+                placeholder="Invoice number"
+              />
+            </div>
+            <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
+              <Button variant="secondary" onClick={() => setEditingStopInvoice(null)}>Cancel</Button>
+              <Button variant="primary" loading={busy} onClick={handleSaveStopInvoice}>Save</Button>
             </div>
           </div>
         )}

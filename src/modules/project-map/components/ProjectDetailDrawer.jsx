@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faLocationDot, faCalendarDays, faBuilding, faDollarSign, faTag } from "@fortawesome/free-solid-svg-icons";
+import { formatProjectDescriptionForDisplay } from "../data/projectMap.data";
 
 export default function ProjectDetailDrawer({ project, statuses = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [], projectRunLookup = new Map(), onClose, onEdit, onDelete, routeInfo = null }) {
   const statusName = useMemo(() => {
@@ -111,7 +112,7 @@ export default function ProjectDetailDrawer({ project, statuses = [], buildingCa
               </tr>
               <tr>
                 <td style={{ padding: "4px 0", fontSize: "11px", color: "#64748b", fontWeight: 500 }}>Dimensions</td>
-                <td style={{ padding: "4px 0", fontSize: "12px", color: "#1e293b", fontWeight: 600, textAlign: "right" }}>{project.dimension || "—"}</td>
+                <td style={{ padding: "4px 0", fontSize: "12px", color: "#1e293b", fontWeight: 600, textAlign: "right" }}>{formatProjectDescriptionForDisplay(project.dimension) || "—"}</td>
               </tr>
             </tbody>
           </table>

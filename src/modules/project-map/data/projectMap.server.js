@@ -60,6 +60,11 @@ export async function loadProjectMapSetup() {
       .select("*")
       .order("display_order", { ascending: true })
       .order("status_name", { ascending: true }),
+    runStatuses: supabase
+      .from("proj_s_run_status")
+      .select("*")
+      .eq("is_active", true)
+      .order("display_order", { ascending: true }),
   };
 
   const keys = Object.keys(queries);

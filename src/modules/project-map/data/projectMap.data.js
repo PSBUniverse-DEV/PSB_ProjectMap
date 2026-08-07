@@ -17,6 +17,24 @@
  *   handled centrally by the SSO cookie (psb_session).
  */
 
+/**
+ * Fallback only — real source of truth is proj_s_run_status.
+ * Used if that query fails or returns empty.
+ */
+export const RUN_STATUSES = ["Draft", "Planned", "Scheduled", "In Progress", "Completed", "Cancelled"];
+
+export function resolveRunStatusOptions(runStatuses = []) {
+  return runStatuses.length > 0
+    ? runStatuses.map((s) => s.status_name)
+    : RUN_STATUSES;
+}
+
+export function getRunStatusColor(statusName, runStatuses = []) {
+  if (!statusName) return "#6b7280";
+  const found = runStatuses.find((s) => s.status_name === statusName);
+  return found?.display_color || "#6b7280";
+}
+
 export function formatRunCode(runNumber) {
   if (runNumber == null) return null;
   return `PSBR-${String(runNumber).padStart(6, "0")}`;

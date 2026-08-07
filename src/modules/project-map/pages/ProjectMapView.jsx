@@ -19,7 +19,7 @@ import FilterChips from "../components/FilterChips";
 import RunFilterPanel from "../components/RunFilterPanel";
 import RunFilterChips from "../components/RunFilterChips";
 
-export default function ProjectMapView({ projects: initialProjects = [], statuses = [], origins = [], states = [], runs: initialRuns = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [] }) {
+export default function ProjectMapView({ projects: initialProjects = [], statuses = [], origins = [], states = [], runs: initialRuns = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [], runStatuses = [] }) {
   const router = useRouter();
   const [mode, setMode] = useState("projects");
   const [showLabels, setShowLabels] = useState(true);
@@ -891,6 +891,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
       <div style={{ display: "flex", borderBottom: "1px solid #e2e8f0", background: "#fff", flexShrink: 0 }}>
         <button onClick={() => setMode("projects")} style={{ padding: "6px 16px", fontSize: "12px", fontWeight: mode === "projects" ? 600 : 400, border: "none", borderBottom: mode === "projects" ? "2px solid #1e293b" : "2px solid transparent", background: mode === "projects" ? "#f8fafc" : "#fff", color: mode === "projects" ? "#1e293b" : "#64748b", cursor: "pointer" }}>Projects</button>
         <button onClick={() => setMode("runs")} style={{ padding: "6px 16px", fontSize: "12px", fontWeight: mode === "runs" ? 600 : 400, border: "none", borderBottom: mode === "runs" ? "2px solid #1e293b" : "2px solid transparent", background: mode === "runs" ? "#f8fafc" : "#fff", color: mode === "runs" ? "#1e293b" : "#64748b", cursor: "pointer" }}>Runs</button>
+        <button onClick={() => router.push("/project-map/run-master")} style={{ padding: "6px 16px", fontSize: "12px", fontWeight: 400, border: "none", borderBottom: "2px solid transparent", background: "#fff", color: "#64748b", cursor: "pointer" }}>📋 Run Master List</button>
       </div>
 
       {mode === "projects" ? (
@@ -911,7 +912,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
               outline: "none",
             }}
           />
-          <RunFilterPanel runFilters={runFilters} onFilterChange={setRunFilters} />
+          <RunFilterPanel runFilters={runFilters} onFilterChange={setRunFilters} runStatuses={runStatuses} />
           <button onClick={() => { setEditingRun(null); setShowRunForm(true); }} style={{ padding: "3px 10px", fontSize: "12px", borderRadius: "3px", border: "none", background: "#16a34a", color: "#fff", cursor: "pointer", whiteSpace: "nowrap" }}>+ New Run</button>
         </div>
       )}
@@ -952,7 +953,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
           <ProjectDetailDrawer project={selectedProject} statuses={statuses} buildingCategories={buildingCategories} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} projectRunLookup={projectRunLookup} onClose={handleCloseDrawer} onEdit={handleEdit} onDelete={() => setConfirmDeleteId(selectedProject.id)} routeInfo={routeInfo} />
         )}
         {mode === "runs" && selectedRun && (
-          <RunDetailPanel run={selectedRun} runProjects={runProjects} runSegmentData={runSegmentData} onClose={handleCloseRunDetail} onEdit={handleEditRun} onDelete={() => setConfirmDeleteRunId(selectedRun.id)} onRemoveProject={handleRemoveProjectFromRun} onReorderStops={handleReorderStops} onRecalculate={handleRecalculate} recalculating={recalculating} onEditStopNote={handleEditStopNote} onEditStopDate={handleEditStopDate} onEditStopInvoice={handleEditStopInvoice} isLoading={isLoadingRunDetails} />
+          <RunDetailPanel run={selectedRun} runProjects={runProjects} runSegmentData={runSegmentData} onClose={handleCloseRunDetail} onEdit={handleEditRun} onDelete={() => setConfirmDeleteRunId(selectedRun.id)} onRemoveProject={handleRemoveProjectFromRun} onReorderStops={handleReorderStops} onRecalculate={handleRecalculate} recalculating={recalculating} onEditStopNote={handleEditStopNote} onEditStopDate={handleEditStopDate} onEditStopInvoice={handleEditStopInvoice} isLoading={isLoadingRunDetails} runStatuses={runStatuses} />
         )}
       </div>
 
@@ -961,7 +962,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
       )}
 
       {mode === "runs" && (
-        <RunForm show={showRunForm} mode={editingRun ? "edit" : "add"} run={editingRun} origins={origins} statuses={statuses} onClose={handleCloseRunForm} onSaved={handleRunSaved} />
+        <RunForm show={showRunForm} mode={editingRun ? "edit" : "add"} run={editingRun} origins={origins} runStatuses={runStatuses} onClose={handleCloseRunForm} onSaved={handleRunSaved} />
       )}
 
       {mode === "projects" && (

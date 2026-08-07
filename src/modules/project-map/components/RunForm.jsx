@@ -3,8 +3,9 @@
 import { useState, useEffect, useMemo } from "react";
 import { Button, Modal, toastError, toastSuccess } from "@/shared/components/ui";
 import { createRun, updateRun, deleteRun } from "../data/projectMap.actions";
+import { resolveRunStatusOptions } from "../data/projectMap.data";
 
-export default function RunForm({ show, mode, run, origins = [], statuses = [], onClose, onSaved }) {
+export default function RunForm({ show, mode, run, origins = [], runStatuses = [], onClose, onSaved }) {
   const [busy, setBusy] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [form, setForm] = useState({
@@ -162,12 +163,9 @@ export default function RunForm({ show, mode, run, origins = [], statuses = [], 
               onChange={(e) => handleChange("status", e.target.value)}
               style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px", background: "#fff" }}
             >
-              <option value="Draft">Draft</option>
-              <option value="Planned">Planned</option>
-              <option value="Scheduled">Scheduled</option>
-              <option value="In Progress">In Progress</option>
-              <option value="Completed">Completed</option>
-              <option value="Cancelled">Cancelled</option>
+              {resolveRunStatusOptions(runStatuses).map((statusName) => (
+                <option key={statusName} value={statusName}>{statusName}</option>
+              ))}
             </select>
           </div>
           <div>

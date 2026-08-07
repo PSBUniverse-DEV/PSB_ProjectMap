@@ -3,12 +3,12 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faSliders } from "@fortawesome/free-solid-svg-icons";
-
-const RUN_STATUSES = ["Draft", "Planned", "Scheduled", "In Progress", "Completed", "Cancelled"];
+import { resolveRunStatusOptions } from "../data/projectMap.data";
 
 export default function RunFilterPanel({
   runFilters = {},
   onFilterChange,
+  runStatuses = [],
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [localFilters, setLocalFilters] = useState(runFilters);
@@ -138,7 +138,7 @@ export default function RunFilterPanel({
               }}
             >
               <option value="">All Statuses</option>
-              {RUN_STATUSES.map((status) => (
+              {resolveRunStatusOptions(runStatuses).map((status) => (
                 <option key={status} value={status}>{status}</option>
               ))}
             </select>

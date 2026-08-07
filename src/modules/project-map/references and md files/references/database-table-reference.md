@@ -223,7 +223,17 @@ create index IF not exists idx_proj_t_run_projects_project_id on public.proj_t_r
 
 create index IF not exists idx_run_projects_arrival on public.proj_t_run_projects using btree (arrival_datetime) TABLESPACE pg_default;
 
-
+create table public.proj_s_run_status (
+  status_id int not null,
+  status_name text not null,
+  status_description text null,
+  display_color text null,
+  display_order integer not null default 0,
+  is_active boolean not null default true,
+  date_created timestamp with time zone not null default now(),
+  constraint proj_s_run_status_pkey primary key (status_id),
+  constraint proj_s_run_status_status_name_key unique (status_name)
+) TABLESPACE pg_default;
 
 create table public.psb_s_user (
   user_id bigserial not null,

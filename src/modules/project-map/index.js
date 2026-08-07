@@ -66,6 +66,7 @@ const projectMapModule = {
   routes: [
     { path: "/project-map", page: "ProjectMapPage" },
     { path: "/project-map/setup", page: "ProjectMapSetupPage" },
+    { path: "/project-map/run-master", page: "RunMasterPage" },
   ],
 };
 

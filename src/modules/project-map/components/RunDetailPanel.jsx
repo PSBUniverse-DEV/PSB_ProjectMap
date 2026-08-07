@@ -128,6 +128,7 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
             <div class="stop-primary">
               <div class="client-line">${proj.client_name || "Untitled"} ${proj.invoice_number ? `&mdash; Invoice #${proj.invoice_number}` : ""} ${proj.proj_s_building_categories?.building_category_name ? `&mdash; ${proj.proj_s_building_categories.building_category_name}` : ""}</div>
               <div class="address-line">${address} <span class="state">${proj.state || proj.state_code ? `· ${proj.state || ""}${proj.state_code ? " (" + proj.state_code + ")" : ""}` : ""}</span></div>
+              ${proj.dimension ? `<div class="address-line" style="margin-top: 2px;">Dimensions: ${proj.dimension}</div>` : ""}
             </div>
             <div class="stop-window">
               <div class="field">

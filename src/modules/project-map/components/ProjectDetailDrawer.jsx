@@ -109,6 +109,10 @@ export default function ProjectDetailDrawer({ project, statuses = [], buildingCa
                 <td style={{ padding: "4px 0", fontSize: "11px", color: "#64748b", fontWeight: 500 }}>Building Category</td>
                 <td style={{ padding: "4px 0", fontSize: "12px", color: "#1e293b", fontWeight: 600, textAlign: "right" }}>{buildingCategoryName || "—"}</td>
               </tr>
+              <tr>
+                <td style={{ padding: "4px 0", fontSize: "11px", color: "#64748b", fontWeight: 500 }}>Dimensions</td>
+                <td style={{ padding: "4px 0", fontSize: "12px", color: "#1e293b", fontWeight: 600, textAlign: "right" }}>{project.dimension || "—"}</td>
+              </tr>
             </tbody>
           </table>
         </div>

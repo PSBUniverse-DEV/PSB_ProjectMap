@@ -410,6 +410,7 @@ export default function ProjectMap({
         <div style="font-weight: 600; line-height: 1.2;">${project.client_name || "Untitled"}</div>
         <div style="color: #16a34a; font-weight: 600; line-height: 1.2;">${subtotalStr || "—"}</div>
         ${assignedRunLabel ? `<div style="color: #6366f1; line-height: 1.2;">📦 ${assignedRunLabel}</div>` : ""}
+        ${project.dimension ? `<div style="line-height: 1.2;">${project.dimension}</div>` : ""}
       `;
 
       const persistentPopup = new MapLibreGL.Popup({
@@ -457,6 +458,7 @@ export default function ProjectMap({
         <div style="font-size: 9px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 3px; letter-spacing: 0.4px;">Project Information</div>
         <table style="width: 100%; border-collapse: collapse; margin-bottom: 8px;">
           <tr><td style="font-size: 10px; color: #94a3b8; padding-bottom: 2px;">Address</td><td style="font-size: 10px; color: #1e293b; font-weight: 600; text-align: right; padding-bottom: 2px;">${addressDisplay || "—"}</td></tr>
+          <tr><td style="font-size: 10px; color: #94a3b8; padding-bottom: 2px;">Dimensions</td><td style="font-size: 10px; color: #1e293b; font-weight: 600; text-align: right; padding-bottom: 2px;">${project.dimension || "—"}</td></tr>
           <tr><td style="font-size: 10px; color: #94a3b8; padding-bottom: 2px;">State</td><td style="font-size: 10px; color: #1e293b; font-weight: 600; text-align: right; padding-bottom: 2px;">${project.state || project.state_code ? `${project.state || ""}${project.state_code ? " (" + project.state_code + ")" : ""}` : "—"}</td></tr>
           <tr><td style="font-size: 10px; color: #94a3b8; padding-bottom: 2px;">Project Subtotal</td><td style="font-size: 10px; color: #16a34a; font-weight: 700; text-align: right; padding-bottom: 2px;">${subtotalStr || "—"}</td></tr>
           <tr><td style="font-size: 10px; color: #94a3b8; padding-bottom: 2px;">Invoice #</td><td style="font-size: 10px; color: #1e293b; font-weight: 600; text-align: right; padding-bottom: 2px;">${project.invoice_number || "—"}</td></tr>

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { Button, Modal, toastError, toastSuccess } from "@/shared/components/ui";
 import { createProject, updateProject } from "../data/projectMap.actions";
+import { formatDimension, parseDimension } from "../data/projectMap.data";
 import LocationSearch from "./LocationSearch";
 
 export default function AddProjectForm({ show, mode, project, statuses = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [], onClose, onSaved, initialLocation = null }) {
@@ -12,6 +13,11 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
     status_id: "",
     dealer: "",
     building_category_id: "",
+    // Transient dimension inputs — NOT real columns. Only the combined
+    // `dimension` string is persisted on save. (see formatDimension)
+    dimension_width: "",
+    dimension_length: "",
+    dimension_height: "",
     permit_status_id: "",
     welcome_call_status_id: "",
     invoice_number: "",
@@ -50,6 +56,7 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
         status_id: project.status_id ? String(project.status_id) : "",
         dealer: project.dealer || "",
         building_category_id: project.building_category_id ? String(project.building_category_id) : "",
+        ...parseDimension(project.dimension),
         permit_status_id: project.permit_status_id ? String(project.permit_status_id) : "",
         welcome_call_status_id: project.welcome_call_status_id ? String(project.welcome_call_status_id) : "",
         invoice_number: project.invoice_number || "",
@@ -82,6 +89,9 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
         status_id: "",
         dealer: "",
         building_category_id: "",
+        dimension_width: "",
+        dimension_length: "",
+        dimension_height: "",
         permit_status_id: "",
         welcome_call_status_id: "",
         invoice_number: "",
@@ -113,6 +123,9 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
         status_id: "",
         dealer: "",
         building_category_id: "",
+        dimension_width: "",
+        dimension_length: "",
+        dimension_height: "",
         permit_status_id: "",
         welcome_call_status_id: "",
         invoice_number: "",
@@ -180,10 +193,15 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
 
     setBusy(true);
     try {
+      // Split out the three transient dimension inputs — they are NOT real
+      // columns. Build the single combined `dimension` string via
+      // formatDimension() and persist only that.
+      const { dimension_width, dimension_length, dimension_height, ...restForm } = form;
       const payload = {
-        ...form,
+        ...restForm,
         status_id: form.status_id ? Number(form.status_id) : null,
         project_subtotal: form.project_subtotal !== "" ? Number(form.project_subtotal) : null,
+        dimension: formatDimension(dimension_width, dimension_length, dimension_height),
       };
 
       if (mode === "edit" && project?.id) {
@@ -247,6 +265,44 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
                     <option key={cat.id} value={String(cat.id)}>{cat.building_category_name}</option>
                   ))}
                 </select>
+              </div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px" }}>
+              <div>
+                <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Width (ft)</label>
+                <input
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  value={form.dimension_width}
+                  onChange={(e) => handleChange("dimension_width", e.target.value)}
+                  style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px" }}
+                  placeholder="—"
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Length (ft)</label>
+                <input
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  value={form.dimension_length}
+                  onChange={(e) => handleChange("dimension_length", e.target.value)}
+                  style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px" }}
+                  placeholder="—"
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Height (ft)</label>
+                <input
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  value={form.dimension_height}
+                  onChange={(e) => handleChange("dimension_height", e.target.value)}
+                  style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px" }}
+                  placeholder="—"
+                />
               </div>
             </div>
           </div>

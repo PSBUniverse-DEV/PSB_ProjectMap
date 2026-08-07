@@ -31,6 +31,7 @@ create table public.proj_t_projects (
   scheduled_project_end timestamp without time zone null,
   install_end timestamp without time zone null,
   project_notes text null,
+  dimension text null,
   constraint proj_t_projects_pkey primary key (id),
   constraint proj_t_projects_building_category_id_fkey foreign KEY (building_category_id) references proj_s_building_categories (id),
   constraint proj_t_projects_permit_status_id_fkey foreign KEY (permit_status_id) references proj_s_permit_status (id),

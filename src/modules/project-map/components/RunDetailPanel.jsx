@@ -164,7 +164,7 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
       <html>
       <head>
         <meta charset="UTF-8">
-        <title>Run Manifest — #${run.run_number || "?"} — ${run.run_date || "Unscheduled"}</title>
+        <title>Run Manifest — ${run.run_name || "—"} — ${run.run_date || "Unscheduled"}</title>
         <style>
           :root {
             --ink: #0f1720;
@@ -214,7 +214,8 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
           }
           .doc-title { font-size: 20px; font-weight: 800; color: var(--ink); letter-spacing: -0.3px; }
           .doc-meta { text-align: right; font-size: 10px; color: var(--muted); }
-          .doc-meta .run-date { font-size: 13px; font-weight: 700; color: var(--ink); }
+          .doc-meta .run-code { font-size: 20px; font-weight: 800; color: var(--ink); letter-spacing: -0.2px; }
+          .doc-meta .run-date { font-size: 11px; font-weight: 600; color: var(--muted); margin-top: 4px; }
           .info-strip {
             display: grid;
             grid-template-columns: 1.3fr 1.6fr 0.9fr 0.9fr 1.1fr;
@@ -352,13 +353,14 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
 
         <div class="doc-header">
           <div style="display: flex; align-items: center; gap: 10px;">
-            <img src="/images/psb-logo.png" alt="PSBUniverse" style="height: 32px; width: auto; display: block;" />
+            <img src="/images/psb-logo.png" alt="PSBUniverse" style="height: 48px; width: auto; display: block;" />
             <div>
-              <div class="doc-title">Run #${run.run_number || "?"} &mdash; ${run.run_date ? new Date(run.run_date).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : "Unscheduled"}</div>
+              <div class="doc-title">Run Manifest</div>
             </div>
           </div>
           <div class="doc-meta">
-            <div class="run-date num">${run.run_date || "—"}</div>
+            <div class="run-code">${run.run_name || "—"}</div>
+            <div class="run-date">${run.run_date ? new Date(run.run_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Unscheduled"}</div>
           </div>
         </div>
 
@@ -400,7 +402,7 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
 
         <div class="doc-footer">
           <span>PSBUniverse &middot; Project Map</span>
-          <span>Run #${run.run_number || "?"}</span>
+          <span>${run.run_name || "—"}</span>
         </div>
       </body>
       </html>

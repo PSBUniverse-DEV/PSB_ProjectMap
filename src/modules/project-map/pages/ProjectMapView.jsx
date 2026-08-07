@@ -19,7 +19,7 @@ import FilterChips from "../components/FilterChips";
 import RunFilterPanel from "../components/RunFilterPanel";
 import RunFilterChips from "../components/RunFilterChips";
 
-export default function ProjectMapView({ projects = [], statuses = [], origins = [], states = [], runs: initialRuns = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [] }) {
+export default function ProjectMapView({ projects: initialProjects = [], statuses = [], origins = [], states = [], runs: initialRuns = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [] }) {
   const router = useRouter();
   const [mode, setMode] = useState("projects");
   const [showLabels, setShowLabels] = useState(true);
@@ -40,6 +40,11 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
   const [routeData, setRouteData] = useState(null);
   const [routeLoading, setRouteLoading] = useState(false);
   const prevSearchRef = useRef("");
+  const [projects, setProjects] = useState(initialProjects);
+
+  useEffect(() => {
+    setProjects(initialProjects);
+  }, [initialProjects]);
 
   // Runs state — local copy so we can update it after mutations
   const [runs, setRuns] = useState(initialRuns);
@@ -449,7 +454,18 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
     } finally { setBusy(false); }
   };
 
-  const handleSaved = () => { setShowAddForm(false); setEditingProject(null); setInitialLocation(null); setTempMarker(null); clearMapSearch(); router.refresh(); };
+  const handleSaved = async () => {
+    setShowAddForm(false);
+    setEditingProject(null);
+    setInitialLocation(null);
+    setTempMarker(null);
+    clearMapSearch();
+    if (editingProject?.id && selectedRunId) {
+      await refreshRunData();
+    }
+    router.refresh();
+  };
+
   const handleCloseForm = () => { setShowAddForm(false); setEditingProject(null); setInitialLocation(null); setTempMarker(null); clearMapSearch(); };
 
   const handleRecalculate = useCallback(async () => {
@@ -496,7 +512,7 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
         const arrivalTime = new Date(originStart.getTime() + cumulativeSeconds * 1000);
         const rp = freshProjects[i];
         if (rp && rp.id) {
-          arrivalUpdates.push(updateStopNote(rp.id, rp.notes || null).then(() => updateStopSequence(rp.id, i)));
+          arrivalUpdates.push(updateStopSequence(rp.id, i));
         }
       }
       if (arrivalUpdates.length > 0) {
@@ -600,7 +616,12 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
 
   const handleEditStopNote = (runProject) => {
     const proj = runProject.proj_t_projects || {};
-    setEditingStopNote({ runProjectId: runProject.id, notes: runProject.notes || "", clientName: proj.client_name || "Untitled" });
+    setEditingStopNote({
+      runProjectId: runProject.id,
+      projectId: runProject.project_id,
+      notes: runProject.notes || "",
+      clientName: proj.client_name || "Untitled",
+    });
   };
 
   const handleSaveStopNote = async () => {
@@ -609,6 +630,27 @@ export default function ProjectMapView({ projects = [], statuses = [], origins =
     try {
       await updateStopNote(editingStopNote.runProjectId, editingStopNote.notes);
       toastSuccess("Stop note saved.", "Runs");
+      setProjects((currentProjects) =>
+        currentProjects.map((project) =>
+          project.id === editingStopNote.projectId
+            ? { ...project, project_notes: editingStopNote.notes }
+            : project
+        )
+      );
+      setRunProjects((currentRunProjects) =>
+        currentRunProjects.map((rp) =>
+          rp.id === editingStopNote.runProjectId
+            ? {
+                ...rp,
+                notes: editingStopNote.notes,
+                proj_t_projects: {
+                  ...rp.proj_t_projects,
+                  project_notes: editingStopNote.notes,
+                },
+              }
+            : rp
+        )
+      );
       setEditingStopNote(null);
       await refreshRunData();
     } catch (err) {

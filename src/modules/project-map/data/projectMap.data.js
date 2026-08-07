@@ -16,3 +16,8 @@
  *   Do NOT store auth tokens or session data here — that's
  *   handled centrally by the SSO cookie (psb_session).
  */
+
+export function formatRunCode(runNumber) {
+  if (runNumber == null) return null;
+  return `PSBR-${String(runNumber).padStart(6, "0")}`;
+}

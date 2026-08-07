@@ -840,6 +840,17 @@ export async function updateProject(projectId, updates) {
 
   const { data, error } = await supabase.from("proj_t_projects").update(payload).eq("id", id).select("*").single();
   if (error) throw new Error(error.message);
+
+  if (Object.prototype.hasOwnProperty.call(updates, "project_notes")) {
+    const { error: syncError } = await supabase
+      .from("proj_t_run_projects")
+      .update({ notes: data.project_notes ?? null })
+      .eq("project_id", id);
+    if (syncError) {
+      console.error("[updateProject] Failed to sync project_notes to proj_t_run_projects.notes:", syncError.message);
+    }
+  }
+
   return data;
 }
 
@@ -862,7 +873,7 @@ export async function createRun(runData) {
   const now = new Date().toISOString();
 
   const payload = {
-    run_name: String(runData.run_name || "").trim(),
+    run_name: "",
     origin_id: runData.origin_id || null,
     run_date: runData.run_date || null,
     status: RUN_STATUSES.includes(runData.status) ? runData.status : "Draft",
@@ -877,7 +888,33 @@ export async function createRun(runData) {
     updated_at: now,
   };
 
-  const { data, error } = await supabase.from("proj_t_runs").insert(payload).select("*").single();
+  const { data: inserted, error: insertError } = await supabase.from("proj_t_runs").insert(payload).select("*").single();
+  if (insertError) throw new Error(insertError.message);
+
+  const runNumber = inserted?.run_number;
+  const runCode = runNumber == null ? null : `PSBR-${String(runNumber).padStart(6, "0")}`;
+
+  if (runCode) {
+    const { data: existing, error: existsError } = await supabase
+      .from("proj_t_runs")
+      .select("id")
+      .eq("run_name", runCode)
+      .maybeSingle();
+
+    if (existsError) throw new Error(existsError.message);
+    if (existing) {
+      throw new Error(
+        `Generated run code ${runCode} already exists — this indicates a run_number uniqueness issue and should be reported.`
+      );
+    }
+  }
+
+  const { data, error } = await supabase
+    .from("proj_t_runs")
+    .update({ run_name: runCode })
+    .eq("id", inserted.id)
+    .select("*")
+    .single();
   if (error) throw new Error(error.message);
   return data;
 }
@@ -887,6 +924,7 @@ export async function updateRun(runId, updates) {
   const now = new Date().toISOString();
 
   const payload = { ...updates, updated_at: now };
+  delete payload.run_name;
   if (payload.status && !RUN_STATUSES.includes(payload.status)) {
     payload.status = "Draft";
   }
@@ -938,10 +976,18 @@ export async function addProjectToRun(runId, projectId, stopSequence = 0) {
     );
   }
 
+  const { data: projectData, error: projectFetchError } = await supabase
+    .from("proj_t_projects")
+    .select("project_notes")
+    .eq("id", pid)
+    .single();
+  if (projectFetchError) throw new Error(projectFetchError.message);
+
   const payload = {
     run_id: runId,
     project_id: pid,
     stop_sequence: Number(stopSequence) || 0,
+    notes: projectData?.project_notes ?? null,
   };
 
   const { data, error } = await supabase.from("proj_t_run_projects").insert(payload).select("*").single();
@@ -985,8 +1031,26 @@ export async function updateStopSequence(runProjectId, stopSequence) {
 
 export async function updateStopNote(runProjectId, notes) {
   const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase.from("proj_t_run_projects").update({ notes: notes || null }).eq("id", runProjectId).select("*").single();
+  const normalizedNotes = notes || null;
+
+  const { data, error } = await supabase
+    .from("proj_t_run_projects")
+    .update({ notes: normalizedNotes })
+    .eq("id", runProjectId)
+    .select("*")
+    .single();
   if (error) throw new Error(error.message);
+
+  if (data?.project_id) {
+    const { error: syncError } = await supabase
+      .from("proj_t_projects")
+      .update({ project_notes: normalizedNotes, updated_at: new Date().toISOString() })
+      .eq("id", data.project_id);
+    if (syncError) {
+      console.error("[updateStopNote] Failed to sync note to proj_t_projects.project_notes:", syncError.message);
+    }
+  }
+
   return data;
 }
 

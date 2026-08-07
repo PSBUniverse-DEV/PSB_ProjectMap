@@ -8,7 +8,6 @@ export default function RunForm({ show, mode, run, origins = [], statuses = [], 
   const [busy, setBusy] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [form, setForm] = useState({
-    run_name: "",
     origin_id: "",
     run_date: "",
     status: "Draft",
@@ -30,7 +29,6 @@ export default function RunForm({ show, mode, run, origins = [], statuses = [], 
   useEffect(() => {
     if (run) {
       setForm({
-        run_name: run.run_name || "",
         origin_id: run.origin_id || "",
         run_date: run.run_date || "",
         status: run.status || "Draft",
@@ -44,7 +42,6 @@ export default function RunForm({ show, mode, run, origins = [], statuses = [], 
       });
     } else {
       setForm({
-        run_name: "",
         origin_id: "",
         run_date: "",
         status: "Draft",
@@ -64,16 +61,10 @@ export default function RunForm({ show, mode, run, origins = [], statuses = [], 
   };
 
   const handleSave = async () => {
-    if (!form.run_name.trim()) {
-      toastError("Run name is required.", "Validation");
-      return;
-    }
-
     setBusy(true);
     try {
       // Estimate fields are auto-calculated after projects are added
       const payload = {
-        run_name: form.run_name,
         origin_id: form.origin_id || null,
         run_date: form.run_date || null,
         status: form.status,
@@ -126,14 +117,14 @@ export default function RunForm({ show, mode, run, origins = [], statuses = [], 
       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
         <div>
           <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>
-            Run Name <span style={{ color: "#dc2626" }}>*</span>
+            Run Code
           </label>
           <input
             type="text"
-            value={form.run_name}
-            onChange={(e) => handleChange("run_name", e.target.value)}
-            style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px" }}
-            placeholder="Enter run name"
+            value={mode === "edit" ? (run?.run_name || "") : ""}
+            disabled
+            placeholder={mode === "edit" ? "" : "Auto-generated on save"}
+            style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px", background: "#f8fafc", color: "#64748b" }}
           />
         </div>
 

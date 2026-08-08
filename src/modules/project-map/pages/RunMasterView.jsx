@@ -13,18 +13,22 @@ import { useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Modal, toastError, TableZ } from "@/shared/components/ui";
 import { resolveRunStatusOptions, getRunStatusColor } from "../data/projectMap.data";
-import { loadRunDetails, loadRuns } from "../data/projectMap.actions";
+import { loadRunDetails, loadRuns, loadPaidSheet } from "../data/projectMap.actions";
 import { generateRunManifestPrint } from "../utils/printRunManifest";
+import { generatePaidSheetPrint } from "../utils/printPaidSheet";
 import { computeRunSegmentData } from "../utils/runSegments";
 import RunForm from "../components/RunForm";
+import PaidSheetForm from "../components/PaidSheetForm";
+import "./run-master.css";
 
-export default function RunMasterView({ runs = [], origins = [], statuses = [], runStatuses = [] }) {
+export default function RunMasterView({ runs = [], origins = [], statuses = [], runStatuses = [], paymentMethods = [] }) {
   const router = useRouter();
 
   // ---- State ----
   const [localRuns, setLocalRuns] = useState(runs);
   const [showRunForm, setShowRunForm] = useState(false);
-  const [editingRun, setEditingRun] = useState(null);
+  const [showPaidSheetForm, setShowPaidSheetForm] = useState(false);
+  const [editingRunDetail, setEditingRunDetail] = useState(null);
   const [printingRunId, setPrintingRunId] = useState(null);
 
   // ---- Helpers ----
@@ -63,38 +67,94 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
     []
   );
 
+  // Status → pipeline position, driven by proj_s_run_status.display_order
+  // (runStatuses is already sorted by display_order server-side).
+  const statusOrder = useMemo(() => {
+    const map = new Map();
+    runStatuses.forEach((s, idx) => map.set(s.status_name, idx));
+    return map;
+  }, [runStatuses]);
+
   // Preprocess runs so TableZ's internal search can match on
   // computed fields (origin display, stops count, revenue) via
   // getNestedValue — TableZ searches visible column keys, not render output.
   const tableData = useMemo(() => {
-    return localRuns.map((run) => ({
-      ...run,
-      _originDisplay: getOriginName(run),
-      _stopsCount: getRunStopsCount(run),
-      _revenue: getRunRevenue(run),
-    }));
-  }, [localRuns, getOriginName, getRunStopsCount, getRunRevenue]);
+    return localRuns
+      .map((run) => ({
+        ...run,
+        _originDisplay: getOriginName(run),
+        _stopsCount: getRunStopsCount(run),
+        _revenue: getRunRevenue(run),
+      }))
+      .sort((a, b) => {
+        const orderA = statusOrder.get(a.status) ?? Number.MAX_SAFE_INTEGER;
+        const orderB = statusOrder.get(b.status) ?? Number.MAX_SAFE_INTEGER;
+        if (orderA !== orderB) return orderA - orderB;
+        return new Date(b.run_date || 0) - new Date(a.run_date || 0);
+      });
+  }, [localRuns, getOriginName, getRunStopsCount, getRunRevenue, statusOrder]);
 
   // ---- Actions ----
   const handleAddRun = useCallback(() => {
-    setEditingRun(null);
-    setShowRunForm(true);
-  }, []);
-
-  const handleEditRun = useCallback((run) => {
-    setEditingRun(run);
     setShowRunForm(true);
   }, []);
 
   const handleRunSaved = useCallback(() => {
     setShowRunForm(false);
-    setEditingRun(null);
     refreshRuns();
   }, [refreshRuns]);
 
   const handleCloseRunForm = useCallback(() => {
     setShowRunForm(false);
-    setEditingRun(null);
+  }, []);
+
+  const handleOpenPaidSheet = useCallback(async (run) => {
+    try {
+      const detail = await loadRunDetails(run.id);
+      if (!detail?.run) {
+        toastError("Unable to load run details.", "Paid Sheet");
+        return;
+      }
+      setEditingRunDetail(detail);
+      setShowPaidSheetForm(true);
+    } catch (err) {
+      toastError(err?.message || "Failed to load run.", "Paid Sheet");
+    }
+  }, []);
+
+  const handlePaidSheetSaved = useCallback(() => {
+    setShowPaidSheetForm(false);
+    setEditingRunDetail(null);
+    refreshRuns();
+  }, [refreshRuns]);
+
+  const handleClosePaidSheetForm = useCallback(() => {
+    setShowPaidSheetForm(false);
+    setEditingRunDetail(null);
+  }, []);
+
+  const handlePrintPaidSheet = useCallback(async (run) => {
+    setPrintingRunId(run.id);
+    try {
+      const detail = await loadRunDetails(run.id);
+      if (!detail?.run) {
+        toastError("Unable to load run details for printing.", "Print");
+        return;
+      }
+      const paidSheet = await loadPaidSheet(run.id); // returns null if never saved — that's fine
+      generatePaidSheetPrint(detail.run, detail.projects || [], paidSheet);
+    } catch (err) {
+      console.error("[RunMasterView] Paid sheet print failed:", err);
+      toastError(err?.message || "Failed to print paid sheet.", "Print");
+    } finally {
+      setPrintingRunId(null);
+    }
+  }, []);
+
+  const canPrintPaidSheet = useCallback((run) => {
+    const stops = run.proj_t_run_projects || [];
+    if (!run.team_assigned || stops.length === 0) return false;
+    return stops.every((rp) => rp.proj_t_projects?.payment_method_type != null);
   }, []);
 
   const handlePrintManifest = useCallback(async (run) => {
@@ -227,7 +287,7 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
         label: "Edit",
         icon: "pen",
         type: "secondary",
-        onClick: (row) => handleEditRun(row),
+        onClick: (row) => handleOpenPaidSheet(row),
       },
       {
         key: "print-manifest",
@@ -237,13 +297,22 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
         disabled: (row) => printingRunId === row.id,
         onClick: (row) => handlePrintManifest(row),
       },
+      {
+        key: "print-paid-sheet",
+        label: "Print Paid Sheet",
+        icon: "money-check-dollar",
+        type: "primary",
+        visible: (row) => canPrintPaidSheet(row),
+        disabled: (row) => printingRunId === row.id,
+        onClick: (row) => handlePrintPaidSheet(row),
+      },
     ],
-    [handleEditRun, handlePrintManifest, printingRunId]
+    [handleOpenPaidSheet, handlePrintManifest, handlePrintPaidSheet, canPrintPaidSheet, printingRunId]
   );
 
   // ---- Render ----
   return (
-    <main className="container py-4">
+    <main className="container py-4 run-master-page">
       {/* Header */}
       <div
         style={{
@@ -307,15 +376,25 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
         emptyMessage="No runs found."
       />
 
-      {/* Run Form Modal */}
+      {/* Run Form Modal — only used for creating a new run */}
       <RunForm
         show={showRunForm}
-        mode={editingRun ? "edit" : "add"}
-        run={editingRun}
+        mode="add"
+        run={null}
         origins={origins}
         runStatuses={runStatuses}
         onClose={handleCloseRunForm}
         onSaved={handleRunSaved}
+      />
+
+      {/* Paid Sheet Modal — opens via the row Edit action */}
+      <PaidSheetForm
+        show={showPaidSheetForm}
+        run={editingRunDetail?.run}
+        projects={editingRunDetail?.projects || []}
+        paymentMethods={paymentMethods}
+        onClose={handleClosePaidSheetForm}
+        onSaved={handlePaidSheetSaved}
       />
     </main>
   );

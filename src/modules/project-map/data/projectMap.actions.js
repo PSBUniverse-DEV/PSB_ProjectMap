@@ -855,6 +855,82 @@ export async function updateProject(projectId, updates) {
   return data;
 }
 
+export async function updateProjectPaymentInfo(projectId, updates) {
+  const id = toIntOrNull(projectId);
+  if (id === null) throw new Error("projectId is required.");
+
+  const supabase = getSupabaseAdmin();
+  const now = new Date().toISOString();
+
+  const payload = {
+    payment_method_type: toIntOrNull(updates.payment_method_type),
+    payment_method_number: hasValue(updates.payment_method_number) ? String(updates.payment_method_number).trim() : null,
+    paid_sheet_notes: hasValue(updates.paid_sheet_notes) ? String(updates.paid_sheet_notes).trim() : null,
+    paid_sheet_done: Boolean(updates.paid_sheet_done),
+    updated_at: now,
+  };
+
+  const { data, error } = await supabase.from("proj_t_projects").update(payload).eq("id", id).select("*").single();
+  if (error) throw new Error(error.message);
+
+  return data;
+}
+
+/**
+ * loadPaidSheet — fetches the run-level paid-sheet header row for a run.
+ *
+ * proj_t_paid_sheet is one row per run (run_id is UNIQUE) and is created
+ * lazily on first save, so a run with no saved paid sheet yet has no
+ * matching row. Returns null in that case so the caller can seed blank
+ * defaults rather than erroring.
+ */
+export async function loadPaidSheet(runId) {
+  const supabase = getSupabaseAdmin();
+
+  const { data, error } = await supabase
+    .from("proj_t_paid_sheet")
+    .select("*")
+    .eq("run_id", runId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data || null;
+}
+
+/**
+ * upsertPaidSheet — creates or updates the run-level paid-sheet header
+ * row for a run.
+ *
+ * Because proj_t_paid_sheet holds one row per run (run_id UNIQUE) and the
+ * row may or may not exist yet, an upsert keyed on run_id is the correct
+ * operation: first save inserts, later saves update the same row.
+ */
+export async function upsertPaidSheet(runId, fields) {
+  const supabase = getSupabaseAdmin();
+
+  const payload = {
+    run_id: runId,
+    phone_number: fields.phone_number || null,
+    dot_number: fields.dot_number || null,
+    state_route: fields.state_route || null,
+    extra_notes: fields.extra_notes || null,
+    is_paid: Boolean(fields.is_paid),
+    paid_date: fields.paid_date || null,
+    paid_reference: fields.paid_reference || null,
+    installer_signature_date: fields.installer_signature_date || null,
+    psb_representative_name: fields.psb_representative_name || null,
+    psb_representative_date: fields.psb_representative_date || null,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data, error } = await supabase
+    .from("proj_t_paid_sheet")
+    .upsert(payload, { onConflict: "run_id" })
+    .select("*")
+    .single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 export async function deleteProject(projectId) {
   const id = toIntOrNull(projectId);
   if (id === null) throw new Error("projectId is required.");
@@ -1067,7 +1143,7 @@ export async function loadRuns() {
 
   const { data, error } = await supabase
     .from("proj_t_runs")
-    .select("*, proj_s_origin_addresses(*)")
+    .select("*, proj_s_origin_addresses(*), proj_t_run_projects(id, proj_t_projects(payment_method_type))")
     .order("run_date", { ascending: false });
 
   if (error) throw new Error(error.message);
@@ -1093,7 +1169,7 @@ export async function loadRunDetails(runId) {
     supabase.from("proj_t_runs").select("*, proj_s_origin_addresses(*)").eq("id", runId).maybeSingle(),
     supabase
       .from("proj_t_run_projects")
-      .select("*, proj_t_projects(id, client_name, formatted_address, address_line_1, city, state, state_code, postal_code, country, address_latitude, address_longitude, site_latitude, site_longitude, dealer, building_category_id, permit_status_id, welcome_call_status_id, invoice_number, project_subtotal, order_received_at, scheduled_project_start, scheduled_project_end, install_start, install_end, project_notes, dimension, proj_s_project_status(*), proj_s_building_categories(*), proj_s_permit_status(*), proj_s_welcome_call_status(*))")
+      .select("*, proj_t_projects(id, client_name, formatted_address, address_line_1, city, state, state_code, postal_code, country, address_latitude, address_longitude, site_latitude, site_longitude, dealer, building_category_id, permit_status_id, welcome_call_status_id, invoice_number, project_subtotal, order_received_at, scheduled_project_start, scheduled_project_end, install_start, install_end, project_notes, dimension, payment_method_type, payment_method_number, paid_sheet_notes, paid_sheet_done, proj_s_project_status(*), proj_s_building_categories(*), proj_s_permit_status(*), proj_s_welcome_call_status(*), proj_s_payment_method(id, method_name, method_description))")
       .eq("run_id", runId)
       .order("stop_sequence"),
   ]);

@@ -23,6 +23,7 @@ export default async function RunMasterPage() {
       origins={setup.originAddresses || []}
       statuses={setup.projectStatuses || []}
       runStatuses={setup.runStatuses || []}
+      paymentMethods={setup.paymentMethods || []}
     />
   );
 }

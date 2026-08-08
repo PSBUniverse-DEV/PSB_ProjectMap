@@ -1,0 +1,29 @@
+/* run-master.css — action icon color overrides scoped to Run Master List */
+
+.run-master-page [aria-label="Print Manifest"] {
+  color: #7c3aed;
+}
+.run-master-page [title="Print Manifest"] {
+  color: #7c3aed;
+}
+
+.run-master-page [aria-label="Print Paid Sheet"] {
+  color: #0d9488;
+}
+.run-master-page [title="Print Paid Sheet"] {
+  color: #0d9488;
+}
+
+.run-master-page [aria-label="Print Manifest"]:hover {
+  background: #ede9fe;
+}
+.run-master-page [title="Print Manifest"]:hover {
+  background: #ede9fe;
+}
+
+.run-master-page [aria-label="Print Paid Sheet"]:hover {
+  background: #ccfbf1;
+}
+.run-master-page [title="Print Paid Sheet"]:hover {
+  background: #ccfbf1;
+}

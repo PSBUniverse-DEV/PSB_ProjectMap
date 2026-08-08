@@ -120,6 +120,19 @@ const TABLE_DEFS = [
       { key: "is_active", label: "Is Active", type: "boolean" },
     ],
   },
+  {
+    key: "paymentMethods",
+    label: "Payment Methods",
+    pk: "id",
+    columns: [
+      { key: "method_name", label: "Method Name", sortable: true },
+      { key: "method_description", label: "Description", sortable: true },
+    ],
+    fields: [
+      { key: "method_name", label: "Method Name", type: "text", required: true },
+      { key: "method_description", label: "Description", type: "text" },
+    ],
+  },
 ];
 
 // ─── Main Setup View ─────────────────────────────────────────────────────────

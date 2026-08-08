@@ -39,6 +39,7 @@ const SETUP_TABLES = {
   buildingCategories: { table: "proj_s_building_categories", pk: "id" },
   permitStatuses: { table: "proj_s_permit_status", pk: "id" },
   welcomeCallStatuses: { table: "proj_s_welcome_call_status", pk: "id" },
+  paymentMethods: { table: "proj_s_payment_method", pk: "id" },
 };
 
 function resolveSetupTable(key) {

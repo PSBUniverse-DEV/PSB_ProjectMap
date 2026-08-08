@@ -68,7 +68,7 @@ export async function loadProjectMapSetup() {
     paymentMethods: supabase
       .from("proj_s_payment_method")
       .select("*")
-      .order("id", { ascending: true }),
+      .order("method_name", { ascending: true }),
   };
 
   const keys = Object.keys(queries);

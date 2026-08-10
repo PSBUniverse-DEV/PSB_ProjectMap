@@ -1,7 +1,7 @@
 "use client";
 
 
-import { useMemo, useState, useRef } from "react";
+import { useMemo, useState } from "react";
 import { StatusBadge } from "@/shared/components/ui";
 import { formatProjectDescriptionForDisplay } from "../data/projectMap.data";
 import { getRunStatusColor } from "../data/projectMap.data";
@@ -31,20 +31,16 @@ function formatMileage(miles) {
   return `${Number(miles).toFixed(1)} mi`;
 }
 
-export default function RunDetailPanel({ run, runProjects = [], runSegmentData = null, onClose, onEdit, onDelete, onRemoveProject, onReorderStops, onRecalculate, recalculating = false, onEditStopNote, onEditStopDate, onEditStopInvoice, isLoading = false, runStatuses = [] }) {
-  if (!run) return null;
-
+export default function RunDetailPanel({ run, runProjects = [], runSegmentData = null, onClose, onEdit, onDelete, onRemoveProject, onReorderStops, onRecalculate, recalculating = false, onEditStopNote, onEditStopDate, onEditStopInvoice, onEditProjectPrice, onProjectUpdated, isLoading = false, runStatuses = [] }) {
   const [dragIndex, setDragIndex] = useState(null);
   const [dragOverIndex, setDragOverIndex] = useState(null);
-  const runSegmentDataRef = useRef(runSegmentData);
-  runSegmentDataRef.current = runSegmentData;
 
-  const originName = run.proj_s_origin_addresses?.origin_name || "No Origin";
+  const originName = run?.proj_s_origin_addresses?.origin_name || "No Origin";
   const hasStops = runProjects.length > 0;
-  const totalDistance = hasStops ? formatDistance(run.estimated_distance) : "—";
-  const totalMileage = hasStops ? formatMileage(run.estimated_mileage) : "—";
-  const totalDuration = hasStops ? formatDuration(run.estimated_duration) : "—";
-  const totalSubtotal = hasStops ? formatCurrency(run.estimated_subtotal) : "$0.00";
+  const totalDistance = hasStops ? formatDistance(run?.estimated_distance) : "—";
+  const totalMileage = hasStops ? formatMileage(run?.estimated_mileage) : "—";
+  const totalDuration = hasStops ? formatDuration(run?.estimated_duration) : "—";
+  const totalSubtotal = hasStops ? formatCurrency(run?.estimated_subtotal) : "$0.00";
 
   const stopSubtotals = useMemo(() => {
     return runProjects.map((rp) => {
@@ -67,25 +63,26 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
     };
   }, [runSegmentData, runProjects]);
 
-  const handlePrint = () => generateRunManifestPrint(run, runProjects, runSegmentData);
-
-  const status = run.status || "Draft";
+  const status = run?.status || "Draft";
   const actionButtons = useMemo(() => {
+    const print = () => generateRunManifestPrint(run, runProjects, runSegmentData);
     const btns = [{ label: "Edit", onClick: onEdit, variant: "secondary" }];
     if (status === "Draft") {
-      btns.push({ label: "Print Record", onClick: handlePrint, variant: "primary" });
+      btns.push({ label: "Print Record", onClick: print, variant: "primary" });
     } else if (status === "Planned") {
-      btns.push({ label: "Print Record", onClick: handlePrint, variant: "primary" });
+      btns.push({ label: "Print Record", onClick: print, variant: "primary" });
     } else if (status === "In Progress") {
-      btns.push({ label: "Print Record", onClick: handlePrint, variant: "secondary" });
+      btns.push({ label: "Print Record", onClick: print, variant: "secondary" });
     } else if (status === "Completed") {
-      btns.push({ label: "Print Record", onClick: handlePrint, variant: "primary" });
+      btns.push({ label: "Print Record", onClick: print, variant: "primary" });
       btns.push({ label: "Duplicate", onClick: () => {}, variant: "secondary" });
     } else {
-      btns.push({ label: "Print Record", onClick: handlePrint, variant: "primary" });
+      btns.push({ label: "Print Record", onClick: print, variant: "primary" });
     }
     return btns;
-  }, [status, onEdit]);
+  }, [status, onEdit, run, runProjects, runSegmentData]);
+
+  if (!run) return null;
 
   return (
     <div style={{ position: "absolute", top: 0, right: 0, width: "320px", height: "100%", background: "#fff", borderLeft: "1px solid #e2e8f0", boxShadow: "-4px 0 12px rgba(0,0,0,0.08)", zIndex: 10, display: "flex", flexDirection: "column" }}>
@@ -94,8 +91,11 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
           <div style={{ flex: 1 }}>
             <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "2px" }}>
               <span style={{ fontSize: "13px" }}>🛻</span>
-              <h6 style={{ margin: 0, fontSize: "14px", fontWeight: 600, color: "#1e293b" }}>{run.run_name || `Run #${run.run_number || "?"}`}</h6>
+              <h6 style={{ margin: 0, fontSize: "14px", fontWeight: 600, color: "#1e293b" }}>{run.run_name || run.run_code || `Run #${run.run_number || "?"}`}</h6>
             </div>
+            {run.run_code && (
+              <div style={{ fontSize: "10px", color: "#94a3b8", marginBottom: "2px" }}>{run.run_code}</div>
+            )}
             <div style={{ fontSize: "10px", color: "#64748b" }}>{run.run_date || "No date"}</div>
           </div>
           <button onClick={onClose} style={{ background: "none", border: "none", fontSize: "18px", cursor: "pointer", color: "#64748b", lineHeight: 1, padding: "0" }}>×</button>
@@ -169,7 +169,7 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
                   <div style={{ fontSize: "24px", marginBottom: "8px" }}>🗺️</div>
                   <div style={{ fontSize: "12px", fontWeight: 600, color: "#1e293b", marginBottom: "6px" }}>No Route Created</div>
                   <p style={{ fontSize: "11px", color: "#475569", margin: "0 0 8px", lineHeight: 1.5 }}>No projects have been assigned to this run.</p>
-                  <p style={{ fontSize: "10px", color: "#64748b", margin: "0", lineHeight: 1.5 }}>Right-click a project marker and choose<br /><strong>"Add to Run"</strong> to begin building this route.</p>
+                  <p style={{ fontSize: "10px", color: "#64748b", margin: "0", lineHeight: 1.5 }}>Right-click a project marker and choose<br /><strong>{"\u201CAdd to Run\u201D"}</strong> to begin building this route.</p>
                 </div>
               ) : (
                 <div style={{ position: "relative" }}>
@@ -222,6 +222,13 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
                                       title={rp.proj_t_projects?.invoice_number ? "Edit invoice #" : "Add invoice #"}
                                     >
                                       🧾 Invoice
+                                    </button>
+                                    <button
+                                      onClick={() => onEditProjectPrice?.(rp)}
+                                      style={{ background: "none", border: "none", cursor: "pointer", fontSize: "10px", padding: "0", color: rp.proj_t_projects?.project_subtotal != null ? "#16a34a" : "#94a3b8", fontWeight: rp.proj_t_projects?.project_subtotal != null ? 600 : 400 }}
+                                      title={rp.proj_t_projects?.project_subtotal != null ? "Edit price" : "Add price"}
+                                    >
+                                      💰 Price
                                     </button>
                                   </div>
                                 </div>

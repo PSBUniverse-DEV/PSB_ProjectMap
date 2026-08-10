@@ -25,8 +25,8 @@ function formatDate(dateStr) {
 export default function RunList({ runs = [], selectedRunId, onSelectRun, isLoading = false }) {
   const sortedRuns = useMemo(() => {
     return [...runs].sort((a, b) => {
-      const dateA = a.run_date ? new Date(a.run_date) : new Date(0);
-      const dateB = b.run_date ? new Date(b.run_date) : new Date(0);
+      const dateA = a.created_at ? new Date(a.created_at) : new Date(0);
+      const dateB = b.created_at ? new Date(b.created_at) : new Date(0);
       return dateB - dateA;
     });
   }, [runs]);
@@ -66,11 +66,13 @@ export default function RunList({ runs = [], selectedRunId, onSelectRun, isLoadi
                 }}
               >
                 <div style={{ fontWeight: 600, fontSize: "11px", color: "#1e293b", marginBottom: "1px" }}>
-                  🛻 {run.run_name || `Run #${run.run_number || "?"}`}
+                  🛻 {run.run_name || run.run_code || `Run #${run.run_number || "?"}`}
                 </div>
-                <div style={{ fontSize: "10px", color: "#64748b", marginBottom: "2px" }}>
-                  {formatDate(run.run_date) || "No date"} · {originName}
-                </div>
+                {run.run_code && (
+                  <div style={{ fontSize: "10px", color: "#94a3b8", marginBottom: "1px" }}>
+                    {run.run_code}
+                  </div>
+                )}
                 {isLoading && isSelected ? (
                   <div style={{ fontSize: "10px", color: "#3b82f6", fontStyle: "italic" }}>Loading...</div>
                 ) : (

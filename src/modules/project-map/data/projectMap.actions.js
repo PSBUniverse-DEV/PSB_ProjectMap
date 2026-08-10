@@ -951,7 +951,7 @@ export async function createRun(runData) {
   const now = new Date().toISOString();
 
   const payload = {
-    run_name: "",
+    run_name: runData.run_name ? String(runData.run_name).trim() : null,
     origin_id: runData.origin_id || null,
     run_date: runData.run_date || null,
     status: RUN_STATUSES.includes(runData.status) ? runData.status : "Draft",
@@ -976,7 +976,7 @@ export async function createRun(runData) {
     const { data: existing, error: existsError } = await supabase
       .from("proj_t_runs")
       .select("id")
-      .eq("run_name", runCode)
+      .eq("run_code", runCode)
       .maybeSingle();
 
     if (existsError) throw new Error(existsError.message);
@@ -989,7 +989,7 @@ export async function createRun(runData) {
 
   const { data, error } = await supabase
     .from("proj_t_runs")
-    .update({ run_name: runCode })
+    .update({ run_code: runCode })
     .eq("id", inserted.id)
     .select("*")
     .single();
@@ -1002,7 +1002,12 @@ export async function updateRun(runId, updates) {
   const now = new Date().toISOString();
 
   const payload = { ...updates, updated_at: now };
-  delete payload.run_name;
+  
+  // Ensure run_name is properly handled
+  if (payload.run_name !== undefined) {
+    payload.run_name = payload.run_name ? String(payload.run_name).trim() : null;
+  }
+  
   if (payload.status && !RUN_STATUSES.includes(payload.status)) {
     payload.status = "Draft";
   }

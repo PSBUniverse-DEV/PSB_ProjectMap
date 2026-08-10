@@ -68,12 +68,16 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
   const [editingStopNote, setEditingStopNote] = useState(null);
   const [editingStopDate, setEditingStopDate] = useState(null);
   const [editingStopInvoice, setEditingStopInvoice] = useState(null);
+  const [editingProjectPrice, setEditingProjectPrice] = useState(null);
+  const [priceValue, setPriceValue] = useState("");
   const [allRunProjects, setAllRunProjects] = useState([]);
   const [runFilters, setRunFilters] = useState({});
   const [runSearch, setRunSearch] = useState("");
   const [isLoadingRunDetails, setIsLoadingRunDetails] = useState(false);
+  const [runReloadKey, setRunReloadKey] = useState(0);
   const runRequestIdRef = useRef(0);
   const runProjectsRef = useRef([]);
+  const runSelectionInProgressRef = useRef(false);
 
   useEffect(() => { window.scrollTo(0, 0); }, []);
 
@@ -529,7 +533,6 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
 
   const handleSelectRun = (id) => {
     console.log("[DEBUG] handleSelectRun:", id);
-    const requestId = ++runRequestIdRef.current;
     setIsLoadingRunDetails(true);
     setSelectedRunId(id);
     setSelectedProjectId(null);
@@ -537,6 +540,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
     setRunRouteData(null);
     setRunSegmentData(null);
     setRunRouteLoading(false);
+    setRunReloadKey((k) => k + 1);
   };
 
   const handleCloseRunDetail = () => {
@@ -747,6 +751,54 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
     } finally { setBusy(false); }
   };
 
+  const handleEditProjectPrice = (runProject) => {
+    const proj = runProject.proj_t_projects || {};
+    setEditingProjectPrice({
+      projectId: runProject.project_id,
+      clientName: proj.client_name || "Untitled",
+      currentPrice: proj.project_subtotal != null ? String(proj.project_subtotal) : "",
+    });
+    setPriceValue(proj.project_subtotal != null ? String(proj.project_subtotal) : "");
+  };
+
+  const handleSaveProjectPrice = async () => {
+    if (!editingProjectPrice) return;
+    setBusy(true);
+    try {
+      const numValue = parseFloat(priceValue);
+      if (isNaN(numValue) || numValue < 0) {
+        throw new Error("Please enter a valid price.");
+      }
+
+      await updateProject(editingProjectPrice.projectId, {
+        project_subtotal: numValue,
+        updated_by: null,
+      });
+
+      // Targeted local state patch
+      setProjects((prev) =>
+        prev.map((p) =>
+          p.id === editingProjectPrice.projectId
+            ? { ...p, project_subtotal: numValue }
+            : p
+        )
+      );
+      setRunProjects((prev) =>
+        prev.map((rp) =>
+          rp.project_id === editingProjectPrice.projectId
+            ? { ...rp, proj_t_projects: { ...rp.proj_t_projects, project_subtotal: numValue } }
+            : rp
+        )
+      );
+
+      setEditingProjectPrice(null);
+      setPriceValue("");
+      toastSuccess("Project price updated.", "Runs");
+    } catch (err) {
+      toastError(err?.message || "Failed to update project price.", "Runs");
+    } finally { setBusy(false); }
+  };
+
   const handleReorderStops = async (fromIndex, toIndex) => {
     if (!selectedRunId || runProjects.length === 0) return;
     setBusy(true);
@@ -802,20 +854,30 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
       })
       .finally(() => { 
         if (!cancelled && requestId === runRequestIdRef.current) {
-          setBusy(false); 
-          setIsLoadingRunDetails(false);
+          setBusy(false);
+          // Do NOT clear isLoadingRunDetails here.
+          // The route calculation effect will clear it when map processing completes,
+          // keeping the drawer loading until both backend data AND map routes are ready.
         }
       });
     return () => { cancelled = true; };
-  }, [selectedRunId]);
+  }, [selectedRunId, runReloadKey]);
 
   // Calculate multi-stop route for runs
   useEffect(() => {
     if (mode !== "runs" || !selectedRunId || runProjects.length === 0) {
-      setRunRouteData(null); setRunSegmentData(null); return;
+      setRunRouteData(null); setRunSegmentData(null);
+      // No projects → no route to calculate — clear loading immediately
+      setIsLoadingRunDetails(false);
+      return;
     }
     const origin = selectedRun?.proj_s_origin_addresses;
-    if (!origin || origin.latitude == null || origin.longitude == null) { setRunRouteData(null); return; }
+    if (!origin || origin.latitude == null || origin.longitude == null) {
+      setRunRouteData(null);
+      // No usable origin coordinates → nothing to map — clear loading
+      setIsLoadingRunDetails(false);
+      return;
+    }
     let cancelled = false;
     setRunRouteLoading(true);
     computeRunSegmentData(selectedRun, runProjects)
@@ -837,7 +899,15 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
       .catch((err) => {
         if (!cancelled) { console.error("[ProjectMapView] Route calculation failed:", err); toastError(err?.message || "Failed to calculate route.", "Route"); setRunRouteData(null); setRunSegmentData(null); }
       })
-      .finally(() => { if (!cancelled) setRunRouteLoading(false); });
+      .finally(() => {
+        if (!cancelled) {
+          setRunRouteLoading(false);
+          // Route calculation is done — now the drawer can stop loading.
+          // This ensures the drawer only shows content after BOTH the backend
+          // data load AND the map route processing have completed.
+          setIsLoadingRunDetails(false);
+        }
+      });
     return () => { cancelled = true; };
   }, [mode, selectedRunId, runProjects]);
 
@@ -941,7 +1011,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
           <ProjectDetailDrawer project={selectedProject} statuses={statuses} buildingCategories={buildingCategories} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} projectRunLookup={projectRunLookup} onClose={handleCloseDrawer} onEdit={handleEdit} onDelete={() => setConfirmDeleteId(selectedProject.id)} routeInfo={routeInfo} />
         )}
         {mode === "runs" && selectedRun && (
-          <RunDetailPanel run={selectedRun} runProjects={runProjects} runSegmentData={runSegmentData} onClose={handleCloseRunDetail} onEdit={handleEditRun} onDelete={() => setConfirmDeleteRunId(selectedRun.id)} onRemoveProject={handleRemoveProjectFromRun} onReorderStops={handleReorderStops} onRecalculate={handleRecalculate} recalculating={recalculating} onEditStopNote={handleEditStopNote} onEditStopDate={handleEditStopDate} onEditStopInvoice={handleEditStopInvoice} isLoading={isLoadingRunDetails} runStatuses={runStatuses} />
+          <RunDetailPanel run={selectedRun} runProjects={runProjects} runSegmentData={runSegmentData} onClose={handleCloseRunDetail} onEdit={handleEditRun} onDelete={() => setConfirmDeleteRunId(selectedRun.id)} onRemoveProject={handleRemoveProjectFromRun} onReorderStops={handleReorderStops} onRecalculate={handleRecalculate} recalculating={recalculating} onEditStopNote={handleEditStopNote} onEditStopDate={handleEditStopDate} onEditStopInvoice={handleEditStopInvoice} onEditProjectPrice={handleEditProjectPrice} isLoading={isLoadingRunDetails} runStatuses={runStatuses} />
         )}
       </div>
 
@@ -985,16 +1055,16 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
 
       <Modal show={!!editingStopNote} onHide={() => setEditingStopNote(null)} title="Stop Note">
         {editingStopNote && (
-          <div>
-            <div style={{ marginBottom: "10px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            <div>
               <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Project</label>
               <div style={{ fontSize: "12px", fontWeight: 600, color: "#1e293b" }}>{editingStopNote.clientName}</div>
             </div>
-            <div style={{ marginBottom: "12px" }}>
+            <div>
               <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Remarks</label>
               <textarea value={editingStopNote.notes} onChange={(e) => setEditingStopNote({ ...editingStopNote, notes: e.target.value })} style={{ width: "100%", minHeight: "80px", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "6px 8px", fontSize: "12px", resize: "vertical" }} placeholder="Add remarks for this stop..." />
             </div>
-            <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+            <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
               <Button variant="secondary" onClick={() => setEditingStopNote(null)}>Cancel</Button>
               <Button variant="primary" loading={busy} onClick={handleSaveStopNote}>Save</Button>
             </div>
@@ -1006,6 +1076,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
         {editingStopDate && (
           <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
             <div>
+              <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Project</label>
               <div style={{ fontSize: "12px", fontWeight: 600, color: "#1e293b" }}>{editingStopDate.clientName}</div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
@@ -1040,6 +1111,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
         {editingStopInvoice && (
           <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
             <div>
+              <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Project</label>
               <div style={{ fontSize: "12px", fontWeight: 600, color: "#1e293b" }}>{editingStopInvoice.clientName}</div>
             </div>
             <div>
@@ -1055,6 +1127,34 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
             <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
               <Button variant="secondary" onClick={() => setEditingStopInvoice(null)}>Cancel</Button>
               <Button variant="primary" loading={busy} onClick={handleSaveStopInvoice}>Save</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal show={!!editingProjectPrice} onHide={() => setEditingProjectPrice(null)} title="Project Price">
+        {editingProjectPrice && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            <div>
+              <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Project</label>
+              <div style={{ fontSize: "12px", fontWeight: 600, color: "#1e293b" }}>{editingProjectPrice.clientName}</div>
+            </div>
+            <div>
+              <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Price ($)</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={priceValue}
+                onChange={(e) => setPriceValue(e.target.value)}
+                placeholder="0.00"
+                style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px" }}
+                autoFocus
+              />
+            </div>
+            <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
+              <Button variant="secondary" onClick={() => { setEditingProjectPrice(null); setPriceValue(""); }}>Cancel</Button>
+              <Button variant="primary" loading={busy} onClick={handleSaveProjectPrice}>Save</Button>
             </div>
           </div>
         )}

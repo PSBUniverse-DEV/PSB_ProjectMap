@@ -22,8 +22,8 @@ create table public.proj_t_projects (
   project_subtotal numeric(12, 2) null,
   created_at timestamp with time zone not null default now(),
   updated_at timestamp with time zone not null default now(),
-  created_by integer null,
-  updated_by integer null,
+  created_by bigint null,
+  updated_by bigint null,
   building_category_id integer null,
   permit_status_id integer null,
   welcome_call_status_id integer null,
@@ -35,11 +35,14 @@ create table public.proj_t_projects (
   payment_method_type bigint null,
   payment_method_number text null,
   paid_sheet_notes text null,
+  paid_sheet_done boolean not null default false,
   constraint proj_t_projects_pkey primary key (id),
-  constraint proj_t_projects_building_category_id_fkey foreign KEY (building_category_id) references proj_s_building_categories (id),
+  constraint proj_t_projects_created_by_fkey foreign KEY (created_by) references psb_s_user (user_id),
   constraint proj_t_projects_payment_method_type_fkey foreign KEY (payment_method_type) references proj_s_payment_method (id),
   constraint proj_t_projects_permit_status_id_fkey foreign KEY (permit_status_id) references proj_s_permit_status (id),
   constraint proj_t_projects_status_id_fkey foreign KEY (status_id) references proj_s_project_status (status_id),
+  constraint proj_t_projects_updated_by_fkey foreign KEY (updated_by) references psb_s_user (user_id),
+  constraint proj_t_projects_building_category_id_fkey foreign KEY (building_category_id) references proj_s_building_categories (id),
   constraint proj_t_projects_welcome_call_status_id_fkey foreign KEY (welcome_call_status_id) references proj_s_welcome_call_status (id)
 ) TABLESPACE pg_default;
 
@@ -188,14 +191,17 @@ create table public.proj_t_runs (
   estimated_distance numeric(10, 2) null,
   estimated_duration numeric(10, 2) null,
   estimated_subtotal numeric(12, 2) null,
-  created_by integer null,
-  updated_by integer null,
+  created_by bigint null,
+  updated_by bigint null,
   created_at timestamp with time zone not null default now(),
   updated_at timestamp with time zone not null default now(),
   stops integer null,
   estimated_mileage numeric(10, 2) null,
+  run_code text null,
   constraint proj_t_runs_pkey primary key (id),
-  constraint proj_t_runs_origin_id_fkey foreign KEY (origin_id) references proj_s_origin_addresses (id)
+  constraint proj_t_runs_created_by_fkey foreign KEY (created_by) references psb_s_user (user_id),
+  constraint proj_t_runs_origin_id_fkey foreign KEY (origin_id) references proj_s_origin_addresses (id),
+  constraint proj_t_runs_updated_by_fkey foreign KEY (updated_by) references psb_s_user (user_id)
 ) TABLESPACE pg_default;
 
 create index IF not exists idx_proj_t_runs_run_date on public.proj_t_runs using btree (run_date) TABLESPACE pg_default;

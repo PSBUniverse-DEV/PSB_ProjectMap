@@ -9,6 +9,7 @@ export default function RunForm({ show, mode, run, origins = [], runStatuses = [
   const [busy, setBusy] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [form, setForm] = useState({
+    run_name: "",
     origin_id: "",
     run_date: "",
     status: "Draft",
@@ -30,6 +31,7 @@ export default function RunForm({ show, mode, run, origins = [], runStatuses = [
   useEffect(() => {
     if (run) {
       setForm({
+        run_name: run.run_name || "",
         origin_id: run.origin_id || "",
         run_date: run.run_date || "",
         status: run.status || "Draft",
@@ -43,6 +45,7 @@ export default function RunForm({ show, mode, run, origins = [], runStatuses = [
       });
     } else {
       setForm({
+        run_name: "",
         origin_id: "",
         run_date: "",
         status: "Draft",
@@ -62,10 +65,24 @@ export default function RunForm({ show, mode, run, origins = [], runStatuses = [
   };
 
   const handleSave = async () => {
+    if (!form.run_name || !form.run_name.trim()) {
+      toastError("Run Name is required.", "Validation");
+      return;
+    }
+    if (!form.origin_id) {
+      toastError("Origin is required.", "Validation");
+      return;
+    }
+    if (!form.run_date) {
+      toastError("Run Date is required.", "Validation");
+      return;
+    }
+
     setBusy(true);
     try {
       // Estimate fields are auto-calculated after projects are added
       const payload = {
+        run_name: form.run_name.trim(),
         origin_id: form.origin_id || null,
         run_date: form.run_date || null,
         status: form.status,
@@ -122,16 +139,29 @@ export default function RunForm({ show, mode, run, origins = [], runStatuses = [
           </label>
           <input
             type="text"
-            value={mode === "edit" ? (run?.run_name || "") : ""}
+            value={mode === "edit" ? (run?.run_code || "") : ""}
             disabled
             placeholder={mode === "edit" ? "" : "Auto-generated on save"}
             style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px", background: "#f8fafc", color: "#64748b" }}
           />
         </div>
 
+        <div>
+          <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>
+            Run Name <span style={{ color: "#dc2626" }}>*</span>
+          </label>
+          <input
+            type="text"
+            value={form.run_name || ""}
+            onChange={(e) => handleChange("run_name", e.target.value)}
+            placeholder="e.g. North Texas Loop"
+            style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px" }}
+          />
+        </div>
+
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
           <div>
-            <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Origin</label>
+            <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Origin <span style={{ color: "#dc2626" }}>*</span></label>
             <select
               value={form.origin_id}
               onChange={(e) => handleChange("origin_id", e.target.value)}
@@ -169,7 +199,7 @@ export default function RunForm({ show, mode, run, origins = [], runStatuses = [
             </select>
           </div>
           <div>
-            <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Run Date</label>
+            <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Run Date <span style={{ color: "#dc2626" }}>*</span></label>
             <input
               type="date"
               value={form.run_date}
@@ -200,36 +230,6 @@ export default function RunForm({ show, mode, run, origins = [], runStatuses = [
             style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px", minHeight: "60px", resize: "vertical" }}
             placeholder="Optional notes..."
           />
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px" }}>
-          <div>
-            <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Est. Distance (mi)</label>
-            <input
-              type="text"
-              value={form.estimated_distance ? `${(Number(form.estimated_distance) / 1609.344).toFixed(1)} mi` : "—"}
-              readOnly
-              style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px", background: "#f8fafc", color: "#64748b" }}
-            />
-          </div>
-          <div>
-            <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Est. Mileage</label>
-            <input
-              type="text"
-              value={form.estimated_mileage ? `${Number(form.estimated_mileage).toFixed(1)} mi` : "—"}
-              readOnly
-              style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px", background: "#f8fafc", color: "#64748b" }}
-            />
-          </div>
-          <div>
-            <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Est. Duration</label>
-            <input
-              type="text"
-              value={form.estimated_duration ? `${Math.round(Number(form.estimated_duration) / 60)} min` : "—"}
-              readOnly
-              style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px", background: "#f8fafc", color: "#64748b" }}
-            />
-          </div>
         </div>
 
         <div style={{ display: "flex", gap: "6px", justifyContent: "space-between", marginTop: "6px" }}>

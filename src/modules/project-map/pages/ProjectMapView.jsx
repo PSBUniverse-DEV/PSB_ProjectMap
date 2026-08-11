@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Modal, toastError, toastSuccess } from "@/shared/components/ui";
+import { startNavbarLoader } from "@/shared/utils/navbar-loader";
 import { deleteProject, calculateRoute, calculateMultiStopRoute, deleteRun, removeProjectFromRun, loadRunDetails, updateStopSequence, addProjectToRun, updateRun, updateProject, getProjectRunAssignment, updateStopNote, updateRunStopsCount, loadRuns, loadAllRunProjects } from "../data/projectMap.actions";
 import { computeRunSegmentData } from "../utils/runSegments";
 import { reverseGeocode } from "../utils/geocoding";
@@ -949,7 +950,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
       <div style={{ display: "flex", borderBottom: "1px solid #e2e8f0", background: "#fff", flexShrink: 0 }}>
         <button onClick={() => setMode("projects")} style={{ padding: "6px 16px", fontSize: "12px", fontWeight: mode === "projects" ? 600 : 400, border: "none", borderBottom: mode === "projects" ? "2px solid #1e293b" : "2px solid transparent", background: mode === "projects" ? "#f8fafc" : "#fff", color: mode === "projects" ? "#1e293b" : "#64748b", cursor: "pointer" }}>Projects</button>
         <button onClick={() => setMode("runs")} style={{ padding: "6px 16px", fontSize: "12px", fontWeight: mode === "runs" ? 600 : 400, border: "none", borderBottom: mode === "runs" ? "2px solid #1e293b" : "2px solid transparent", background: mode === "runs" ? "#f8fafc" : "#fff", color: mode === "runs" ? "#1e293b" : "#64748b", cursor: "pointer" }}>Runs</button>
-        <button onClick={() => router.push("/project-map/run-master")} style={{ padding: "6px 16px", fontSize: "12px", fontWeight: 400, border: "none", borderBottom: "2px solid transparent", background: "#fff", color: "#64748b", cursor: "pointer" }}>📋 Run Master List</button>
+<button onClick={() => { startNavbarLoader(); router.push("/project-map/run-master"); }} style={{ padding: "6px 16px", fontSize: "12px", fontWeight: 400, border: "none", borderBottom: "2px solid transparent", background: "#fff", color: "#64748b", cursor: "pointer" }}>📋 Run Master List</button>
       </div>
 
       {mode === "projects" ? (

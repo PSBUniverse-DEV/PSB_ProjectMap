@@ -11,6 +11,8 @@
 
 import { useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faCircleInfo, faCheckCircle, faPrint, faMoneyCheckDollar, faPen } from "@fortawesome/free-solid-svg-icons";
 import { Button, Modal, toastError, TableZ } from "@/shared/components/ui";
 import { resolveRunStatusOptions, getRunStatusColor } from "../data/projectMap.data";
 import { loadRunDetails, loadRuns, loadPaidSheet } from "../data/projectMap.actions";
@@ -27,6 +29,7 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
   // ---- State ----
   const [localRuns, setLocalRuns] = useState(runs);
   const [showRunForm, setShowRunForm] = useState(false);
+  const [showInfoModal, setShowInfoModal] = useState(false);
   const [showPaidSheetForm, setShowPaidSheetForm] = useState(false);
   const [editingRunDetail, setEditingRunDetail] = useState(null);
   const [printingRunId, setPrintingRunId] = useState(null);
@@ -204,9 +207,15 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
     () => [
       {
         key: "run_name",
+        label: "Run Name",
+        sortable: true,
+        render: (row) => row.run_name,
+      },
+      {
+        key: "run_code",
         label: "Run Code",
         sortable: true,
-        render: (row) => row.run_name || `Run #${row.run_number || "?"}`,
+        render: (row) => row.run_code || "—",
       },
       {
         key: "_originDisplay",
@@ -330,39 +339,25 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
             View, filter, and manage all runs.
           </p>
         </div>
-        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-          <button
-            onClick={() => router.push("/project-map")}
-            style={{
-              padding: "6px 12px",
-              fontSize: "12px",
-              borderRadius: "3px",
-              border: "1px solid #e2e8f0",
-              background: "#fff",
-              color: "#334155",
-              cursor: "pointer",
-              fontWeight: 500,
-            }}
-          >
-            ← Back to Map
-          </button>
-          <button
-            onClick={handleAddRun}
-            style={{
-              padding: "6px 14px",
-              fontSize: "12px",
-              borderRadius: "3px",
-              border: "none",
-              background: "#16a34a",
-              color: "#fff",
-              cursor: "pointer",
-              fontWeight: 600,
-              whiteSpace: "nowrap",
-            }}
-          >
-            + New Run
-          </button>
-        </div>
+        <button
+          onClick={() => setShowInfoModal(true)}
+          title="How this page works"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: "30px",
+            height: "30px",
+            borderRadius: "50%",
+            border: "1px solid #e2e8f0",
+            background: "#fff",
+            color: "#3b82f6",
+            cursor: "pointer",
+            fontSize: "14px",
+          }}
+        >
+          <FontAwesomeIcon icon={faCircleInfo} />
+        </button>
       </div>
 
       {/* TableZ replaces the hand-rolled filters + table */}
@@ -372,7 +367,7 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
         rowIdKey="id"
         actions={actions}
         filterConfig={filterConfig}
-        searchPlaceholder="Search by run code, origin, or installer..."
+        searchPlaceholder="Search by run name, run code, origin, or installer..."
         emptyMessage="No runs found."
       />
 
@@ -396,6 +391,65 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
         onClose={handleClosePaidSheetForm}
         onSaved={handlePaidSheetSaved}
       />
+
+      <Modal show={showInfoModal} onHide={() => setShowInfoModal(false)} title="How the Run Master List works">
+        <div style={{ fontSize: "13px", color: "#1e293b", lineHeight: 1.6 }}>
+          <p style={{ margin: "0 0 14px" }}>
+            This page lists every run so you can search, filter, and print from one place.
+          </p>
+
+          <div style={{ display: "flex", gap: "10px", marginBottom: "10px", padding: "10px", background: "#eff6ff", borderRadius: "6px", border: "1px solid #bfdbfe" }}>
+            <FontAwesomeIcon icon={faPen} style={{ color: "#2563eb", marginTop: "2px" }} />
+            <div>
+              <div style={{ fontWeight: 600, marginBottom: "2px" }}>Edit</div>
+              <div style={{ color: "#64748b", marginBottom: "6px" }}>
+                Opens the Paid Sheet form. It's where you record everything needed to pay the installer and print the Paid Sheet:
+              </div>
+              <div style={{ marginBottom: "5px" }}>
+                <strong>Installer</strong> <span style={{ color: "#64748b" }}>— who's assigned to run this route.</span>
+              </div>
+              <div style={{ marginBottom: "5px" }}>
+                <strong>Route Info</strong> <span style={{ color: "#64748b" }}>— phone number, DOT#, state/route, and extra notes.</span>
+              </div>
+              <div style={{ marginBottom: "5px" }}>
+                <strong>Payment Status & Signatures</strong> <span style={{ color: "#64748b" }}>— mark the run as paid (reveals Paid Date and Reference #), plus PSB Representative name and signature dates.</span>
+              </div>
+              <div>
+                <strong>Stop-by-stop table</strong> <span style={{ color: "#64748b" }}>— pick a Payment Method, add a Ref #, and leave notes per stop. Order #, Description, and Amount are shown for reference.</span>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: "10px", marginBottom: "10px", padding: "10px", background: "#f8fafc", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
+            <FontAwesomeIcon icon={faPrint} style={{ color: "#7c3aed", marginTop: "2px" }} />
+            <div>
+              <div style={{ fontWeight: 600, marginBottom: "2px" }}>Print Manifest</div>
+              <div style={{ color: "#64748b" }}>Always available. Prints the route sheet for a run's stops.</div>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: "10px", marginBottom: "6px", padding: "10px", background: "#f0fdfa", borderRadius: "6px", border: "1px solid #99f6e4" }}>
+            <FontAwesomeIcon icon={faMoneyCheckDollar} style={{ color: "#0d9488", marginTop: "2px" }} />
+            <div>
+              <div style={{ fontWeight: 600, marginBottom: "2px" }}>Print Paid Sheet</div>
+              <div style={{ color: "#64748b", marginBottom: "6px" }}>
+                This button only shows up once a run is ready. If you don't see it on a run, check:
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "3px" }}>
+                <FontAwesomeIcon icon={faCheckCircle} style={{ color: "#0d9488", fontSize: "11px" }} />
+                <span>An <strong>Installer</strong> has been assigned to the run</span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px" }}>
+                <FontAwesomeIcon icon={faCheckCircle} style={{ color: "#0d9488", fontSize: "11px" }} />
+                <span>Every stop on the run has a <strong>payment method</strong> set</span>
+              </div>
+              <div style={{ color: "#64748b", fontStyle: "italic" }}>
+                Both are set from the same place — click <strong>Edit</strong> on a run to open its Paid Sheet.
+              </div>
+            </div>
+          </div>
+        </div>
+      </Modal>
     </main>
   );
 }

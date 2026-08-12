@@ -9,7 +9,7 @@
  */
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCircleInfo, faCheckCircle, faPrint, faMoneyCheckDollar, faPen } from "@fortawesome/free-solid-svg-icons";
@@ -102,6 +102,17 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
     runStatuses.forEach((s, idx) => map.set(s.status_name, idx));
     return map;
   }, [runStatuses]);
+
+  const installerOptions = useMemo(() => {
+    const names = new Set();
+    localRuns.forEach((run) => {
+      const name = run.team_assigned ? String(run.team_assigned).trim() : "";
+      if (name) names.add(name);
+    });
+    return Array.from(names)
+      .sort((a, b) => a.localeCompare(b))
+      .map((name) => ({ label: name, value: name }));
+  }, [localRuns]);
 
   // Preprocess runs so TableZ's internal search can match on
   // computed fields (origin display, stops count, revenue) via
@@ -259,6 +270,17 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
     const detailRun = expandedDetail?.run || row;
     const detailProjects = expandedDetail?.projects || [];
 
+    const fieldBox = (label, value, fullWidth = false) => (
+      <div key={label} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "4px", padding: "8px 10px", gridColumn: fullWidth ? "1 / -1" : undefined }}>
+        <div style={{ fontSize: "10px", fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: "3px" }}>{label}</div>
+        <div style={{ fontSize: "12px", color: "#1e293b", fontWeight: 600, whiteSpace: "pre-wrap" }}>{value}</div>
+      </div>
+    );
+
+    const sectionLabel = (text) => (
+      <div style={{ fontSize: "10px", fontWeight: 700, color: "#3b82f6", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "6px", marginTop: "14px" }}>{text}</div>
+    );
+
     return (
       <div style={{ padding: "12px 16px", background: "#f8fafc" }}>
         <div style={{ display: "flex", gap: "4px", borderBottom: "1px solid #e2e8f0", marginBottom: "12px" }}>
@@ -271,67 +293,106 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
         </div>
 
         {activeDetailTab === "run" ? (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "10px" }}>
-            {[
-              ["Run Name", detailRun.run_name || "—"],
-              ["Run Code", detailRun.run_code || "—"],
-              ["Status", detailRun.status || "Draft"],
-              ["Origin", getOriginName(detailRun)],
-              ["Origin Address", detailRun.proj_s_origin_addresses?.formatted_address || detailRun.proj_s_origin_addresses?.address_line_1 || "—"],
-              ["Run Date", formatDate(detailRun.run_date)],
-              ["Installer", detailRun.team_assigned || "—"],
-              ["Est. Distance", detailRun.estimated_distance != null ? `${(detailRun.estimated_distance / 1609.344).toFixed(1)} mi` : "—"],
-              ["Est. Mileage", detailRun.estimated_mileage != null ? `${Number(detailRun.estimated_mileage).toFixed(1)} mi` : "—"],
-              ["Est. Duration", detailRun.estimated_duration != null ? `${Math.round(Number(detailRun.estimated_duration) / 60)} min` : "—"],
-              ["Est. Subtotal", formatCurrency(detailRun.estimated_subtotal)],
-              ["Created At", formatDateTime(detailRun.created_at)],
-              ["Updated At", formatDateTime(detailRun.updated_at)],
-            ].map(([label, value]) => (
-              <div key={label} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "4px", padding: "8px 10px" }}>
-                <div style={{ fontSize: "10px", fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: "3px" }}>{label}</div>
-                <div style={{ fontSize: "12px", color: "#1e293b", fontWeight: 600 }}>{value}</div>
-              </div>
-            ))}
-            <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "4px", padding: "8px 10px", gridColumn: "1 / -1" }}>
-              <div style={{ fontSize: "10px", fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: "3px" }}>Remarks</div>
-              <div style={{ fontSize: "12px", color: "#1e293b", whiteSpace: "pre-wrap" }}>{detailRun.notes || "—"}</div>
+          <div>
+            <div style={{ marginTop: 0 }}>{sectionLabel("Identity")}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "10px" }}>
+              {fieldBox("Run Name", detailRun.run_name || "—")}
+              {fieldBox("Run Code", detailRun.run_code || "—")}
+              {fieldBox("Status", detailRun.status || "Draft")}
+            </div>
+
+            {sectionLabel("Schedule & Origin")}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "10px" }}>
+              {fieldBox("Run Date", formatDate(detailRun.run_date))}
+              {fieldBox("Installer", detailRun.team_assigned || "—")}
+              {fieldBox("Origin", getOriginName(detailRun))}
+              {fieldBox("Origin Address", detailRun.proj_s_origin_addresses?.formatted_address || detailRun.proj_s_origin_addresses?.address_line_1 || "—", true)}
+            </div>
+
+            {sectionLabel("Estimates")}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "10px" }}>
+              {fieldBox("Est. Distance", detailRun.estimated_distance != null ? `${(detailRun.estimated_distance / 1609.344).toFixed(1)} mi` : "—")}
+              {fieldBox("Est. Mileage", detailRun.estimated_mileage != null ? `${Number(detailRun.estimated_mileage).toFixed(1)} mi` : "—")}
+              {fieldBox("Est. Duration", detailRun.estimated_duration != null ? `${Math.round(Number(detailRun.estimated_duration) / 60)} min` : "—")}
+              {fieldBox("Est. Subtotal", formatCurrency(detailRun.estimated_subtotal))}
+            </div>
+
+            {sectionLabel("Record")}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "10px" }}>
+              {fieldBox("Created At", formatDateTime(detailRun.created_at))}
+              {fieldBox("Updated At", formatDateTime(detailRun.updated_at))}
+            </div>
+
+            {sectionLabel("Remarks")}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "10px" }}>
+              {fieldBox("Remarks", detailRun.notes || "—", true)}
             </div>
           </div>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
             {detailProjects.length === 0 ? (
               <div style={{ fontSize: "12px", color: "#64748b", fontStyle: "italic", padding: "8px" }}>No stops assigned to this run.</div>
             ) : (
-              detailProjects.map((rp, idx) => {
-                const proj = rp.proj_t_projects || {};
-                const address = proj.formatted_address || [proj.address_line_1, proj.city, proj.state, proj.postal_code].filter(Boolean).join(", ") || "—";
-                return (
-                  <div key={proj.id || idx} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "4px", padding: "10px 12px" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
-                      <div style={{ fontSize: "12px", fontWeight: 700, color: "#1e293b" }}>
-                        Stop {idx + 1} — {proj.client_name || "Untitled"}
-                      </div>
-                      <div style={{ fontSize: "12px", fontWeight: 700, color: "#16a34a" }}>{formatCurrency(proj.project_subtotal)}</div>
-                    </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "6px", fontSize: "11px", color: "#64748b" }}>
-                      <div><strong style={{ color: "#1e293b" }}>Address:</strong> {address}</div>
-                      <div><strong style={{ color: "#1e293b" }}>Status:</strong> {proj.proj_s_project_status?.status_name || "—"}</div>
-                      <div><strong style={{ color: "#1e293b" }}>Invoice #:</strong> {proj.invoice_number || "—"}</div>
-                      <div><strong style={{ color: "#1e293b" }}>Building:</strong> {proj.proj_s_building_categories?.building_category_name || "—"}</div>
-                      <div><strong style={{ color: "#1e293b" }}>Dimensions:</strong> {formatProjectDescriptionForDisplay(proj.dimension) || "—"}</div>
-                      <div><strong style={{ color: "#1e293b" }}>Order Received:</strong> {formatDate(proj.order_received_at)}</div>
-                      <div><strong style={{ color: "#1e293b" }}>Scheduled:</strong> {formatDate(proj.scheduled_project_start)}</div>
-                      <div><strong style={{ color: "#1e293b" }}>Arrival:</strong> {formatDate(proj.install_start)}</div>
-                      <div><strong style={{ color: "#1e293b" }}>Payment Method:</strong> {proj.proj_s_payment_method?.method_description || proj.proj_s_payment_method?.method_name || "—"}</div>
-                    </div>
-                    {proj.project_notes && (
-                      <div style={{ marginTop: "6px", fontSize: "11px", color: "#1e293b", whiteSpace: "pre-wrap" }}>
-                        <strong>Notes:</strong> {proj.project_notes}
-                      </div>
-                    )}
-                  </div>
-                );
-              })
+              <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff", border: "1px solid #e2e8f0", borderRadius: "4px", overflow: "hidden" }}>
+                <thead>
+                  <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
+                    <th style={{ textAlign: "left", padding: "6px 10px", fontSize: "10px", fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.4px" }}>Stop</th>
+                    <th style={{ textAlign: "left", padding: "6px 10px", fontSize: "10px", fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.4px" }}>Address</th>
+                    <th style={{ textAlign: "left", padding: "6px 10px", fontSize: "10px", fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.4px" }}>Status</th>
+                    <th style={{ textAlign: "left", padding: "6px 10px", fontSize: "10px", fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.4px" }}>Building / Dimensions</th>
+                    <th style={{ textAlign: "left", padding: "6px 10px", fontSize: "10px", fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.4px" }}>Order Received</th>
+                    <th style={{ textAlign: "left", padding: "6px 10px", fontSize: "10px", fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.4px" }}>Arrival Window</th>
+                    <th style={{ textAlign: "left", padding: "6px 10px", fontSize: "10px", fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.4px" }}>Invoice #</th>
+                    <th style={{ textAlign: "left", padding: "6px 10px", fontSize: "10px", fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.4px" }}>Payment</th>
+                    <th style={{ textAlign: "right", padding: "6px 10px", fontSize: "10px", fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.4px" }}>Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {detailProjects.map((rp, idx) => {
+                    const proj = rp.proj_t_projects || {};
+                    const address = proj.formatted_address || [proj.address_line_1, proj.city, proj.state, proj.postal_code].filter(Boolean).join(", ") || "—";
+                    const paymentMethodDisplay = proj.proj_s_payment_method?.method_description || proj.proj_s_payment_method?.method_name || "—";
+                    const hasNotes = proj.project_notes || proj.paid_sheet_notes;
+                    const cellStyle = { padding: "8px 10px", fontSize: "11px", color: "#1e293b", verticalAlign: "top", borderBottom: hasNotes ? "none" : "1px solid #f1f5f9" };
+
+                    return (
+                      <Fragment key={proj.id || idx}>
+                        <tr>
+                          <td style={cellStyle}>
+                            <div style={{ fontWeight: 700 }}>{idx + 1}</div>
+                            <div style={{ color: "#64748b" }}>{proj.client_name || "Untitled"}</div>
+                          </td>
+                          <td style={{ ...cellStyle, maxWidth: "180px" }}>{address}</td>
+                          <td style={cellStyle}>{proj.proj_s_project_status?.status_name || "—"}</td>
+                          <td style={cellStyle}>
+                            <div>{proj.proj_s_building_categories?.building_category_name || "—"}</div>
+                            <div style={{ color: "#64748b" }}>{formatProjectDescriptionForDisplay(proj.dimension) || "—"}</div>
+                          </td>
+                          <td style={cellStyle}>{formatDate(proj.order_received_at)}</td>
+                          <td style={cellStyle}>
+                            <div>{formatDateTime(proj.install_start)}</div>
+                            <div style={{ color: "#64748b" }}>to {formatDateTime(proj.install_end)}</div>
+                          </td>
+                          <td style={cellStyle}>{proj.invoice_number || "—"}</td>
+                          <td style={cellStyle}>
+                            <div>{paymentMethodDisplay}</div>
+                            {proj.payment_method_number && <div style={{ color: "#64748b" }}>Ref #{proj.payment_method_number}</div>}
+                          </td>
+                          <td style={{ ...cellStyle, textAlign: "right", fontWeight: 700, color: "#16a34a" }}>{formatCurrency(proj.project_subtotal)}</td>
+                        </tr>
+                        {hasNotes && (
+                          <tr key={`${proj.id || idx}-notes`}>
+                            <td colSpan={9} style={{ padding: "0 10px 8px", fontSize: "11px", color: "#1e293b", borderBottom: "1px solid #f1f5f9" }}>
+                              {proj.project_notes && <div style={{ whiteSpace: "pre-wrap" }}><strong>Notes:</strong> {proj.project_notes}</div>}
+                              {proj.paid_sheet_notes && <div style={{ whiteSpace: "pre-wrap", marginTop: proj.project_notes ? "4px" : 0 }}><strong>Paid Sheet Notes:</strong> {proj.paid_sheet_notes}</div>}
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
             )}
           </div>
         )}
@@ -420,18 +481,22 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
         key: "status",
         label: "Status",
         type: "select",
+        multiple: true,
         options: resolveRunStatusOptions(runStatuses).map((s) => ({ label: s, value: s })),
       },
       {
         key: "origin_id",
         label: "Origin",
         type: "select",
+        multiple: true,
         options: origins.map((o) => ({ label: o.origin_name, value: String(o.id) })),
       },
       {
         key: "team_assigned",
         label: "Installer",
-        type: "text",
+        type: "select",
+        multiple: true,
+        options: installerOptions,
       },
       {
         key: "run_date",
@@ -439,7 +504,7 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
         type: "daterange",
       },
     ],
-    [runStatuses, origins]
+    [runStatuses, origins, installerOptions]
   );
 
   const actions = useMemo(

@@ -532,6 +532,19 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
     } finally { setRecalculating(false); }
   }, [selectedRunId, selectedRun, refreshRuns]);
 
+  const handleRunStatusChange = useCallback(async (newStatus) => {
+    if (!selectedRunId) return;
+    try {
+      await updateRun(selectedRunId, { status: newStatus });
+      await refreshRuns();
+      toastSuccess("Run status updated.", "Runs");
+    } catch (err) {
+      console.error("[ProjectMapView] Failed to update run status:", err);
+      toastError(err?.message || "Failed to update run status.", "Runs");
+      throw err; // rethrow so RunDetailPanel keeps its editor open for retry
+    }
+  }, [selectedRunId, refreshRuns]);
+
   const handleSelectRun = (id) => {
     console.log("[DEBUG] handleSelectRun:", id);
     setIsLoadingRunDetails(true);
@@ -1012,7 +1025,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
           <ProjectDetailDrawer project={selectedProject} statuses={statuses} buildingCategories={buildingCategories} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} projectRunLookup={projectRunLookup} onClose={handleCloseDrawer} onEdit={handleEdit} onDelete={() => setConfirmDeleteId(selectedProject.id)} routeInfo={routeInfo} />
         )}
         {mode === "runs" && selectedRun && (
-          <RunDetailPanel run={selectedRun} runProjects={runProjects} runSegmentData={runSegmentData} onClose={handleCloseRunDetail} onEdit={handleEditRun} onDelete={() => setConfirmDeleteRunId(selectedRun.id)} onRemoveProject={handleRemoveProjectFromRun} onReorderStops={handleReorderStops} onRecalculate={handleRecalculate} recalculating={recalculating} onEditStopNote={handleEditStopNote} onEditStopDate={handleEditStopDate} onEditStopInvoice={handleEditStopInvoice} onEditProjectPrice={handleEditProjectPrice} isLoading={isLoadingRunDetails} runStatuses={runStatuses} />
+          <RunDetailPanel run={selectedRun} runProjects={runProjects} runSegmentData={runSegmentData} onClose={handleCloseRunDetail} onEdit={handleEditRun} onDelete={() => setConfirmDeleteRunId(selectedRun.id)} onRemoveProject={handleRemoveProjectFromRun} onReorderStops={handleReorderStops} onRecalculate={handleRecalculate} recalculating={recalculating} onEditStopNote={handleEditStopNote} onEditStopDate={handleEditStopDate} onEditStopInvoice={handleEditStopInvoice} onEditProjectPrice={handleEditProjectPrice} isLoading={isLoadingRunDetails} runStatuses={runStatuses} onStatusChange={handleRunStatusChange} />
         )}
       </div>
 

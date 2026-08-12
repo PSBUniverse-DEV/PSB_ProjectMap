@@ -1,10 +1,10 @@
 "use client";
 
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { StatusBadge } from "@/shared/components/ui";
 import { formatProjectDescriptionForDisplay } from "../data/projectMap.data";
-import { getRunStatusColor } from "../data/projectMap.data";
+import { getRunStatusColor, resolveRunStatusOptions } from "../data/projectMap.data";
 import { generateRunManifestPrint } from "../utils/printRunManifest";
 
 function formatDistance(meters) {
@@ -31,9 +31,17 @@ function formatMileage(miles) {
   return `${Number(miles).toFixed(1)} mi`;
 }
 
-export default function RunDetailPanel({ run, runProjects = [], runSegmentData = null, onClose, onEdit, onDelete, onRemoveProject, onReorderStops, onRecalculate, recalculating = false, onEditStopNote, onEditStopDate, onEditStopInvoice, onEditProjectPrice, onProjectUpdated, isLoading = false, runStatuses = [] }) {
+export default function RunDetailPanel({ run, runProjects = [], runSegmentData = null, onClose, onEdit, onDelete, onRemoveProject, onReorderStops, onRecalculate, recalculating = false, onEditStopNote, onEditStopDate, onEditStopInvoice, onEditProjectPrice, onProjectUpdated, isLoading = false, runStatuses = [], onStatusChange }) {
   const [dragIndex, setDragIndex] = useState(null);
   const [dragOverIndex, setDragOverIndex] = useState(null);
+  const [isEditingStatus, setIsEditingStatus] = useState(false);
+  const [pendingStatus, setPendingStatus] = useState(run?.status || "Draft");
+  const [savingStatus, setSavingStatus] = useState(false);
+
+  useEffect(() => {
+    setIsEditingStatus(false);
+    setPendingStatus(run?.status || "Draft");
+  }, [run?.id]);
 
   const originName = run?.proj_s_origin_addresses?.origin_name || "No Origin";
   const hasStops = runProjects.length > 0;
@@ -64,6 +72,24 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
   }, [runSegmentData, runProjects]);
 
   const status = run?.status || "Draft";
+
+  const handleSaveStatus = async () => {
+    if (pendingStatus === status) {
+      setIsEditingStatus(false);
+      return;
+    }
+    setSavingStatus(true);
+    try {
+      await onStatusChange?.(pendingStatus);
+      setIsEditingStatus(false);
+    } catch (err) {
+      // Stay in editing state on failure so the user can retry — parent
+      // surfaces the actual error via toast.
+    } finally {
+      setSavingStatus(false);
+    }
+  };
+
   const actionButtons = useMemo(() => {
     const print = () => generateRunManifestPrint(run, runProjects, runSegmentData);
     const btns = [{ label: "Edit", onClick: onEdit, variant: "secondary" }];
@@ -113,25 +139,60 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
           <>
             {/* Run Status — centered, full width, above Route Summary */}
             <div style={{ textAlign: "center", marginBottom: "10px" }}>
-              {(() => {
-                const color = getRunStatusColor(status, runStatuses);
-                return (
-                  <span
-                    style={{
-                      display: "inline-block",
-                      padding: "1px 8px",
-                      borderRadius: "10px",
-                      fontSize: "10px",
-                      fontWeight: 600,
-                      background: `${color}20`,
-                      color: color,
-                      border: `1px solid ${color}40`,
-                    }}
+              {isEditingStatus ? (
+                <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                  <span style={{ fontSize: "10px", fontWeight: 600, color: "#64748b" }}>Set as:</span>
+                  <select
+                    value={pendingStatus}
+                    onChange={(e) => setPendingStatus(e.target.value)}
+                    disabled={savingStatus}
+                    style={{ fontSize: "10px", fontWeight: 600, padding: "2px 6px", borderRadius: "4px", border: "1px solid #e2e8f0", background: "#fff", color: "#1e293b" }}
                   >
-                    {status}
-                  </span>
-                );
-              })()}
+                    {resolveRunStatusOptions(runStatuses).map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={handleSaveStatus}
+                    disabled={savingStatus || pendingStatus === status}
+                    style={{ fontSize: "10px", fontWeight: 600, padding: "2px 8px", borderRadius: "4px", border: "none", background: savingStatus || pendingStatus === status ? "#cbd5e1" : "#16a34a", color: "#fff", cursor: savingStatus || pendingStatus === status ? "not-allowed" : "pointer" }}
+                  >
+                    {savingStatus ? "Saving..." : "Save"}
+                  </button>
+                  <button
+                    onClick={() => { setIsEditingStatus(false); setPendingStatus(status); }}
+                    disabled={savingStatus}
+                    style={{ fontSize: "10px", fontWeight: 600, padding: "2px 6px", borderRadius: "4px", border: "1px solid #e2e8f0", background: "#fff", color: "#64748b", cursor: savingStatus ? "not-allowed" : "pointer" }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                (() => {
+                  const color = getRunStatusColor(status, runStatuses);
+                  return (
+                    <button
+                      onClick={() => { setPendingStatus(status); setIsEditingStatus(true); }}
+                      title="Click to change status"
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "4px",
+                        padding: "1px 8px",
+                        borderRadius: "10px",
+                        fontSize: "10px",
+                        fontWeight: 600,
+                        background: `${color}20`,
+                        color: color,
+                        border: `1px solid ${color}40`,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Set as: {status}
+                    </button>
+                  );
+                })()
+              )}
             </div>
 
             <div style={{ background: "linear-gradient(135deg, #1e293b 0%, #334155 100%)", borderRadius: "6px", padding: "10px 12px", marginBottom: "10px", color: "#fff" }}>

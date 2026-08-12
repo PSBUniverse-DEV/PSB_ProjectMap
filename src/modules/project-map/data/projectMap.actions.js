@@ -1297,84 +1297,62 @@ export async function calculateSegmentRoutes(coordinates) {
     throw new Error("At least 2 valid coordinates are required.");
   }
 
-  // Calculate each leg individually, catching errors per segment
-  const segments = [];
-  for (let i = 0; i < validCoords.length - 1; i++) {
-    const from = validCoords[i];
-    const to = validCoords[i + 1];
-    const coordsStr = `${from.lng},${from.lat};${to.lng},${to.lat}`;
-    const url = `https://router.project-osrm.org/route/v1/driving/${coordsStr}?overview=false&steps=false`;
-
-    try {
-      const response = await fetch(url);
-      if (!response.ok) {
-        const text = await response.text().catch(() => "");
-        const parsed = JSON.parse(text);
-        console.error(`[OSRM] Segment ${i + 1} failed: ${from.lat},${from.lng} → ${to.lat},${to.lng} - ${parsed?.code || response.status}`);
-        segments.push({
-          fromIndex: i,
-          toIndex: i + 1,
-          error: parsed?.code || "NoRoute",
-          distance: null,
-          duration: null,
-        });
-        continue;
-      }
-      const data = await response.json();
-
-      if (!data.routes || data.routes.length === 0) {
-        console.error(`[OSRM] Segment ${i + 1}: No route found`);
-        segments.push({
-          fromIndex: i,
-          toIndex: i + 1,
-          error: "NoRoute",
-          distance: null,
-          duration: null,
-        });
-        continue;
-      }
-
-      const route = data.routes[0];
-      segments.push({
-        fromIndex: i,
-        toIndex: i + 1,
-        distance: route.distance,
-        duration: route.duration,
-      });
-    } catch (err) {
-      console.error(`[OSRM] Segment ${i + 1} unexpected error:`, err.message);
-      segments.push({
-        fromIndex: i,
-        toIndex: i + 1,
-        error: "RouteError",
-        distance: null,
-        duration: null,
-      });
-    }
-  }
-
-  // Calculate full route for overall geometry (only if all segments succeeded)
+  // Single OSRM request for the whole multi-stop route. OSRM returns
+  // per-leg distance/duration via routes[0].legs[] AND the full route
+  // geometry in the same response — no need for N separate per-leg
+  // requests plus a final full-route request (that was the previous
+  // approach, and it's why the line took longer to appear as stop
+  // count grew: N+1 sequential round-trips instead of 1).
+  const legCount = validCoords.length - 1;
   const fullCoordsStr = validCoords.map((c) => `${c.lng},${c.lat}`).join(";");
   const fullUrl = `https://router.project-osrm.org/route/v1/driving/${fullCoordsStr}?overview=full&geometries=geojson&steps=false`;
+
   let fullRoute = null;
   try {
-    const fullResponse = await fetch(fullUrl);
-    if (fullResponse.ok) {
-      const fullData = await fullResponse.json();
-      fullRoute = fullData.routes?.[0] || null;
+    const response = await fetch(fullUrl);
+    if (response.ok) {
+      const data = await response.json();
+      fullRoute = data.routes?.[0] || null;
+    } else {
+      console.error(`[OSRM] Route request failed: ${response.status}`);
     }
   } catch (err) {
-    console.error("[OSRM] Full route fetch failed:", err.message);
+    console.error("[OSRM] Route fetch failed:", err.message);
   }
 
-  // Calculate totals from only valid segments
-  const validSegments = segments.filter((s) => !s.error);
+  if (!fullRoute) {
+    // Entire request failed — mark every leg as errored so callers can
+    // still render "—" placeholders instead of crashing.
+    const segments = Array.from({ length: legCount }, (_, i) => ({
+      fromIndex: i,
+      toIndex: i + 1,
+      error: "RouteError",
+      distance: null,
+      duration: null,
+    }));
+    return {
+      segments,
+      totalDistance: 0,
+      totalDuration: 0,
+      geometry: null,
+      hasPartialFailure: true,
+    };
+  }
+
+  const legs = Array.isArray(fullRoute.legs) ? fullRoute.legs : [];
+  const segments = Array.from({ length: legCount }, (_, i) => {
+    const leg = legs[i];
+    if (!leg) {
+      return { fromIndex: i, toIndex: i + 1, error: "NoRoute", distance: null, duration: null };
+    }
+    return { fromIndex: i, toIndex: i + 1, distance: leg.distance, duration: leg.duration };
+  });
 
   return {
     segments,
-    totalDistance: fullRoute?.distance || validSegments.reduce((sum, s) => sum + (s.distance || 0), 0),
-    totalDuration: fullRoute?.duration || validSegments.reduce((sum, s) => sum + (s.duration || 0), 0),
-    geometry: fullRoute?.geometry || null,
+    totalDistance: fullRoute.distance,
+    totalDuration: fullRoute.duration,
+    geometry: fullRoute.geometry || null,
     hasPartialFailure: segments.some((s) => s.error),
   };
 }

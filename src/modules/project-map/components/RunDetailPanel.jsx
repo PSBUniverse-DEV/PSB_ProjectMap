@@ -3,8 +3,7 @@
 
 import { useMemo, useState, useEffect } from "react";
 import { StatusBadge } from "@/shared/components/ui";
-import { formatProjectDescriptionForDisplay } from "../data/projectMap.data";
-import { getRunStatusColor, resolveRunStatusOptions } from "../data/projectMap.data";
+import { formatProjectDescriptionForDisplay, getRunStatusColor, resolveRunStatusOptions, stripTownshipLabel } from "../data/projectMap.data";
 import { generateRunManifestPrint } from "../utils/printRunManifest";
 
 function formatDistance(meters) {
@@ -208,7 +207,7 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
             <div style={{ marginBottom: "10px" }}>
               <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "1px" }}>📍 Origin</div>
               <div style={{ fontSize: "12px", fontWeight: 600, color: "#1e293b" }}>{originName}</div>
-              <div style={{ fontSize: "10px", color: "#64748b", marginTop: "1px", lineHeight: 1.4 }}>{run.proj_s_origin_addresses?.formatted_address || run.proj_s_origin_addresses?.address_line_1 || ""}</div>
+              <div style={{ fontSize: "10px", color: "#64748b", marginTop: "1px", lineHeight: 1.4 }}>{stripTownshipLabel(run.proj_s_origin_addresses?.formatted_address || run.proj_s_origin_addresses?.address_line_1 || "")}</div>
             </div>
 
             {run.team_assigned && (
@@ -266,7 +265,7 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
                               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "4px" }}>
                                 <div style={{ flex: 1 }}>
                                   <div style={{ fontWeight: 600, fontSize: "11px", color: "#1e293b", marginBottom: "1px" }}>{idx + 1}. {proj.client_name || "Untitled"}</div>
-                                  <div style={{ fontSize: "9px", color: "#64748b" }}>{proj.city && proj.state ? `${proj.city}, ${proj.state}` : proj.formatted_address || "No address"}</div>
+                                  <div style={{ fontSize: "9px", color: "#64748b" }}>{proj.city && proj.state ? `${stripTownshipLabel(proj.city)}, ${proj.state}` : stripTownshipLabel(proj.formatted_address) || "No address"}</div>
                                   <div style={{ fontSize: "10px", color: "#16a34a", fontWeight: 500, marginTop: "2px" }}>{sub}</div>
                                   <div style={{ marginTop: "3px", display: "flex", gap: "8px", alignItems: "center" }}>
                                     <button onClick={() => onEditStopNote?.(rp)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "10px", padding: "0", color: rp.notes ? "#6366f1" : "#94a3b8", fontWeight: rp.notes ? 600 : 400 }} title={rp.notes ? "Edit note" : "Add note"}>{rp.notes ? "📝 Note" : "📄 Note"}</button>

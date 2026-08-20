@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import MapLibreGL from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { formatProjectDescriptionForDisplay } from "../data/projectMap.data";
+import { formatProjectDescriptionForDisplay, stripTownshipLabel } from "../data/projectMap.data";
 
 function getStatusColor(statusName, statuses = []) {
   if (!statusName) return "#6b7280";
@@ -368,9 +368,9 @@ export default function ProjectMap({
 
       let addressDisplay = "";
       if (project.formatted_address) {
-        addressDisplay = project.formatted_address;
+        addressDisplay = stripTownshipLabel(project.formatted_address);
       } else if (project.address_line_1 || project.city) {
-        const parts = [project.address_line_1, project.city, project.state].filter(Boolean);
+        const parts = [project.address_line_1, stripTownshipLabel(project.city), project.state].filter(Boolean);
         addressDisplay = parts.join(", ");
       } else {
         addressDisplay = "No address";

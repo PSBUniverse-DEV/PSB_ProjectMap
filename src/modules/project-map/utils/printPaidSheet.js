@@ -14,6 +14,7 @@
  * editable UI lives in PaidSheetForm.jsx; printing always reflects what
  * was already saved.
  */
+import { stripTownshipLabel } from "../data/projectMap.data";
 export function generatePaidSheetPrint(run, runProjects, paidSheet = null) {
   const now = new Date();
   const printDate = now.toLocaleString("en-US", { month: "long", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
@@ -42,8 +43,8 @@ export function generatePaidSheetPrint(run, runProjects, paidSheet = null) {
     const proj = rp.proj_t_projects || {};
     const orderNo = proj.invoice_number || "—";
     const description = proj.client_name || `Stop #${idx + 1}`;
-    const address = proj.formatted_address || (
-      [proj.address_line_1, proj.city, proj.state, proj.postal_code].filter(Boolean).join(", ")
+    const address = stripTownshipLabel(proj.formatted_address) || (
+      [proj.address_line_1, stripTownshipLabel(proj.city), proj.state, proj.postal_code].filter(Boolean).join(", ")
     ) || "No address";
     const paymentMethod = proj.proj_s_payment_method?.method_description
       || proj.proj_s_payment_method?.method_name

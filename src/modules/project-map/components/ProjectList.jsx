@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { StatusBadge } from "@/shared/components/ui";
+import { stripTownshipLabel } from "../data/projectMap.data";
 
 function getStatusTone(statusName) {
   if (!statusName) return "secondary";
@@ -124,7 +125,7 @@ export default function ProjectList({ projects = [], selectedProjectId, onSelect
                   </span>
                 </div>
                 <div style={{ fontSize: "10px", color: "#64748b" }}>
-                  {project.city && project.state ? `${project.city}, ${project.state}` : project.formatted_address || "No location"}
+                  {project.city && project.state ? `${stripTownshipLabel(project.city)}, ${project.state}` : stripTownshipLabel(project.formatted_address) || "No location"}
                 </div>
                 {project.dealer && (
                   <div style={{ fontSize: "9px", color: "#94a3b8", marginTop: "1px" }}>

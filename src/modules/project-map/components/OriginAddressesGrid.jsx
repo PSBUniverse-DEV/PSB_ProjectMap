@@ -14,6 +14,7 @@ import {
 } from "../data/projectMap.actions";
 import LocationSearch from "./LocationSearch";
 import MapLocationPicker from "./MapLocationPicker";
+import { stripTownshipLabel } from "../data/projectMap.data";
 
 /**
  * OriginAddressesGrid — Dedicated admin grid for managing origin addresses.
@@ -346,7 +347,7 @@ export default function OriginAddressesGrid({ data = [], onRefresh }) {
 
                   {/* Formatted Address */}
                   <td className="oag-col-address">
-                    <span className="oag-address">{row.formatted_address || "—"}</span>
+                    <span className="oag-address">{stripTownshipLabel(row.formatted_address) || "—"}</span>
                   </td>
 
                   {/* Active */}

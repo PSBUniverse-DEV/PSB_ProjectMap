@@ -14,7 +14,7 @@
  * omitted (e.g. the Run Master List, which does not load route segments), the
  * per-stop distance / travel-time fields simply render as "—".
  */
-import { formatProjectDescriptionForDisplay } from "../data/projectMap.data";
+import { formatProjectDescriptionForDisplay, stripTownshipLabel } from "../data/projectMap.data";
 
 // --- Formatting helpers (mirror the ones defined in RunDetailPanel.jsx) ---
 
@@ -63,7 +63,7 @@ export function generateRunManifestPrint(run, runProjects, runSegmentData = null
   };
 
   const getProjectStatusName = (proj) => proj.proj_s_project_status?.status_name || "—";
-  const originAddress = run.proj_s_origin_addresses?.formatted_address || run.proj_s_origin_addresses?.address_line_1 || originName;
+  const originAddress = stripTownshipLabel(run.proj_s_origin_addresses?.formatted_address || run.proj_s_origin_addresses?.address_line_1 || originName);
 
   const printWindow = window.open("", "_blank", "width=900,height=700");
   if (!printWindow) return;
@@ -77,8 +77,8 @@ export function generateRunManifestPrint(run, runProjects, runSegmentData = null
     const segDuration = segment ? formatDuration(segment.duration) : "—";
     const sub = formatCurrency(stopSubtotals[idx]);
     const installDate = formatInstallDate(proj.install_start, proj.install_end);
-    const address = proj.formatted_address || (
-      [proj.address_line_1, proj.city, proj.state, proj.postal_code].filter(Boolean).join(", ")
+    const address = stripTownshipLabel(proj.formatted_address) || (
+      [proj.address_line_1, stripTownshipLabel(proj.city), proj.state, proj.postal_code].filter(Boolean).join(", ")
     ) || "No address";
     const notes = proj.project_notes || "";
     const statusName = getProjectStatusName(proj);

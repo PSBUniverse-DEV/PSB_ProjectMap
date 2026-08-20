@@ -167,3 +167,14 @@ export function formatProjectDescriptionForDisplay(stored) {
   if (parsed.framingGauge) parts.push(parsed.framingGauge);
   return parts.length > 0 ? parts.join(" · ") : null;
 }
+/**
+ * Strips "Township" from a place name or address string for display,
+ * keeping the city/place name itself intact. Purely a display transform —
+ * never mutates the stored value.
+ *   "Ashtabula Township" -> "Ashtabula"
+ *   "South Bloomfield Township, OH 43011" -> "South Bloomfield, OH 43011"
+ */
+export function stripTownshipLabel(value) {
+  if (!value) return value;
+  return String(value).replace(/\s+Township\b/gi, "").replace(/\s{2,}/g, " ").trim();
+}

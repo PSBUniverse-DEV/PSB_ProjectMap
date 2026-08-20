@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faLocationDot, faCalendarDays, faBuilding, faDollarSign, faTag } from "@fortawesome/free-solid-svg-icons";
-import { formatProjectDescriptionForDisplay } from "../data/projectMap.data";
+import { formatProjectDescriptionForDisplay, stripTownshipLabel } from "../data/projectMap.data";
 
 export default function ProjectDetailDrawer({ project, statuses = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [], projectRunLookup = new Map(), onClose, onEdit, onDelete, routeInfo = null }) {
   const statusName = useMemo(() => {
@@ -126,10 +126,10 @@ export default function ProjectDetailDrawer({ project, statuses = [], buildingCa
               <tr style={{ borderBottom: "1px solid #f2f2f2" }}>
                 <td style={{ padding: "4px 0", fontSize: "11px", color: "#64748b", fontWeight: 500 }}>Address</td>
                 <td style={{ padding: "4px 0", fontSize: "11px", color: "#1e293b", textAlign: "right", lineHeight: 1.4 }}>
-                  {project.formatted_address || (
+                  {project.formatted_address ? stripTownshipLabel(project.formatted_address) : (
                     <>
                       {project.address_line_1}<br />
-                      {[project.city, project.state, project.postal_code].filter(Boolean).join(", ")}
+                      {[stripTownshipLabel(project.city), project.state, project.postal_code].filter(Boolean).join(", ")}
                     </>
                   ) || "—"}
                 </td>

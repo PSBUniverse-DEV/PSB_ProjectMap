@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { Modal, Button, toastError, toastSuccess } from "@/shared/components/ui";
 import { addProjectToRun } from "../data/projectMap.actions";
+import { stripTownshipLabel } from "../data/projectMap.data";
 
 export default function ProjectSelectorModal({ show, runId, allProjects = [], existingProjectIds = [], onClose, onSaved }) {
   const [selectedIds, setSelectedIds] = useState([]);
@@ -129,7 +130,7 @@ export default function ProjectSelectorModal({ show, runId, allProjects = [], ex
                           {project.client_name || "Untitled"}
                         </div>
                         <div style={{ fontSize: "10px", color: "#64748b" }}>
-                          {project.city && project.state ? `${project.city}, ${project.state}` : project.formatted_address || "No address"}
+                          {project.city && project.state ? `${stripTownshipLabel(project.city)}, ${project.state}` : stripTownshipLabel(project.formatted_address) || "No address"}
                         </div>
                       </div>
                     </div>

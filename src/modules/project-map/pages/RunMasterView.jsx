@@ -14,7 +14,7 @@ import { useRouter } from "next/navigation";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCircleInfo, faCheckCircle, faPrint, faMoneyCheckDollar, faPen } from "@fortawesome/free-solid-svg-icons";
 import { Button, Modal, toastError, TableZ } from "@/shared/components/ui";
-import { resolveRunStatusOptions, getRunStatusColor, formatProjectDescriptionForDisplay } from "../data/projectMap.data";
+import { resolveRunStatusOptions, getRunStatusColor, formatProjectDescriptionForDisplay, stripTownshipLabel } from "../data/projectMap.data";
 import { loadRunDetails, loadRuns, loadPaidSheet } from "../data/projectMap.actions";
 import { generateRunManifestPrint } from "../utils/printRunManifest";
 import { generatePaidSheetPrint } from "../utils/printPaidSheet";
@@ -350,7 +350,7 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
                 <tbody>
                   {detailProjects.map((rp, idx) => {
                     const proj = rp.proj_t_projects || {};
-                    const address = proj.formatted_address || [proj.address_line_1, proj.city, proj.state, proj.postal_code].filter(Boolean).join(", ") || "—";
+                    const address = stripTownshipLabel(proj.formatted_address) || [proj.address_line_1, stripTownshipLabel(proj.city), proj.state, proj.postal_code].filter(Boolean).join(", ") || "—";
                     const paymentMethodDisplay = proj.proj_s_payment_method?.method_description || proj.proj_s_payment_method?.method_name || "—";
                     const hasNotes = proj.project_notes || proj.paid_sheet_notes;
                     const cellStyle = { padding: "8px 10px", fontSize: "11px", color: "#1e293b", verticalAlign: "top", borderBottom: hasNotes ? "none" : "1px solid #f1f5f9" };

@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { Button, Modal, toastError, toastSuccess } from "@/shared/components/ui";
 import { updateRun, updateProjectPaymentInfo, loadPaidSheet, upsertPaidSheet } from "../data/projectMap.actions";
+import { stripTownshipLabel } from "../data/projectMap.data";
 
 /**
  * formatCurrency — local copy of the helper used in RunMasterView.jsx so
@@ -292,7 +293,7 @@ export default function PaidSheetForm({
                   const proj = rp.proj_t_projects || {};
                   const v = stopValues[proj.id] || { payment_method_type: "", payment_method_number: "", paid_sheet_notes: "", paid_sheet_done: false };
                   const orderNo = proj.invoice_number || "";
-                  const address = proj.formatted_address || [proj.address_line_1, proj.city, proj.state, proj.postal_code].filter(Boolean).join(", ");
+                  const address = stripTownshipLabel(proj.formatted_address) || [proj.address_line_1, stripTownshipLabel(proj.city), proj.state, proj.postal_code].filter(Boolean).join(", ");
                   return (
                     <tr key={proj.id}>
                       <td style={cellStyle}>{orderNo}</td>

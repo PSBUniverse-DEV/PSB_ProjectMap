@@ -932,11 +932,28 @@ export async function upsertPaidSheet(runId, fields) {
   return data;
 }
 
+/**
+ * deleteProject — permanently removes a project and all its run assignments.
+ *
+ * A project can be linked to a run through proj_t_run_projects. That join
+ * table's foreign key to proj_t_projects has NO "on delete cascade", so the
+ * mapping rows must be removed first or Postgres blocks the delete with a
+ * foreign-key violation (SQLSTATE 23503) and the server action surfaces as
+ * an HTTP 500. Deleting in this order mirrors deleteRun().
+ *
+ * Business rule: deleting a project is permanent and cannot be undone.
+ */
 export async function deleteProject(projectId) {
   const id = toIntOrNull(projectId);
   if (id === null) throw new Error("projectId is required.");
 
   const supabase = getSupabaseAdmin();
+
+  // First, remove all run-project mappings (unassign the project from every run)
+  const { error: mappingError } = await supabase.from("proj_t_run_projects").delete().eq("project_id", id);
+  if (mappingError) throw new Error(mappingError.message);
+
+  // Then delete the project record
   const { error } = await supabase.from("proj_t_projects").delete().eq("id", id);
   if (error) throw new Error(error.message);
   return { success: true };

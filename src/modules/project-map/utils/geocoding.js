@@ -2,8 +2,73 @@
  * Reverse geocoding utility using Geoapify API.
  * Converts latitude/longitude coordinates to address information.
  */
+import zipcodes from "zipcodes-us";
 
 const GEOAPIFY_API_KEY = process.env.NEXT_PUBLIC_GEOAPIFY_API_KEY || "";
+
+/**
+ * Resolves a USPS-style preferred city name from a ZIP code, overriding
+ * Geoapify's OSM-derived city value (which is often an administrative
+ * township/district name rather than the mail-recognized city, e.g.
+ * "Marlboro Township" instead of "Louisville" for ZIP 44641).
+ * Falls back to Geoapify's original city if no ZIP match is found.
+ *
+ * @param {string} geoapifyCity - city value from Geoapify's response
+ * @param {string} postcode - ZIP code from Geoapify's response
+ * @returns {string}
+ */
+function resolveCity(geoapifyCity, postcode) {
+  if (!postcode) return geoapifyCity;
+  const match = zipcodes.find(postcode);
+  if (match && match.isValid && match.city) {
+    return match.city;
+  }
+  return geoapifyCity;
+}
+
+/**
+ * Attempts to parse a search string as a geographic coordinate pair —
+ * either plain decimal degrees ("44.8712, -85.1596") or DMS notation
+ * ("44°52'49.5\"N 79°09'34.5\"W"). Returns { lat, lng } if the string is
+ * confidently a coordinate pair, or null if it should be treated as a
+ * normal address/place search instead.
+ *
+ * DMS conversion: degrees + minutes/60 + seconds/3600, negated for S/W.
+ */
+export function parseCoordinateString(input) {
+  if (!input || typeof input !== "string") return null;
+  const trimmed = input.trim();
+
+  // Plain decimal degrees: "44.8712, -85.1596" or "44.8712 -85.1596"
+  const decimalMatch = trimmed.match(
+    /^(-?\d{1,3}(?:\.\d+)?)\s*[, ]\s*(-?\d{1,3}(?:\.\d+)?)$/
+  );
+  if (decimalMatch) {
+    const lat = parseFloat(decimalMatch[1]);
+    const lng = parseFloat(decimalMatch[2]);
+    if (Math.abs(lat) <= 90 && Math.abs(lng) <= 180) {
+      return { lat, lng };
+    }
+  }
+
+  // DMS: 44°52'16.4"N 79°09'34.5"W (also accepts space-separated
+  // degrees/minutes/seconds without the ° ' " symbols)
+  const dmsMatch = trimmed.match(
+    /^(\d{1,3})[°\s]+(\d{1,2})['\s]+([\d.]+)["\s]*([NSns])[,\s]+(\d{1,3})[°\s]+(\d{1,2})['\s]+([\d.]+)["\s]*([EWew])$/
+  );
+  if (dmsMatch) {
+    const [, latDeg, latMin, latSec, latHem, lngDeg, lngMin, lngSec, lngHem] = dmsMatch;
+    let lat = Number(latDeg) + Number(latMin) / 60 + Number(latSec) / 3600;
+    let lng = Number(lngDeg) + Number(lngMin) / 60 + Number(lngSec) / 3600;
+    if (latHem.toUpperCase() === "S") lat = -lat;
+    if (lngHem.toUpperCase() === "W") lng = -lng;
+    if (Math.abs(lat) <= 90 && Math.abs(lng) <= 180) {
+      return { lat, lng };
+    }
+  }
+
+  return null;
+}
 
 /**
  * Reverse geocodes coordinates to address information.
@@ -51,7 +116,7 @@ export async function reverseGeocode(lat, lng) {
     return {
       formatted_address: props.formatted || "",
       address_line_1: props.address_line1 || "",
-      city: props.city || "",
+      city: resolveCity(props.city || "", props.postcode),
       state: props.state || "",
       state_code: props.state_code || "",
       postal_code: props.postcode || "",
@@ -111,7 +176,7 @@ export async function forwardGeocode(query, limit = 50, options = {}) {
       return {
         formatted_address: props.formatted || "",
         address_line_1: props.address_line1 || "",
-        city: props.city || "",
+        city: resolveCity(props.city || "", props.postcode),
         state: props.state || "",
         state_code: props.state_code || "",
         postal_code: props.postcode || "",

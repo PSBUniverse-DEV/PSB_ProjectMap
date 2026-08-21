@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { forwardGeocode } from "../utils/geocoding";
+import { forwardGeocode, reverseGeocode, parseCoordinateString } from "../utils/geocoding";
 
 export default function MapSearch({ value, onChange, onSelect, results = [] }) {
   const [query, setQuery] = useState(value || "");
@@ -38,7 +38,10 @@ export default function MapSearch({ value, onChange, onSelect, results = [] }) {
     setSearched(true);
     setShowDropdown(true);
     try {
-      const data = await forwardGeocode(query.trim(), 50);
+      const coords = parseCoordinateString(query.trim());
+      const data = coords
+        ? [await reverseGeocode(coords.lat, coords.lng)].filter(Boolean)
+        : await forwardGeocode(query.trim(), 50);
       // Call parent's onChange with results
       if (onChange) {
         onChange(query, data);

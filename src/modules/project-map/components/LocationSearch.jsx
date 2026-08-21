@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-
-const GEOAPIFY_API_KEY = process.env.NEXT_PUBLIC_GEOAPIFY_API_KEY || "";
+import { forwardGeocode, reverseGeocode, parseCoordinateString } from "../utils/geocoding";
 
 export default function LocationSearch({ onSelect, selectedLocation, query: externalQuery, onQueryChange }) {
   const [suggestions, setSuggestions] = useState([]);
@@ -42,40 +41,14 @@ export default function LocationSearch({ onSelect, selectedLocation, query: exte
       return;
     }
 
-    if (!GEOAPIFY_API_KEY) {
-      setSuggestions([]);
-      setShowDropdown(true);
-      setSearched(true);
-      return;
-    }
-
     setLoading(true);
     setSearched(true);
     setShowDropdown(true);
     try {
-      const url = new URL("https://api.geoapify.com/v1/geocode/autocomplete");
-      url.searchParams.set("text", query);
-      url.searchParams.set("apiKey", GEOAPIFY_API_KEY);
-      url.searchParams.set("limit", "50");
-      url.searchParams.set("bias", "countrycode:none"); // Disable country bias for global search
-
-      const res = await fetch(url.toString());
-      if (!res.ok) {
-        throw new Error(`Geocoding failed: ${res.status}`);
-      }
-      const data = await res.json();
-
-      const features = (data.features || []).map((f) => ({
-        formatted_address: f.properties.formatted || "",
-        address_line_1: f.properties.address_line1 || "",
-        city: f.properties.city || "",
-        state: f.properties.state || "",
-        state_code: f.properties.state_code || "",
-        postal_code: f.properties.postcode || "",
-        country: f.properties.country || "",
-        latitude: f.properties.lat || null,
-        longitude: f.properties.lon || null,
-      }));
+      const coords = parseCoordinateString(query.trim());
+      const features = coords
+        ? [await reverseGeocode(coords.lat, coords.lng)].filter(Boolean)
+        : await forwardGeocode(query, 50);
 
       setSuggestions(features);
       // Keep dropdown open to show results or "no results" message

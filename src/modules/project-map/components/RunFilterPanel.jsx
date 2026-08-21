@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faSliders } from "@fortawesome/free-solid-svg-icons";
 import { resolveRunStatusOptions } from "../data/projectMap.data";
@@ -13,6 +14,15 @@ export default function RunFilterPanel({
   const [isOpen, setIsOpen] = useState(false);
   const [localFilters, setLocalFilters] = useState(runFilters);
   const panelRef = useRef(null);
+  // Ref for the trigger button and the portaled panel content so the
+  // outside-click handler can ignore clicks inside either. The panel is now a
+  // portal into document.body, so it lives in a different DOM subtree from the
+  // button and can no longer be covered by the single panelRef wrapper.
+  const triggerRef = useRef(null);
+  const portalPanelRef = useRef(null);
+  // Screen coordinates (top/left) where the portaled panel should render,
+  // derived from the trigger button's getBoundingClientRect() when opened.
+  const [panelPosition, setPanelPosition] = useState({ top: 0, left: 0 });
 
   useEffect(() => {
     setLocalFilters(runFilters);
@@ -21,7 +31,10 @@ export default function RunFilterPanel({
   // Close panel when clicking outside or pressing Escape
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (panelRef.current && !panelRef.current.contains(e.target)) {
+      if (
+        panelRef.current && !panelRef.current.contains(e.target) &&
+        portalPanelRef.current && !portalPanelRef.current.contains(e.target)
+      ) {
         setIsOpen(false);
       }
     };
@@ -41,6 +54,18 @@ export default function RunFilterPanel({
       };
     }
   }, [isOpen]);
+
+  // Opens the panel and snapshots the trigger button's screen position so the
+  // portaled (position: fixed) panel can be anchored next to it. Only
+  // recomputed on open; the panel stays put while open, which is the expected
+  // popover behavior.
+  const handleToggle = () => {
+    if (!isOpen && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      setPanelPosition({ top: rect.bottom + 4, left: rect.left });
+    }
+    setIsOpen(!isOpen);
+  };
 
   const handleApply = () => {
     onFilterChange?.(localFilters);
@@ -69,7 +94,8 @@ export default function RunFilterPanel({
   return (
     <div style={{ position: "relative" }} ref={panelRef}>
       <button
-        onClick={() => setIsOpen(!isOpen)}
+        ref={triggerRef}
+        onClick={handleToggle}
         style={{
           display: "flex",
           alignItems: "center",
@@ -104,12 +130,13 @@ export default function RunFilterPanel({
         )}
       </button>
 
-      {isOpen && (
+      {isOpen && createPortal(
         <div
+          ref={portalPanelRef}
           style={{
-            position: "absolute",
-            top: "100%",
-            right: 0,
+            position: "fixed",
+            top: panelPosition.top,
+            left: panelPosition.left,
             background: "#fff",
             border: "1px solid #e2e8f0",
             borderRadius: "4px",
@@ -222,7 +249,8 @@ export default function RunFilterPanel({
               Apply Filters
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

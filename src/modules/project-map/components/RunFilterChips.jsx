@@ -8,16 +8,11 @@ export default function RunFilterChips({
   runFilters = {},
   onRemoveFilter,
 }) {
-  // Build readable filter labels
+  // Build readable filter labels — the status filter is no longer shown as a
+  // chip because RunStatusTabs now displays the active status right above the
+  // list. Only the run-date chip remains meaningful here.
   const filterLabels = useMemo(() => {
     const labels = [];
-
-    if (runFilters.status) {
-      labels.push({
-        key: "status",
-        label: `Run Status: ${runFilters.status}`,
-      });
-    }
 
     if (runFilters.runDateFrom || runFilters.runDateTo) {
       const from = runFilters.runDateFrom || "—";

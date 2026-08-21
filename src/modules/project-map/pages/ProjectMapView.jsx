@@ -20,6 +20,7 @@ import MapSearch from "../components/MapSearch";
 import FilterChips from "../components/FilterChips";
 import RunFilterPanel from "../components/RunFilterPanel";
 import RunFilterChips from "../components/RunFilterChips";
+import RunStatusTabs from "../components/RunStatusTabs";
 import ProjectStatusTabs from "../components/ProjectStatusTabs";
 
 export default function ProjectMapView({ projects: initialProjects = [], statuses = [], origins = [], states = [], runs: initialRuns = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [], runStatuses = [] }) {
@@ -183,6 +184,14 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
       setRunFilters({ ...runFilters, runDateFrom: "", runDateTo: "" });
     }
   }, [runFilters]);
+
+  // Selects a run status from the status tabs shown above the run list. Writes
+  // to the same `runFilters.status` value the old dropdown used so the run list
+  // stays in sync. An empty string ("All") means no status filter — the
+  // filteredRuns logic already treats empty status as "show all runs".
+  const handleRunStatusSelect = useCallback((statusName) => {
+    setRunFilters((prev) => ({ ...prev, status: statusName || "" }));
+  }, []);
 
   const dealers = useMemo(() => projects.map((p) => p.dealer).filter(Boolean), [projects]);
   const projectStates = useMemo(() => projects.map((p) => p.state_code).filter(Boolean), [projects]);
@@ -984,6 +993,16 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
         </div>
       )}
 
+      {mode === "runs" && (
+        <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", flexShrink: 0 }}>
+          <RunStatusTabs
+            runStatuses={runStatuses}
+            selectedStatus={runFilters.status || ""}
+            onSelectStatus={handleRunStatusSelect}
+          />
+        </div>
+      )}
+
       {mode === "projects" ? (
         <div style={{ padding: "4px 10px", background: "#fff", borderBottom: "1px solid #e2e8f0", flexShrink: 0 }}>
           <MapSearch 
@@ -994,14 +1013,14 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
           />
         </div>
       ) : (
-        <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "4px 10px", borderBottom: "1px solid #e2e8f0", background: "#fff", flexShrink: 0 }}>
+        <div style={{ padding: "4px 10px", background: "#fff", borderBottom: "1px solid #e2e8f0", flexShrink: 0 }}>
           <input
             type="text"
             placeholder="🔍 Search runs..."
             value={runSearch}
             onChange={(e) => setRunSearch(e.target.value)}
             style={{
-              flex: 1,
+              width: "100%",
               padding: "4px 8px",
               fontSize: "12px",
               border: "1px solid #e2e8f0",
@@ -1009,8 +1028,6 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
               outline: "none",
             }}
           />
-          <RunFilterPanel runFilters={runFilters} onFilterChange={setRunFilters} runStatuses={runStatuses} />
-          <button onClick={() => { setEditingRun(null); setShowRunForm(true); }} style={{ padding: "3px 10px", fontSize: "12px", borderRadius: "3px", border: "none", background: "#16a34a", color: "#fff", cursor: "pointer", whiteSpace: "nowrap" }}>+ New Run</button>
         </div>
       )}
 
@@ -1030,7 +1047,13 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
               <ProjectList projects={projects} selectedProjectId={selectedProjectId} onSelectProject={handleSelectProject} filters={filters} statuses={statuses} />
             </>
           ) : (
-            <RunList runs={filteredRuns} selectedRunId={selectedRunId} onSelectRun={handleSelectRun} isLoading={isLoadingRunDetails} />
+            <>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "4px 10px", borderBottom: "1px solid #e2e8f0", background: "#fff", flexShrink: 0 }}>
+                <RunFilterPanel runFilters={runFilters} onFilterChange={setRunFilters} runStatuses={runStatuses} />
+                <button onClick={() => { setEditingRun(null); setShowRunForm(true); }} style={{ padding: "3px 10px", fontSize: "12px", borderRadius: "3px", border: "none", background: "#16a34a", color: "#fff", cursor: "pointer", whiteSpace: "nowrap" }}>+ New Run</button>
+              </div>
+              <RunList runs={filteredRuns} selectedRunId={selectedRunId} onSelectRun={handleSelectRun} isLoading={isLoadingRunDetails} />
+            </>
           )}
         </div>
 

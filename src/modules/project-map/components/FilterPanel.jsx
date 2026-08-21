@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useRef, useEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faSliders } from "@fortawesome/free-solid-svg-icons";
 
 export default function FilterPanel({
-  statuses = [],
   permitStatuses = [],
   welcomeCallStatuses = [],
   dealers = [],
@@ -16,6 +16,15 @@ export default function FilterPanel({
   const [isOpen, setIsOpen] = useState(false);
   const [localFilters, setLocalFilters] = useState(filters);
   const panelRef = useRef(null);
+  // Ref for the trigger button and the portaled panel content so the
+  // outside-click handler can ignore clicks inside either. The panel is now a
+  // portal into document.body, so it lives in a different DOM subtree from the
+  // button and can no longer be covered by the single panelRef wrapper.
+  const triggerRef = useRef(null);
+  const portalPanelRef = useRef(null);
+  // Screen coordinates (top/left) where the portaled panel should render,
+  // derived from the trigger button's getBoundingClientRect() when opened.
+  const [panelPosition, setPanelPosition] = useState({ top: 0, left: 0 });
 
   useEffect(() => {
     setLocalFilters(filters);
@@ -24,7 +33,10 @@ export default function FilterPanel({
   // Close panel when clicking outside or pressing Escape
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (panelRef.current && !panelRef.current.contains(e.target)) {
+      if (
+        panelRef.current && !panelRef.current.contains(e.target) &&
+        portalPanelRef.current && !portalPanelRef.current.contains(e.target)
+      ) {
         setIsOpen(false);
       }
     };
@@ -44,6 +56,18 @@ export default function FilterPanel({
       };
     }
   }, [isOpen]);
+
+  // Opens the panel and snapshots the trigger button's screen position so the
+  // portaled (position: fixed) panel can be anchored next to it. Only
+  // recomputed on open; the panel stays put while open, which is the expected
+  // popover behavior.
+  const handleToggle = () => {
+    if (!isOpen && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      setPanelPosition({ top: rect.bottom + 4, left: rect.left });
+    }
+    setIsOpen(!isOpen);
+  };
 
   const handleApply = () => {
     onFilterChange?.(localFilters);
@@ -75,10 +99,6 @@ export default function FilterPanel({
     return Object.values(filters).filter((v) => v && v !== "").length;
   }, [filters]);
 
-  const statusOptions = useMemo(() => {
-    return statuses.map((s) => ({ label: s.status_name, value: String(s.status_id) }));
-  }, [statuses]);
-
   const permitStatusOptions = useMemo(() => {
     return permitStatuses.map((p) => ({ label: p.status_name, value: String(p.id) }));
   }, [permitStatuses]);
@@ -100,7 +120,8 @@ export default function FilterPanel({
   return (
     <div style={{ position: "relative" }} ref={panelRef}>
       <button
-        onClick={() => setIsOpen(!isOpen)}
+        ref={triggerRef}
+        onClick={handleToggle}
         style={{
           display: "flex",
           alignItems: "center",
@@ -135,12 +156,13 @@ export default function FilterPanel({
         )}
       </button>
 
-      {isOpen && (
+      {isOpen && createPortal(
         <div
+          ref={portalPanelRef}
           style={{
-            position: "absolute",
-            top: "100%",
-            right: 0,
+            position: "fixed",
+            top: panelPosition.top,
+            left: panelPosition.left,
             background: "#fff",
             border: "1px solid #e2e8f0",
             borderRadius: "4px",
@@ -159,30 +181,6 @@ export default function FilterPanel({
               Workflow Status
             </div>
             <div style={{ display: "flex", gap: "12px" }}>
-              {/* Project Status */}
-              <div style={{ flex: 1 }}>
-                <label style={{ display: "block", fontSize: "10px", fontWeight: 600, color: "#64748b", marginBottom: "3px" }}>
-                  Project Status
-                </label>
-                <select
-                  value={localFilters.status || ""}
-                  onChange={(e) => setLocalFilters({ ...localFilters, status: e.target.value })}
-                  style={{
-                    width: "100%",
-                    border: "1px solid #e2e8f0",
-                    borderRadius: "3px",
-                    padding: "4px 6px",
-                    fontSize: "11px",
-                    outline: "none",
-                  }}
-                >
-                  <option value="">All</option>
-                  {statusOptions.map((opt) => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
-              </div>
-
               {/* Permit Status */}
               <div style={{ flex: 1 }}>
                 <label style={{ display: "block", fontSize: "10px", fontWeight: 600, color: "#64748b", marginBottom: "3px" }}>
@@ -441,7 +439,8 @@ export default function FilterPanel({
               Apply Filters
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

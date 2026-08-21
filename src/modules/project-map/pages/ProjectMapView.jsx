@@ -20,6 +20,7 @@ import MapSearch from "../components/MapSearch";
 import FilterChips from "../components/FilterChips";
 import RunFilterPanel from "../components/RunFilterPanel";
 import RunFilterChips from "../components/RunFilterChips";
+import ProjectStatusTabs from "../components/ProjectStatusTabs";
 
 export default function ProjectMapView({ projects: initialProjects = [], statuses = [], origins = [], states = [], runs: initialRuns = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [], runStatuses = [] }) {
   const router = useRouter();
@@ -167,6 +168,13 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
       setFilters({ ...filters, [filterKey]: reset });
     }
   }, [filters]);
+
+  // Selects a project status from the status tabs shown above the project list.
+  // Writes to the same `filters.status` value the old dropdown used, so the list
+  // and the map pins update together. An empty string means "All" projects.
+  const handleProjectStatusSelect = useCallback((statusId) => {
+    setFilters((prev) => ({ ...prev, status: statusId || "" }));
+  }, []);
 
   const handleRemoveRunFilter = useCallback((filterKey) => {
     if (filterKey === "status") {
@@ -966,8 +974,25 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
 <button onClick={() => { startNavbarLoader(); router.push("/project-map/run-master"); }} style={{ padding: "6px 16px", fontSize: "12px", fontWeight: 400, border: "none", borderBottom: "2px solid transparent", background: "#fff", color: "#64748b", cursor: "pointer" }}>📋 Run Master List</button>
       </div>
 
+      {mode === "projects" && (
+        <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", flexShrink: 0 }}>
+          <ProjectStatusTabs
+            statuses={statuses}
+            selectedStatus={filters.status || ""}
+            onSelectStatus={handleProjectStatusSelect}
+          />
+        </div>
+      )}
+
       {mode === "projects" ? (
-        <FilterBar statuses={statuses} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} dealers={dealers} states={projectStates} filters={filters} onFilterChange={setFilters} onAddClick={() => { setEditingProject(null); setShowAddForm(true); }} />
+        <div style={{ padding: "4px 10px", background: "#fff", borderBottom: "1px solid #e2e8f0", flexShrink: 0 }}>
+          <MapSearch 
+            value={searchQuery} 
+            onChange={handleMapSearchChange} 
+            onSelect={handleMapSearchSelect} 
+            results={mapSearchResults}
+          />
+        </div>
       ) : (
         <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "4px 10px", borderBottom: "1px solid #e2e8f0", background: "#fff", flexShrink: 0 }}>
           <input
@@ -997,21 +1022,13 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
         <RunFilterChips runFilters={runFilters} onRemoveFilter={handleRemoveRunFilter} />
       )}
 
-      {mode === "projects" && (
-        <div style={{ padding: "4px 10px", background: "#fff", borderBottom: "1px solid #e2e8f0", flexShrink: 0 }}>
-          <MapSearch 
-            value={searchQuery} 
-            onChange={handleMapSearchChange} 
-            onSelect={handleMapSearchSelect} 
-            results={mapSearchResults}
-          />
-        </div>
-      )}
-
       <div style={{ flex: 1, display: "flex", position: "relative", overflow: "hidden", minHeight: 0 }}>
         <div style={{ width: "240px", minWidth: "240px", flexShrink: 0, zIndex: 10, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           {mode === "projects" ? (
-            <ProjectList projects={projects} selectedProjectId={selectedProjectId} onSelectProject={handleSelectProject} filters={filters} statuses={statuses} />
+            <>
+              <FilterBar statuses={statuses} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} dealers={dealers} states={projectStates} filters={filters} onFilterChange={setFilters} onAddClick={() => { setEditingProject(null); setShowAddForm(true); }} />
+              <ProjectList projects={projects} selectedProjectId={selectedProjectId} onSelectProject={handleSelectProject} filters={filters} statuses={statuses} />
+            </>
           ) : (
             <RunList runs={filteredRuns} selectedRunId={selectedRunId} onSelectRun={handleSelectRun} isLoading={isLoadingRunDetails} />
           )}

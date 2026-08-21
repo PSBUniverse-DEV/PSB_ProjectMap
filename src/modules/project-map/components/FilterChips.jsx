@@ -15,16 +15,6 @@ export default function FilterChips({
   const filterLabels = useMemo(() => {
     const labels = [];
 
-    if (filters.status) {
-      const status = statuses.find((s) => String(s.status_id) === filters.status);
-      if (status) {
-        labels.push({
-          key: "status",
-          label: `Project Status: ${status.status_name}`,
-        });
-      }
-    }
-
     if (filters.permitStatus) {
       const permit = permitStatuses.find((p) => String(p.id) === filters.permitStatus);
       if (permit) {
@@ -87,7 +77,7 @@ export default function FilterChips({
     }
 
     return labels;
-  }, [filters, statuses, permitStatuses, welcomeCallStatuses]);
+  }, [filters, permitStatuses, welcomeCallStatuses]);
 
   if (filterLabels.length === 0) {
     return null;

@@ -24,6 +24,7 @@ export default async function RunMasterPage() {
       statuses={setup.projectStatuses || []}
       runStatuses={setup.runStatuses || []}
       paymentMethods={setup.paymentMethods || []}
+      states={setup.states || []}
     />
   );
 }

@@ -261,7 +261,7 @@ export function generatePaidSheetPrint(run, runProjects, paidSheet = null) {
       <div class="info-value ${paidSheet?.dot_number ? "" : "blank"}">${paidSheet?.dot_number || "—"}</div>
     </div>
     <div class="info-cell">
-      <div class="info-label">State / Route</div>
+      <div class="info-label">State</div>
       <div class="info-value ${paidSheet?.state_route ? "" : "blank"}">${paidSheet?.state_route || "—"}</div>
     </div>
   </div>

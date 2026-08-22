@@ -37,6 +37,7 @@ export default function PaidSheetForm({
   run = null,
   projects = [],
   paymentMethods = [],
+  states = [],
   onClose,
   onSaved,
 }) {
@@ -221,14 +222,21 @@ export default function PaidSheetForm({
               />
             </div>
             <div>
-              <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>State/Route</label>
-              <input
-                type="text"
-                value={headerFields.state_route}
-                onChange={(e) => handleHeaderChange("state_route", e.target.value)}
+              <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>State</label>
+              <select
+                value={headerFields.state_route || ""}
+                onChange={(e) => handleHeaderChange("state_route", e.target.value || null)}
                 style={inputStyle}
-                placeholder="State / route..."
-              />
+              >
+                <option value="">Select...</option>
+                {(states || [])
+                  .filter((s) => s.is_active !== false)
+                  .slice()
+                  .sort((a, b) => (a.display_order || 0) - (b.display_order || 0))
+                  .map((s) => (
+                    <option key={s.id} value={s.state_code}>{s.state_name}</option>
+                  ))}
+              </select>
             </div>
           </div>
           <div>

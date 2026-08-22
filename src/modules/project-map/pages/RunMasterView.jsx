@@ -23,7 +23,7 @@ import RunForm from "../components/RunForm";
 import PaidSheetForm from "../components/PaidSheetForm";
 import "./run-master.css";
 
-export default function RunMasterView({ runs = [], origins = [], statuses = [], runStatuses = [], paymentMethods = [] }) {
+export default function RunMasterView({ runs = [], origins = [], statuses = [], runStatuses = [], paymentMethods = [], states = [] }) {
   const router = useRouter();
 
   // ---- State ----
@@ -441,7 +441,7 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
       },
       {
         key: "state_route",
-        label: "State/Route",
+        label: "State",
         sortable: true,
         render: (row) => row.state_route || "—",
       },
@@ -621,6 +621,7 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
         run={editingRunDetail?.run}
         projects={editingRunDetail?.projects || []}
         paymentMethods={paymentMethods}
+        states={states}
         onClose={handleClosePaidSheetForm}
         onSaved={handlePaidSheetSaved}
       />
@@ -642,7 +643,7 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
                 <strong>Installer</strong> <span style={{ color: "#64748b" }}>— who's assigned to run this route.</span>
               </div>
               <div style={{ marginBottom: "5px" }}>
-                <strong>Route Info</strong> <span style={{ color: "#64748b" }}>— phone number, DOT#, state/route, and extra notes.</span>
+                <strong>Route Info</strong> <span style={{ color: "#64748b" }}>— phone number, DOT#, state, and extra notes.</span>
               </div>
               <div style={{ marginBottom: "5px" }}>
                 <strong>Payment Status & Signatures</strong> <span style={{ color: "#64748b" }}>— mark the run as paid (reveals Paid Date and Reference #), plus PSB Representative name and signature dates.</span>

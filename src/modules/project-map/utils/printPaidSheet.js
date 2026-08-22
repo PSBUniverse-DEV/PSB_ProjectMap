@@ -14,7 +14,7 @@
  * editable UI lives in PaidSheetForm.jsx; printing always reflects what
  * was already saved.
  */
-import { stripTownshipLabel } from "../data/projectMap.data";
+import { formatProjectDescriptionForDisplay } from "../data/projectMap.data";
 export function generatePaidSheetPrint(run, runProjects, paidSheet = null) {
   const now = new Date();
   const printDate = now.toLocaleString("en-US", { month: "long", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
@@ -43,9 +43,7 @@ export function generatePaidSheetPrint(run, runProjects, paidSheet = null) {
     const proj = rp.proj_t_projects || {};
     const orderNo = proj.invoice_number || "—";
     const description = proj.client_name || `Stop #${idx + 1}`;
-    const address = stripTownshipLabel(proj.formatted_address) || (
-      [proj.address_line_1, stripTownshipLabel(proj.city), proj.state, proj.postal_code].filter(Boolean).join(", ")
-    ) || "No address";
+    const dimensionDisplay = formatProjectDescriptionForDisplay(proj.dimension) || "—";
     const paymentMethod = proj.proj_s_payment_method?.method_description
       || proj.proj_s_payment_method?.method_name
       || "—";
@@ -57,7 +55,7 @@ export function generatePaidSheetPrint(run, runProjects, paidSheet = null) {
         <td class="cell"><span class="order-no">${orderNo}</span></td>
         <td class="cell desc">
           <div class="client">${description}</div>
-          <div class="addr">${address}</div>
+          <div class="addr">${dimensionDisplay}</div>
         </td>
         <td class="cell"><span class="pm">${paymentMethod}</span></td>
         <td class="cell ref">${refNo}</td>

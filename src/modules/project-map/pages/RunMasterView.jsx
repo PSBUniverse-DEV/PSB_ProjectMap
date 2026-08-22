@@ -434,6 +434,18 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
         render: (row) => row.team_assigned || "—",
       },
       {
+        key: "dot_number",
+        label: "DOT#",
+        sortable: true,
+        render: (row) => row.dot_number || "—",
+      },
+      {
+        key: "state_route",
+        label: "State/Route",
+        sortable: true,
+        render: (row) => row.state_route || "—",
+      },
+      {
         key: "status",
         label: "Status",
         sortable: true,

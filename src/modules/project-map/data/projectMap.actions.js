@@ -1014,24 +1014,122 @@ export async function createRun(runData) {
   return data;
 }
 
+/**
+ * updateRun — updates a single run row.
+ *
+ * Beyond the normal save, this is where the "run completed" cascade lives:
+ * the first time a run transitions INTO the "Completed" status, every project
+ * assigned to the run (via proj_t_run_projects) is set to the "Fully Installed"
+ * project status — regardless of what status they had before.
+ *
+ * Business rules:
+ * - The cascade is deliberately ONE-WAY. Reopening a run to another status
+ *   later does NOT revert the projects back to their prior statuses.
+ * - The cascade fires only on the actual transition into "Completed"
+ *   (previousStatus !== "Completed" && newStatus === "Completed"), not on every
+ *   save of a run that is already "Completed".
+ * - The previous status must be read from proj_t_runs first because the caller
+ *   only passes the new update values, and we need the old value to compare.
+ * - Cascade failures are logged but never thrown: the run itself saved fine,
+ *   so a failed project-status sync must not surface as a failed run save.
+ * - Return value: the updated run row, plus `_cascadedProjectIds` and
+ *   `_cascadedStatusId` when THIS save's transition into "Completed" moved
+ *   projects to "Fully Installed". Those underscore-prefixed keys (never real
+ *   proj_t_runs columns) let the client patch its local state without a
+ *   refetch; they are absent whenever nothing cascaded.
+ */
 export async function updateRun(runId, updates) {
   const supabase = getSupabaseAdmin();
   const now = new Date().toISOString();
 
+  // Read the run's current status before writing so the transition into
+  // "Completed" can be detected (updates only carries the new values).
+  const { data: existingRun, error: fetchError } = await supabase
+    .from("proj_t_runs")
+    .select("id, status")
+    .eq("id", runId)
+    .maybeSingle();
+  if (fetchError) throw new Error(fetchError.message);
+
   const payload = { ...updates, updated_at: now };
-  
+
   // Ensure run_name is properly handled
   if (payload.run_name !== undefined) {
     payload.run_name = payload.run_name ? String(payload.run_name).trim() : null;
   }
-  
+
   if (payload.status && !RUN_STATUSES.includes(payload.status)) {
     payload.status = "Draft";
   }
 
   const { data, error } = await supabase.from("proj_t_runs").update(payload).eq("id", runId).select("*").single();
   if (error) throw new Error(error.message);
-  return data;
+
+  // ─── One-way cascade: run → "Completed" sets every stop to "Fully Installed" ───
+  const previousStatus = existingRun?.status ?? null;
+  const newStatus = payload.status !== undefined ? payload.status : previousStatus;
+
+  // When the cascade actually moves projects, remembers which ones (and to what
+  // status) so the caller can patch local state without a refetch.
+  let cascadeResult = null;
+
+  if (previousStatus !== "Completed" && newStatus === "Completed") {
+    try {
+      // Resolve the "Fully Installed" status_id dynamically by name. The id is a
+      // serial PK (currently 9) and setup rows are user-editable, so hardcoding
+      // it would silently corrupt the cascade if the row is ever re-created.
+      const { data: fullyInstalled, error: statusError } = await supabase
+        .from("proj_s_project_status")
+        .select("status_id")
+        .eq("status_name", "Fully Installed")
+        .maybeSingle();
+
+      if (statusError) throw statusError;
+
+      if (!fullyInstalled) {
+        // A missing lookup row is not a run-save failure; log and skip the cascade.
+        console.error(
+          "[updateRun] 'Fully Installed' status row not found in proj_s_project_status; skipping project status cascade for run #" + runId
+        );
+      } else {
+        // Collect every project assigned to this run.
+        const { data: mappings, error: mappingsError } = await supabase
+          .from("proj_t_run_projects")
+          .select("project_id")
+          .eq("run_id", runId);
+
+        if (mappingsError) throw mappingsError;
+
+        const projectIds = (mappings || []).map((m) => m.project_id);
+
+        // Zero stops → nothing to update; not an error.
+        if (projectIds.length > 0) {
+          const { error: cascadeError } = await supabase
+            .from("proj_t_projects")
+            .update({ status_id: fullyInstalled.status_id, updated_at: now })
+            .in("id", projectIds);
+
+          if (cascadeError) throw cascadeError;
+
+          cascadeResult = { projectIds, statusId: fullyInstalled.status_id };
+        }
+      }
+    } catch (cascadeErr) {
+      // Run save already succeeded; a failure here must not fail the response.
+      // Log it so this silent partial failure stays visible in server logs.
+      console.error(
+        "[updateRun] Failed to cascade project status to 'Fully Installed' for run #" + runId + ":",
+        cascadeErr?.message ?? cascadeErr
+      );
+    }
+  }
+
+  // Attach cascade metadata only when it actually ran, so callers that don't
+  // care (RunForm, PaidSheetForm, route-estimate saves) see the plain run row
+  // exactly as before and nothing can be mistaken for a real column.
+  return cascadeResult
+    ? { ...data, _cascadedProjectIds: cascadeResult.projectIds, _cascadedStatusId: cascadeResult.statusId }
+    : data;
 }
 
 export async function deleteRun(runId) {
@@ -1170,7 +1268,32 @@ export async function loadRuns() {
     .order("run_date", { ascending: false });
 
   if (error) throw new Error(error.message);
-  return data || [];
+
+  const runs = data || [];
+  const runIds = runs.map((r) => r.id).filter(Boolean);
+
+  // Fetch each run's Paid Sheet header (proj_t_paid_sheet) in a single batched
+  // query rather than one query per row. proj_t_paid_sheet holds one row per
+  // run (run_id UNIQUE), so a run with no saved Paid Sheet yet has no entry
+  // here — dot_number/state_route stay null until the sheet is saved.
+  let paidSheetByRunId = {};
+  if (runIds.length > 0) {
+    const { data: psData, error: psError } = await supabase
+      .from("proj_t_paid_sheet")
+      .select("run_id, dot_number, state_route")
+      .in("run_id", runIds);
+    if (psError) throw new Error(psError.message);
+    paidSheetByRunId = Object.fromEntries((psData || []).map((ps) => [ps.run_id, ps]));
+  }
+
+  return runs.map((run) => {
+    const ps = paidSheetByRunId[run.id];
+    return {
+      ...run,
+      dot_number: ps?.dot_number ?? null,
+      state_route: ps?.state_route ?? null,
+    };
+  });
 }
 
 export async function loadAllRunProjects() {

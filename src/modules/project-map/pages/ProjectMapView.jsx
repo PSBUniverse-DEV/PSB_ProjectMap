@@ -552,7 +552,30 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
   const handleRunStatusChange = useCallback(async (newStatus) => {
     if (!selectedRunId) return;
     try {
-      await updateRun(selectedRunId, { status: newStatus });
+      const updatedRun = await updateRun(selectedRunId, { status: newStatus });
+
+      // When the run cascade fires, updateRun reports which projects it moved
+      // to "Fully Installed". Patch local projects state so the project list,
+      // map pins, and detail drawer update immediately — same targeted-patch
+      // pattern as the stop note/date/invoice handlers, no full reload.
+      if (updatedRun?._cascadedProjectIds?.length) {
+        // The list/map/drawer read the label from the nested relation first,
+        // so patch both the status FK and the joined status object.
+        const cascadedStatus =
+          statuses.find((s) => s.status_id === updatedRun._cascadedStatusId) || null;
+        setProjects((prev) =>
+          prev.map((p) =>
+            updatedRun._cascadedProjectIds.includes(p.id)
+              ? {
+                  ...p,
+                  status_id: updatedRun._cascadedStatusId,
+                  proj_s_project_status: cascadedStatus ?? p.proj_s_project_status,
+                }
+              : p
+          )
+        );
+      }
+
       await refreshRuns();
       toastSuccess("Run status updated.", "Runs");
     } catch (err) {
@@ -560,7 +583,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
       toastError(err?.message || "Failed to update run status.", "Runs");
       throw err; // rethrow so RunDetailPanel keeps its editor open for retry
     }
-  }, [selectedRunId, refreshRuns]);
+  }, [selectedRunId, refreshRuns, statuses]);
 
   const handleSelectRun = (id) => {
     console.log("[DEBUG] handleSelectRun:", id);

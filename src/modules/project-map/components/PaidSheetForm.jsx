@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { Button, Modal, toastError, toastSuccess } from "@/shared/components/ui";
 import { updateRun, updateProjectPaymentInfo, loadPaidSheet, upsertPaidSheet } from "../data/projectMap.actions";
-import { stripTownshipLabel } from "../data/projectMap.data";
+import { formatProjectDescriptionForDisplay } from "../data/projectMap.data";
 
 /**
  * formatCurrency — local copy of the helper used in RunMasterView.jsx so
@@ -26,7 +26,7 @@ function formatCurrency(value) {
  * stop on proj_t_projects.
  *
  * Order #, Description, and Amount are read-only (pulled from the
- * project record — invoice_number / client_name+address / project_subtotal).
+ * project record — invoice_number / client_name + building dimension / project_subtotal).
  * Only Installer, Payment Method, Ref #, and Notes are editable and
  * written back. Unrelated project fields are never touched, which is
  * why saving uses the narrow updateProjectPaymentInfo action rather
@@ -42,6 +42,9 @@ export default function PaidSheetForm({
 }) {
   const [busy, setBusy] = useState(false);
   const [installer, setInstaller] = useState("");
+  // Confirmation gate for unchecking "Mark run as paid" — destructive because
+  // it hides the Paid Date / Paid Reference fields.
+  const [showUnmarkConfirm, setShowUnmarkConfirm] = useState(false);
   // stopValues keyed by project id → { payment_method_type, payment_method_number, paid_sheet_notes, paid_sheet_done }
   const [stopValues, setStopValues] = useState({});
   // Run-level paid-sheet header fields (proj_t_paid_sheet, one row per run).
@@ -123,6 +126,22 @@ export default function PaidSheetForm({
     setHeaderFields((h) => ({ ...h, [field]: value }));
   };
 
+  /**
+   * Checkbox toggle for "Mark run as paid".
+   *
+   * Checking (→ paid) is applied directly. Unchecking (→ unpaid) is gated
+   * behind a confirmation because it hides the Paid Date and Paid Reference
+   * fields — if the user cancels, the checkbox stays checked and no state
+   * changes.
+   */
+  const handlePaidCheckChange = (e) => {
+    if (e.target.checked) {
+      handleHeaderChange("is_paid", true);
+      return;
+    }
+    setShowUnmarkConfirm(true);
+  };
+
   const handleSave = async () => {
     setBusy(true);
     try {
@@ -161,9 +180,10 @@ export default function PaidSheetForm({
   const sectionStyle = { background: "#f8fafc", padding: "12px", borderRadius: "4px", border: "1px solid #e2e8f0", marginBottom: "10px" };
   const sectionTitleStyle = { fontSize: "11px", fontWeight: 700, color: "#1e293b", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: "10px" };
 
-  return (
-    <Modal show={show} onHide={onClose} title={title} size="xl">
-      <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+    return (
+    <>
+      <Modal show={show} onHide={onClose} title={title} size="xl">
+        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
         {/* Section 1: Installer */}
         <div style={sectionStyle}>
           <div style={sectionTitleStyle}>Installer</div>
@@ -231,7 +251,7 @@ export default function PaidSheetForm({
               type="checkbox"
               id="paid-check"
               checked={headerFields.is_paid}
-              onChange={(e) => handleHeaderChange("is_paid", e.target.checked)}
+              onChange={handlePaidCheckChange}
               style={{ width: "15px", height: "15px", cursor: "pointer" }}
             />
             <label htmlFor="paid-check" style={{ fontSize: "12px", fontWeight: 700, color: "#1e293b", cursor: "pointer", margin: 0 }}>
@@ -293,13 +313,12 @@ export default function PaidSheetForm({
                   const proj = rp.proj_t_projects || {};
                   const v = stopValues[proj.id] || { payment_method_type: "", payment_method_number: "", paid_sheet_notes: "", paid_sheet_done: false };
                   const orderNo = proj.invoice_number || "";
-                  const address = stripTownshipLabel(proj.formatted_address) || [proj.address_line_1, stripTownshipLabel(proj.city), proj.state, proj.postal_code].filter(Boolean).join(", ");
                   return (
                     <tr key={proj.id}>
                       <td style={cellStyle}>{orderNo}</td>
                       <td style={cellStyle}>
                         <div style={{ fontWeight: 600, color: "#1e293b" }}>{proj.client_name || `Stop #${idx + 1}`}</div>
-                        <div style={{ color: "#64748b", fontSize: "11px", marginTop: "2px" }}>{address}</div>
+                        <div style={{ color: "#64748b", fontSize: "11px", marginTop: "2px" }}>{formatProjectDescriptionForDisplay(proj.dimension) || "—"}</div>
                       </td>
                       <td style={cellStyle}>
                         <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
@@ -364,8 +383,32 @@ export default function PaidSheetForm({
           <Button variant="primary" loading={busy} onClick={handleSave}>
             Save Changes
           </Button>
-        </div>
+                </div>
       </div>
     </Modal>
+
+    {/* Unmark-as-paid confirmation — rendered as a top-level sibling (not nested
+        inside the main form Modal's body) so its Portal stacks above the form
+        Modal's backdrop and its buttons receive click events. */}
+    <Modal show={showUnmarkConfirm} onHide={() => setShowUnmarkConfirm(false)} title="Unmark Run as Paid?">
+      <p style={{ fontSize: "13px", color: "#1e293b", margin: "0 0 16px", lineHeight: 1.5 }}>
+        Unmark this run as paid?
+      </p>
+      <p style={{ fontSize: "12px", color: "#64748b", margin: "0 0 16px", lineHeight: "1.5" }}>
+        This will clear the Paid Date and Paid Reference fields for this run.
+      </p>
+      <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+        <Button variant="secondary" onClick={() => { setShowUnmarkConfirm(false); }}>Cancel</Button>
+        <Button variant="danger"
+      onClick={() => {
+        setShowUnmarkConfirm(false);
+        setHeaderFields((h) => ({ ...h, is_paid: false, paid_date: null, paid_reference: null }));
+      }}
+    >
+      Unmark
+    </Button>
+      </div>
+    </Modal>
+  </>
   );
 }

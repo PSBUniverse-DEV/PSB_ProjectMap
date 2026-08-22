@@ -105,7 +105,31 @@ export async function loadRuns() {
     .order("run_date", { ascending: false });
 
   if (error) throw new Error(error.message);
-  return data || [];
+
+  const runs = data || [];
+  const runIds = runs.map((r) => r.id).filter(Boolean);
+
+  // Fetch each run's Paid Sheet header (proj_t_paid_sheet) in a single batched
+  // query rather than one query per row. A run with no saved Paid Sheet row has
+  // no entry here, so dot_number/state_route stay null until the sheet is saved.
+  let paidSheetByRunId = {};
+  if (runIds.length > 0) {
+    const { data: psData, error: psError } = await supabase
+      .from("proj_t_paid_sheet")
+      .select("run_id, dot_number, state_route")
+      .in("run_id", runIds);
+    if (psError) throw new Error(psError.message);
+    paidSheetByRunId = Object.fromEntries((psData || []).map((ps) => [ps.run_id, ps]));
+  }
+
+  return runs.map((run) => {
+    const ps = paidSheetByRunId[run.id];
+    return {
+      ...run,
+      dot_number: ps?.dot_number ?? null,
+      state_route: ps?.state_route ?? null,
+    };
+  });
 }
 
 export async function loadRunDetails(runId) {

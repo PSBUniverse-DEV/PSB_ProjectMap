@@ -100,7 +100,6 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
       btns.push({ label: "Print Record", onClick: print, variant: "secondary" });
     } else if (status === "Completed") {
       btns.push({ label: "Print Record", onClick: print, variant: "primary" });
-      btns.push({ label: "Duplicate", onClick: () => {}, variant: "secondary" });
     } else {
       btns.push({ label: "Print Record", onClick: print, variant: "primary" });
     }

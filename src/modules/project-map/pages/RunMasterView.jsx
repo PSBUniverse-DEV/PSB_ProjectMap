@@ -84,8 +84,8 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
 
   const getRunRevenue = useCallback(
     (run) => {
-      if (Array.isArray(run.runs_stops)) {
-        return run.runs_stops.reduce((sum, rp) => {
+      if (Array.isArray(run.proj_t_run_projects)) {
+        return run.proj_t_run_projects.reduce((sum, rp) => {
           const proj = rp.proj_t_projects || {};
           return sum + (Number(proj.project_subtotal) || 0);
         }, 0);

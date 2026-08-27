@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faSliders } from "@fortawesome/free-solid-svg-icons";
+import MultiSelectDropdown from "../../../shared/components/ui/controls/MultiSelectDropdown";
 
 export default function FilterPanel({
   permitStatuses = [],
@@ -78,10 +79,10 @@ export default function FilterPanel({
     const cleared = {
       search: "",
       status: "",
-      permitStatus: "",
-      welcomeCallStatus: "",
-      dealer: "",
-      state: "",
+      permitStatus: [],
+      welcomeCallStatus: [],
+      dealer: [],
+      state: [],
       orderReceivedFrom: "",
       orderReceivedTo: "",
       scheduledFrom: "",
@@ -96,7 +97,9 @@ export default function FilterPanel({
 
   // Count active filters (excluding empty values)
   const activeFilterCount = useMemo(() => {
-    return Object.values(filters).filter((v) => v && v !== "").length;
+    return Object.values(filters).filter((v) =>
+      Array.isArray(v) ? v.length > 0 : v && v !== ""
+    ).length;
   }, [filters]);
 
   const permitStatusOptions = useMemo(() => {
@@ -186,23 +189,12 @@ export default function FilterPanel({
                 <label style={{ display: "block", fontSize: "10px", fontWeight: 600, color: "#64748b", marginBottom: "3px" }}>
                   Permit Status
                 </label>
-                <select
-                  value={localFilters.permitStatus || ""}
-                  onChange={(e) => setLocalFilters({ ...localFilters, permitStatus: e.target.value })}
-                  style={{
-                    width: "100%",
-                    border: "1px solid #e2e8f0",
-                    borderRadius: "3px",
-                    padding: "4px 6px",
-                    fontSize: "11px",
-                    outline: "none",
-                  }}
-                >
-                  <option value="">All</option>
-                  {permitStatusOptions.map((opt) => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
+                <MultiSelectDropdown
+                  options={permitStatusOptions}
+                  selectedValues={localFilters.permitStatus || []}
+                  onChange={(vals) => setLocalFilters({ ...localFilters, permitStatus: vals })}
+                  placeholder="All"
+                />
               </div>
 
               {/* Welcome Call Status */}
@@ -210,23 +202,12 @@ export default function FilterPanel({
                 <label style={{ display: "block", fontSize: "10px", fontWeight: 600, color: "#64748b", marginBottom: "3px" }}>
                   Welcome Call Status
                 </label>
-                <select
-                  value={localFilters.welcomeCallStatus || ""}
-                  onChange={(e) => setLocalFilters({ ...localFilters, welcomeCallStatus: e.target.value })}
-                  style={{
-                    width: "100%",
-                    border: "1px solid #e2e8f0",
-                    borderRadius: "3px",
-                    padding: "4px 6px",
-                    fontSize: "11px",
-                    outline: "none",
-                  }}
-                >
-                  <option value="">All</option>
-                  {welcomeCallStatusOptions.map((opt) => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
+                <MultiSelectDropdown
+                  options={welcomeCallStatusOptions}
+                  selectedValues={localFilters.welcomeCallStatus || []}
+                  onChange={(vals) => setLocalFilters({ ...localFilters, welcomeCallStatus: vals })}
+                  placeholder="All"
+                />
               </div>
             </div>
           </div>
@@ -242,23 +223,12 @@ export default function FilterPanel({
                 <label style={{ display: "block", fontSize: "10px", fontWeight: 600, color: "#64748b", marginBottom: "3px" }}>
                   State
                 </label>
-                <select
-                  value={localFilters.state || ""}
-                  onChange={(e) => setLocalFilters({ ...localFilters, state: e.target.value })}
-                  style={{
-                    width: "100%",
-                    border: "1px solid #e2e8f0",
-                    borderRadius: "3px",
-                    padding: "4px 6px",
-                    fontSize: "11px",
-                    outline: "none",
-                  }}
-                >
-                  <option value="">All</option>
-                  {uniqueStates.map((opt) => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
+                <MultiSelectDropdown
+                  options={uniqueStates}
+                  selectedValues={localFilters.state || []}
+                  onChange={(vals) => setLocalFilters({ ...localFilters, state: vals })}
+                  placeholder="All"
+                />
               </div>
 
               {/* Dealer */}
@@ -266,23 +236,12 @@ export default function FilterPanel({
                 <label style={{ display: "block", fontSize: "10px", fontWeight: 600, color: "#64748b", marginBottom: "3px" }}>
                   Dealer
                 </label>
-                <select
-                  value={localFilters.dealer || ""}
-                  onChange={(e) => setLocalFilters({ ...localFilters, dealer: e.target.value })}
-                  style={{
-                    width: "100%",
-                    border: "1px solid #e2e8f0",
-                    borderRadius: "3px",
-                    padding: "4px 6px",
-                    fontSize: "11px",
-                    outline: "none",
-                  }}
-                >
-                  <option value="">All</option>
-                  {uniqueDealers.map((opt) => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
+                <MultiSelectDropdown
+                  options={uniqueDealers}
+                  selectedValues={localFilters.dealer || []}
+                  onChange={(vals) => setLocalFilters({ ...localFilters, dealer: vals })}
+                  placeholder="All"
+                />
               </div>
             </div>
           </div>

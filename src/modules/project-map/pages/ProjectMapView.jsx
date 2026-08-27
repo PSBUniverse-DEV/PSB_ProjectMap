@@ -150,20 +150,31 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
     setEditingStopNote(null);
   }, []);
 
-  const handleRemoveFilter = useCallback((filterKey) => {
+  const handleRemoveFilter = useCallback((filterKey, value) => {
+    // Called with a specific value: remove just that value from a multi-select
+    // filter array (permitStatus, welcomeCallStatus, dealer, state), leaving
+    // any other selected values in place.
+    if (value !== undefined) {
+      setFilters((prev) => ({
+        ...prev,
+        [filterKey]: (prev[filterKey] || []).filter((v) => v !== value),
+      }));
+      return;
+    }
+
     const filterResets = {
       status: "",
-      permitStatus: "",
-      welcomeCallStatus: "",
-      dealer: "",
-      state: "",
+      permitStatus: [],
+      welcomeCallStatus: [],
+      dealer: [],
+      state: [],
       orderReceived: { orderReceivedFrom: "", orderReceivedTo: "" },
       scheduled: { scheduledFrom: "", scheduledTo: "" },
       install: { installFrom: "", installTo: "" },
     };
 
     const reset = filterResets[filterKey];
-    if (typeof reset === "object") {
+    if (reset && typeof reset === "object" && !Array.isArray(reset)) {
       setFilters({ ...filters, ...reset });
     } else {
       setFilters({ ...filters, [filterKey]: reset });
@@ -213,16 +224,16 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
       if (filters.status && String(p.status_id) !== filters.status) {
         return false;
       }
-      if (filters.permitStatus && String(p.permit_status_id) !== filters.permitStatus) {
+      if (Array.isArray(filters.permitStatus) && filters.permitStatus.length > 0 && !filters.permitStatus.includes(String(p.permit_status_id))) {
         return false;
       }
-      if (filters.welcomeCallStatus && String(p.welcome_call_status_id) !== filters.welcomeCallStatus) {
+      if (Array.isArray(filters.welcomeCallStatus) && filters.welcomeCallStatus.length > 0 && !filters.welcomeCallStatus.includes(String(p.welcome_call_status_id))) {
         return false;
       }
-      if (filters.dealer && p.dealer !== filters.dealer) {
+      if (Array.isArray(filters.dealer) && filters.dealer.length > 0 && !filters.dealer.includes(p.dealer)) {
         return false;
       }
-      if (filters.state && p.state_code !== filters.state) {
+      if (Array.isArray(filters.state) && filters.state.length > 0 && !filters.state.includes(p.state_code)) {
         return false;
       }
       

@@ -29,7 +29,7 @@ export default function ProjectList({ projects = [], selectedProjectId, onSelect
 
   const filteredProjects = useMemo(() => {
     return projects.filter((p) => {
-      if (filters.status && String(p.status_id) !== String(filters.status)) return false;
+      if (Array.isArray(filters.status) && filters.status.length > 0 && !filters.status.includes(String(p.status_id))) return false;
       if (Array.isArray(filters.permitStatus) && filters.permitStatus.length > 0 && !filters.permitStatus.includes(String(p.permit_status_id))) return false;
       if (Array.isArray(filters.welcomeCallStatus) && filters.welcomeCallStatus.length > 0 && !filters.welcomeCallStatus.includes(String(p.welcome_call_status_id))) return false;
       if (Array.isArray(filters.dealer) && filters.dealer.length > 0 && !filters.dealer.includes(p.dealer)) return false;

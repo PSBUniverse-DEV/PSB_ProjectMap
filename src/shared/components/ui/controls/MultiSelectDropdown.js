@@ -30,11 +30,18 @@ MultiSelectToggle.displayName = "MultiSelectToggle";
 const PortalMenu = forwardRef(({ children, style, className, "aria-labelledby": labeledBy }, ref) => {
   return createPortal(
     <div
+<<<<<<< HEAD
       data-multiselect-portal
+=======
+>>>>>>> 7452523 (Done. The portaled menu div in `src\shared\components\ui\controls\MultiSelectDropdown.js` now carries the stable, queryable attribute:)
       ref={ref}
       style={style}
       className={className}
       aria-labelledby={labeledBy}
+<<<<<<< HEAD
+=======
+      data-multiselect-portal="true"
+>>>>>>> 7452523 (Done. The portaled menu div in `src\shared\components\ui\controls\MultiSelectDropdown.js` now carries the stable, queryable attribute:)
     >
       {children}
     </div>,

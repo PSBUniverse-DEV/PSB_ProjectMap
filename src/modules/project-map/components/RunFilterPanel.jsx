@@ -4,7 +4,6 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faSliders } from "@fortawesome/free-solid-svg-icons";
-import { resolveRunStatusOptions } from "../data/projectMap.data";
 
 export default function RunFilterPanel({
   runFilters = {},
@@ -73,11 +72,7 @@ export default function RunFilterPanel({
   };
 
   const handleClearAll = () => {
-    const cleared = {
-      status: "",
-      runDateFrom: "",
-      runDateTo: "",
-    };
+    const cleared = { ...localFilters, runDateFrom: "", runDateTo: "" };
     setLocalFilters(cleared);
     onFilterChange?.(cleared);
     setIsOpen(false);
@@ -85,10 +80,7 @@ export default function RunFilterPanel({
 
   // Count active filters (excluding empty values)
   const activeFilterCount = useMemo(() => {
-    let count = 0;
-    if (runFilters.status) count++;
-    if (runFilters.runDateFrom || runFilters.runDateTo) count++;
-    return count;
+    return (runFilters.runDateFrom || runFilters.runDateTo) ? 1 : 0;
   }, [runFilters]);
 
   return (
@@ -147,30 +139,6 @@ export default function RunFilterPanel({
             marginTop: "4px",
           }}
         >
-          {/* RUN STATUS SECTION */}
-          <div style={{ marginBottom: "16px" }}>
-            <div style={{ fontSize: "11px", fontWeight: 700, color: "#1e293b", marginBottom: "8px", paddingBottom: "6px", borderBottom: "1px solid #e2e8f0" }}>
-              Run Status
-            </div>
-            <select
-              value={localFilters.status || ""}
-              onChange={(e) => setLocalFilters({ ...localFilters, status: e.target.value })}
-              style={{
-                width: "100%",
-                border: "1px solid #e2e8f0",
-                borderRadius: "3px",
-                padding: "4px 6px",
-                fontSize: "11px",
-                outline: "none",
-              }}
-            >
-              <option value="">All Statuses</option>
-              {resolveRunStatusOptions(runStatuses).map((status) => (
-                <option key={status} value={status}>{status}</option>
-              ))}
-            </select>
-          </div>
-
           {/* RUN DATE SECTION */}
           <div style={{ marginBottom: "16px" }}>
             <div style={{ fontSize: "11px", fontWeight: 700, color: "#1e293b", marginBottom: "8px", paddingBottom: "6px", borderBottom: "1px solid #e2e8f0" }}>

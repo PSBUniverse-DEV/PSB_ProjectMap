@@ -29,7 +29,13 @@ MultiSelectToggle.displayName = "MultiSelectToggle";
 // the DOM location changes, not the Popper positioning logic.
 const PortalMenu = forwardRef(({ children, style, className, "aria-labelledby": labeledBy }, ref) => {
   return createPortal(
-    <div ref={ref} style={style} className={className} aria-labelledby={labeledBy}>
+    <div
+      data-multiselect-portal
+      ref={ref}
+      style={style}
+      className={className}
+      aria-labelledby={labeledBy}
+    >
       {children}
     </div>,
     document.body

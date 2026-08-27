@@ -34,6 +34,13 @@ export default function FilterPanel({
   // Close panel when clicking outside or pressing Escape
   useEffect(() => {
     const handleClickOutside = (e) => {
+      // Ignore clicks inside a MultiSelectDropdown's menu — it portals to
+      // document.body as its own sibling tree (for clipping-avoidance), so
+      // it's not a DOM descendant of portalPanelRef and would otherwise be
+      // misread as an outside click, closing this panel while selecting.
+      if (e.target.closest && e.target.closest("[data-multiselect-portal]")) {
+        return;
+      }
       if (
         panelRef.current && !panelRef.current.contains(e.target) &&
         portalPanelRef.current && !portalPanelRef.current.contains(e.target)

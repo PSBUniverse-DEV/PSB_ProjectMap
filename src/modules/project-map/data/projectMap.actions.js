@@ -1317,6 +1317,81 @@ export async function loadRuns() {
   });
 }
 
+/**
+ * Loads the full project list for client-side refreshes.
+ *
+ * Why this exists: the page's initial project list is loaded by the server
+ * component (loadProjectMapProjects in projectMap.server.js), so until now
+ * there was no way to re-fetch it from the browser. Live multi-user sync
+ * needs one — when another user adds or edits a project, the realtime hook
+ * triggers a refresh that must produce exactly the same data shape the page
+ * was initialized with (same columns, same nested status lookup, same
+ * ordering) or downstream components would mis-render.
+ *
+ * IMPORTANT: keep the select below in sync with loadProjectMapProjects().
+ */
+export async function loadProjects() {
+  const supabase = getSupabaseAdmin();
+
+  const { data, error } = await supabase
+    .from("proj_t_projects")
+    .select(
+      "id, client_name, formatted_address, address_line_1, city, state, state_code, " +
+      "postal_code, country, address_latitude, address_longitude, site_latitude, site_longitude, " +
+      "location_source, location_confirmed, status_id, dealer, " +
+      "building_category_id, permit_status_id, welcome_call_status_id, invoice_number, " +
+      "order_received_at, scheduled_project_start, scheduled_project_end, install_start, install_end, " +
+      "project_subtotal, project_notes, dimension, " +
+      "created_at, updated_at, created_by, updated_by, " +
+      "proj_s_project_status(status_id, status_name, status_description)"
+    )
+    .order("updated_at", { ascending: false });
+
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+/**
+ * Builds a cheap "data version" signature for the three tables that drive the
+ * Project Map UI. Used by useProjectMapPolling as the fallback sync mechanism
+ * when Supabase Realtime is unavailable (e.g. CHANNEL_ERROR while RLS
+ * policies are pending — see realtime-handoff.md).
+ *
+ * Why these fields:
+ * - proj_t_projects / proj_t_runs: row count + latest updated_at catches
+ *   inserts, updates, and deletes.
+ * - proj_t_run_projects: has NO updated_at column, so row count + max(id)
+ *   catches inserts (new max id), deletes (count drop), and reassignments.
+ *
+ * All six queries are head-only/limit-1 aggregates — negligible DB load even
+ * with several users polling every 30 seconds.
+ */
+export async function getProjectMapVersion() {
+  const supabase = getSupabaseAdmin();
+
+  const [pCount, pLatest, rCount, rLatest, rpCount, rpMax] = await Promise.all([
+    supabase.from("proj_t_projects").select("id", { count: "exact", head: true }),
+    supabase.from("proj_t_projects").select("updated_at").order("updated_at", { ascending: false }).limit(1).maybeSingle(),
+    supabase.from("proj_t_runs").select("id", { count: "exact", head: true }),
+    supabase.from("proj_t_runs").select("updated_at").order("updated_at", { ascending: false }).limit(1).maybeSingle(),
+    supabase.from("proj_t_run_projects").select("id", { count: "exact", head: true }),
+    supabase.from("proj_t_run_projects").select("id").order("id", { ascending: false }).limit(1).maybeSingle(),
+  ]);
+
+  if (pCount.error) throw new Error(pCount.error.message);
+  if (pLatest.error) throw new Error(pLatest.error.message);
+  if (rCount.error) throw new Error(rCount.error.message);
+  if (rLatest.error) throw new Error(rLatest.error.message);
+  if (rpCount.error) throw new Error(rpCount.error.message);
+  if (rpMax.error) throw new Error(rpMax.error.message);
+
+  return [
+    pCount.count, pLatest.data?.updated_at ?? "none",
+    rCount.count, rLatest.data?.updated_at ?? "none",
+    rpCount.count, rpMax.data?.id ?? "none",
+  ].join("|");
+}
+
 export async function loadAllRunProjects() {
   const supabase = getSupabaseAdmin();
 

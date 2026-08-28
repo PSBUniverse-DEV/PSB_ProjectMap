@@ -4,9 +4,11 @@ import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Modal, toastError, toastSuccess } from "@/shared/components/ui";
 import { startNavbarLoader } from "@/shared/utils/navbar-loader";
-import { deleteProject, calculateRoute, calculateMultiStopRoute, deleteRun, removeProjectFromRun, loadRunDetails, updateStopSequence, addProjectToRun, updateRun, updateProject, getProjectRunAssignment, updateStopNote, updateRunStopsCount, loadRuns, loadAllRunProjects } from "../data/projectMap.actions";
+import { deleteProject, calculateRoute, calculateMultiStopRoute, deleteRun, removeProjectFromRun, loadRunDetails, updateStopSequence, addProjectToRun, updateRun, updateProject, getProjectRunAssignment, updateStopNote, updateRunStopsCount, loadProjects, loadRuns, loadAllRunProjects } from "../data/projectMap.actions";
 import { computeRunSegmentData } from "../utils/runSegments";
 import { reverseGeocode } from "../utils/geocoding";
+import { useProjectMapRealtime } from "../hooks/useProjectMapRealtime";
+import { useProjectMapPolling } from "../hooks/useProjectMapPolling";
 import ProjectMap from "../components/ProjectMap";
 import ProjectList from "../components/ProjectList";
 import ProjectDetailDrawer from "../components/ProjectDetailDrawer";
@@ -721,6 +723,47 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
       console.error("[ProjectMapView] Failed to refresh run data:", err);
     }
   }, [selectedRunId, refreshRuns, refreshRunProjects, clearRunState]);
+
+  // Re-fetches the project list from the database. The page's initial list
+  // comes from the server component, so this is the only way to refresh it
+  // from the browser (pins, project list, and the detail drawer all render
+  // from the `projects` state).
+  const refreshProjects = useCallback(async () => {
+    try {
+      const freshProjects = await loadProjects();
+      setProjects(freshProjects);
+    } catch (err) {
+      console.error("[ProjectMapView] Failed to refresh projects:", err);
+    }
+  }, []);
+
+  // One sync pass triggered by useProjectMapRealtime whenever ANY user
+  // (including this one on another tab) changes a project, a run, or a run
+  // assignment. Refreshes everything the UI renders from:
+  //   - projects      → map pins (Projects tab), project list, detail drawer
+  //   - runs          → runs list, status tabs, run panel header
+  //   - run assignments → Assigned Run lookups, Runs-tab pin rules
+  // When a run is open, refreshRunData additionally reloads its stop list and
+  // route line — and it already refreshes runs + assignments itself, so the
+  // else-branch skips them to avoid double-fetching.
+  const handleRemoteSync = useCallback(async () => {
+    await refreshProjects();
+    if (selectedRunId) {
+      await refreshRunData();
+    } else {
+      await Promise.all([refreshRuns(), refreshRunProjects()]);
+    }
+  }, [selectedRunId, refreshProjects, refreshRuns, refreshRunProjects, refreshRunData]);
+
+  // Live multi-user sync (Supabase Realtime). No-op when the connection
+  // cannot be established — see the hook's docs for the failure modes.
+  useProjectMapRealtime(handleRemoteSync);
+
+  // Polling safety net: if realtime is unavailable (CHANNEL_ERROR, network
+  // blocking websockets, RLS pending), changes are still picked up within
+  // ~30 seconds. Runs alongside realtime on purpose — when realtime is
+  // healthy, polling only rarely fires as a catch-up.
+  useProjectMapPolling(handleRemoteSync);
 
   const handleAddProjectToRun = async (projectId) => {
     if (!selectedRunId) return;

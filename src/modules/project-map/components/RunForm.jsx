@@ -80,7 +80,6 @@ export default function RunForm({ show, mode, run, origins = [], runStatuses = [
 
     setBusy(true);
     try {
-      // Estimate fields are auto-calculated after projects are added
       const payload = {
         run_name: form.run_name.trim(),
         origin_id: form.origin_id || null,
@@ -89,16 +88,25 @@ export default function RunForm({ show, mode, run, origins = [], runStatuses = [
         notes: form.notes || null,
         team_assigned: form.team_assigned || null,
         vehicle_assigned: form.vehicle_assigned || null,
-        estimated_distance: null,
-        estimated_duration: null,
-        estimated_subtotal: null,
       };
 
+      // Route estimates (estimated_distance / estimated_mileage /
+      // estimated_duration / estimated_subtotal) are never typed into this
+      // form — the map view's "Recalculate Run" computes them from the run's
+      // origin + stops.
+      //
+      // Business rule on EDIT: leave the estimate fields out of the payload
+      // entirely. updateRun only writes the fields it receives, so this keeps
+      // the calculated estimates untouched. (The old behavior blanked three of
+      // the four on every save — a simple rename wiped the estimates until
+      // someone recalculated. If the origin changes, the estimates simply stay
+      // until the next Recalculate, same as estimated_mileage always has.)
       if (mode === "edit" && run?.id) {
         await updateRun(run.id, payload);
         toastSuccess("Run updated.", "Runs");
       } else {
-        await createRun(payload);
+        // A brand-new run has no route estimates yet, so store nulls.
+        await createRun({ ...payload, estimated_distance: null, estimated_duration: null, estimated_subtotal: null });
         toastSuccess("Run created.", "Runs");
       }
 

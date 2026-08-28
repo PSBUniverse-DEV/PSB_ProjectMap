@@ -63,6 +63,29 @@ export default function PaidSheetForm({
     psb_representative_date: "",
   });
 
+  // Tracks whether the run's saved paid-sheet header row was successfully
+  // fetched before the user is allowed to save:
+  //   "idle"    — modal closed / nothing to load yet
+  //   "loading" — fetch in flight
+  //   "ready"   — fetched OK (a missing row is fine: the first save creates it)
+  //   "failed"  — fetch errored
+  //
+  // Business rule: saving must never happen before the header's saved values
+  // are confirmed loaded (or if the load failed). upsertPaidSheet writes ALL
+  // header columns, so saving from a not-yet-loaded form would overwrite the
+  // run's real Paid Date / Paid Reference data with blanks.
+  const [headerLoadState, setHeaderLoadState] = useState("idle");
+  // Bumped by the Retry button after a failed header load so the fetch effect
+  // below re-runs. Kept as a counter (not a boolean) so consecutive retries
+  // always trigger a fresh fetch.
+  const [headerReloadTick, setHeaderReloadTick] = useState(0);
+
+  /**
+   * Handles the Retry button shown when the saved paid-sheet header failed
+   * to load. Re-runs the header fetch; Save stays disabled until it succeeds.
+   */
+  const handleRetryHeaderLoad = () => setHeaderReloadTick((t) => t + 1);
+
   // Seed form state whenever the modal opens or the run/projects change.
   useEffect(() => {
     setInstaller(run?.team_assigned || "");
@@ -78,7 +101,12 @@ export default function PaidSheetForm({
     });
     setStopValues(seeded);
 
+    // Re-seeds stop values and re-fetches the saved header whenever the modal
+    // opens for a different run, the projects list, or the run object changes.
+    // Seeding is cheap and idempotent; refetching the header simply refreshes
+    // it. headerReloadTick is bumped by the Retry button after a failed load.
     if (!show || !run?.id) {
+      setHeaderLoadState("idle");
       setHeaderFields({
         phone_number: "", dot_number: "", state_route: [], extra_notes: "",
         is_paid: false, paid_date: "", paid_reference: "",
@@ -88,6 +116,7 @@ export default function PaidSheetForm({
     }
 
     let cancelled = false;
+    setHeaderLoadState("loading");
     (async () => {
       try {
         const existing = await loadPaidSheet(run.id);
@@ -104,13 +133,18 @@ export default function PaidSheetForm({
           psb_representative_name: existing?.psb_representative_name || "",
           psb_representative_date: existing?.psb_representative_date || "",
         });
+        // "ready" even when the run has no saved row yet — a first-time save
+        // creating the row with the user's entered values is fine. What must
+        // be blocked is saving while the saved values were never loaded.
+        setHeaderLoadState("ready");
       } catch (err) {
         console.error("[PaidSheetForm] Failed to load paid sheet header:", err);
+        if (!cancelled) setHeaderLoadState("failed");
       }
     })();
 
     return () => { cancelled = true; };
-  }, [run, projects, show]);
+  }, [run, projects, show, headerReloadTick]);
 
   // Total Amount Run = sum of the displayed project_subtotal values.
   const totalAmount = useMemo(() => {
@@ -382,10 +416,36 @@ export default function PaidSheetForm({
           </span>
         </div>
 
+        {/* Header load failure — Save is disabled while this is shown, because
+            saving with blank header fields would wipe the run's saved Paid
+            Date / Paid Reference. User can Retry to re-fetch. */}
+        {headerLoadState === "failed" && (
+          <div
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px",
+              padding: "8px 10px", borderRadius: "6px", marginTop: "6px",
+              backgroundColor: "#fef2f2", border: "1px solid #fecaca",
+            }}
+          >
+            <span style={{ fontSize: "12px", color: "#b91c1c" }}>
+              Could not load the saved paid sheet header. Saving is disabled to protect the existing data.
+            </span>
+            <Button variant="outline-secondary" onClick={handleRetryHeaderLoad}>
+              Retry
+            </Button>
+          </div>
+        )}
+
         {/* Footer buttons */}
         <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end", marginTop: "6px" }}>
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" loading={busy} onClick={handleSave}>
+          <Button
+            variant="primary"
+            loading={busy}
+            disabled={headerLoadState !== "ready"}
+            title={headerLoadState !== "ready" ? "Waiting for the saved paid sheet to load…" : undefined}
+            onClick={handleSave}
+          >
             Save Changes
           </Button>
                 </div>

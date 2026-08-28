@@ -115,7 +115,10 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
     return () => { cancelled = true; };
   }, []);
 
-  // Single source of truth: projectId -> { run, stopSequence }
+  // Single source of truth: projectId -> { run, runProjectId, stopSequence }.
+  // runProjectId is the proj_t_run_projects row id — the key that
+  // removeProjectFromRun / updateStopSequence expect, so unassign flows can
+  // resolve it from the project alone.
   const projectRunLookup = useMemo(() => {
     const lookup = new Map();
     allRunProjects.forEach((rp) => {
@@ -123,6 +126,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
       if (run) {
         lookup.set(rp.project_id, {
           run,
+          runProjectId: rp.id,
           stopSequence: rp.stop_sequence,
         });
       }
@@ -746,6 +750,17 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
     } finally { setBusy(false); }
   };
 
+  // Unassign entry point for the Project Detail Drawer's "×" button, keyed by
+  // PROJECT id (the drawer doesn't know the run-project row id). Resolves the
+  // row id from projectRunLookup and reuses handleRemoveProjectFromRun — the
+  // exact same action, toasts and refreshes the Runs tab uses — so every
+  // unassign path stays in sync.
+  const handleRemoveProjectFromRunById = async (projectId) => {
+    const assignment = projectRunLookup.get(projectId);
+    if (!assignment?.runProjectId) return;
+    await handleRemoveProjectFromRun(assignment.runProjectId);
+  };
+
   const handleEditStopNote = (runProject) => {
     const proj = runProject.proj_t_projects || {};
     setEditingStopNote({
@@ -1161,7 +1176,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
         </div>
 
         {mode === "projects" && selectedProject && (
-          <ProjectDetailDrawer project={selectedProject} statuses={statuses} buildingCategories={buildingCategories} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} projectRunLookup={projectRunLookup} onClose={handleCloseDrawer} onEdit={handleEdit} onDelete={() => setConfirmDeleteId(selectedProject.id)} routeInfo={routeInfo} />
+          <ProjectDetailDrawer project={selectedProject} statuses={statuses} buildingCategories={buildingCategories} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} projectRunLookup={projectRunLookup} onClose={handleCloseDrawer} onEdit={handleEdit} onDelete={() => setConfirmDeleteId(selectedProject.id)} onRemoveFromRun={handleRemoveProjectFromRunById} routeInfo={routeInfo} />
         )}
         {mode === "runs" && selectedRun && (
           <RunDetailPanel run={selectedRun} runProjects={runProjects} runSegmentData={runSegmentData} onClose={handleCloseRunDetail} onEdit={handleEditRun} onDelete={() => setConfirmDeleteRunId(selectedRun.id)} onRemoveProject={handleRemoveProjectFromRun} onReorderStops={handleReorderStops} onRecalculate={handleRecalculate} recalculating={recalculating} onEditStopNote={handleEditStopNote} onEditStopDate={handleEditStopDate} onEditStopInvoice={handleEditStopInvoice} onEditProjectPrice={handleEditProjectPrice} isLoading={isLoadingRunDetails} runStatuses={runStatuses} onStatusChange={handleRunStatusChange} />

@@ -1,11 +1,22 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faLocationDot, faCalendarDays, faBuilding, faDollarSign, faTag } from "@fortawesome/free-solid-svg-icons";
 import { formatProjectDescriptionForDisplay, stripTownshipLabel } from "../data/projectMap.data";
 
-export default function ProjectDetailDrawer({ project, statuses = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [], projectRunLookup = new Map(), onClose, onEdit, onDelete, routeInfo = null }) {
+/**
+ * ProjectDetailDrawer — the side panel shown when a project pin is selected on
+ * the Projects tab. Read-only summary of the project's customer, schedule and
+ * workflow data.
+ *
+ * The "Assigned Run" row doubles as a quick way to unassign the project: when
+ * the project belongs to a run, an "×" button appears next to the run name.
+ * It calls `onRemoveFromRun(project.id)`, which the parent view resolves to
+ * the SAME removal flow used by the Runs tab's detail panel (same action, same
+ * toasts, same refreshes) so every unassign path stays in sync.
+ */
+export default function ProjectDetailDrawer({ project, statuses = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [], projectRunLookup = new Map(), onClose, onEdit, onDelete, onRemoveFromRun = null, routeInfo = null }) {
   const statusName = useMemo(() => {
     if (!project) return "";
     return project.proj_s_project_status?.status_name || statuses.find((s) => s.status_id === project.status_id)?.status_name || "";
@@ -16,6 +27,26 @@ export default function ProjectDetailDrawer({ project, statuses = [], buildingCa
     const assignment = projectRunLookup.get(project.id) || null;
     return assignment?.run || null;
   }, [project, projectRunLookup]);
+
+  // Guards against double-clicking the remove "×" while the unassign request
+  // is in flight. Error handling/toasting lives in the parent's removal flow.
+  const [isRemoving, setIsRemoving] = useState(false);
+
+  /**
+   * Removes this project from its assigned run via the parent's shared
+   * removal flow. After the parent refreshes its run-projects lookup, the
+   * drawer re-renders showing "Not Assigned" and the project becomes an
+   * assignable candidate again (map pin + Project Selector).
+   */
+  const handleRemoveFromRun = async () => {
+    if (!project || isRemoving) return;
+    setIsRemoving(true);
+    try {
+      await onRemoveFromRun?.(project.id);
+    } finally {
+      setIsRemoving(false);
+    }
+  };
 
   const buildingCategoryName = useMemo(() => {
     if (!project) return "";
@@ -159,8 +190,24 @@ export default function ProjectDetailDrawer({ project, statuses = [], buildingCa
             <tbody>
               <tr>
                 <td style={{ padding: "4px 0", fontSize: "11px", color: "#f73d3d", fontWeight: 500 }}>📦 Run</td>
-                <td style={{ padding: "4px 0", fontSize: "12px", color: "#3b1e26", fontWeight: 600, textAlign: "right" }}>
-                  {assignedRun ? (assignedRun.run_name || `Run #${assignedRun.run_number || assignedRun.id}`) : "Not Assigned"}
+                <td style={{ padding: "4px 0", textAlign: "right" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "6px" }}>
+                    <span style={{ fontSize: "12px", color: "#3b1e26", fontWeight: 600 }}>
+                      {assignedRun ? (assignedRun.run_name || `Run #${assignedRun.run_number || assignedRun.id}`) : "Not Assigned"}
+                    </span>
+                    {/* Unassign shortcut — mirrors the "×" in the Runs tab's
+                        detail panel and goes through the same removal flow. */}
+                    {assignedRun && onRemoveFromRun && (
+                      <button
+                        type="button"
+                        onClick={handleRemoveFromRun}
+                        disabled={isRemoving}
+                        title="Remove from run"
+                        aria-label="Remove project from assigned run"
+                        style={{ background: "none", border: "none", color: "#dc2626", cursor: isRemoving ? "default" : "pointer", fontSize: "14px", fontWeight: 700, padding: "0", lineHeight: 1, opacity: isRemoving ? 0.5 : 1 }}
+                      >×</button>
+                    )}
+                  </div>
                 </td>
               </tr>
             </tbody>

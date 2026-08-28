@@ -818,6 +818,20 @@ export async function createProject(project) {
   return data;
 }
 
+/**
+ * updateProject — saves changes to an existing project as a PARTIAL update.
+ *
+ * Callers only send the fields they are editing, and only those fields are
+ * written to the database (Supabase leaves columns missing from the payload
+ * untouched). For example, the run timeline's Invoice editor sends just
+ * { invoice_number } — if the other columns were included anyway, they would
+ * be written as null and silently erase the project's arrival dates, order
+ * date, and other data. That was a real production bug, so every field NOT
+ * passed in `updates` must stay out of the payload.
+ *
+ * Fields that ARE passed still go through their normalizer below so empty
+ * strings / blank inputs are stored as null exactly as before.
+ */
 export async function updateProject(projectId, updates) {
   const id = toIntOrNull(projectId);
   if (id === null) throw new Error("projectId is required.");
@@ -825,20 +839,27 @@ export async function updateProject(projectId, updates) {
   const supabase = getSupabaseAdmin();
   const now = new Date().toISOString();
 
-  const payload = {
-    ...updates,
-    updated_at: now,
-    building_category_id: toIntOrNull(updates.building_category_id),
-    permit_status_id: toIntOrNull(updates.permit_status_id),
-    welcome_call_status_id: toIntOrNull(updates.welcome_call_status_id),
-    invoice_number: hasValue(updates.invoice_number) ? String(updates.invoice_number).trim() : null,
-    order_received_at: updates.order_received_at || null,
-    scheduled_project_start: updates.scheduled_project_start || null,
-    scheduled_project_end: updates.scheduled_project_end || null,
-    install_start: updates.install_start || null,
-    install_end: updates.install_end || null,
-    updated_by: toIntOrNull(updates.updated_by),
+  // Per-field normalizers — applied only when the caller passed that field.
+  // Mirrors the insert (createProject) payload rules: blank values become
+  // null, numeric ids are truncated ints, invoice numbers are trimmed.
+  const normalizers = {
+    building_category_id: toIntOrNull,
+    permit_status_id: toIntOrNull,
+    welcome_call_status_id: toIntOrNull,
+    invoice_number: (v) => (hasValue(v) ? String(v).trim() : null),
+    order_received_at: (v) => v || null,
+    scheduled_project_start: (v) => v || null,
+    scheduled_project_end: (v) => v || null,
+    install_start: (v) => v || null,
+    install_end: (v) => v || null,
+    updated_by: toIntOrNull,
   };
+
+  // Build the payload strictly from the fields present in `updates`.
+  const payload = { updated_at: now };
+  for (const [key, value] of Object.entries(updates)) {
+    payload[key] = normalizers[key] ? normalizers[key](value) : value;
+  }
 
   const { data, error } = await supabase.from("proj_t_projects").update(payload).eq("id", id).select("*").single();
   if (error) throw new Error(error.message);

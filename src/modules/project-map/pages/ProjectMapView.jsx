@@ -22,6 +22,14 @@ import RunFilterPanel from "../components/RunFilterPanel";
 import RunFilterChips from "../components/RunFilterChips";
 import RunStatusTabs from "../components/RunStatusTabs";
 import ProjectStatusTabs from "../components/ProjectStatusTabs";
+// Stable empty filter object handed to ProjectMap while on the Runs tab.
+// ProjectMap applies whatever filters object it receives to its pins; on the
+// Runs tab the run status tabs must govern the map instead, so the project
+// filters are replaced with this empty object. Defined at module level so its
+// identity never changes between renders (keeps ProjectMap's memoized pin
+// filtering from re-running needlessly).
+const EMPTY_PROJECT_FILTERS = Object.freeze({});
+
 
 export default function ProjectMapView({ projects: initialProjects = [], statuses = [], origins = [], states = [], runs: initialRuns = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [], runStatuses = [] }) {
   const router = useRouter();
@@ -379,6 +387,47 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
       return true;
     });
   }, [runs, runFilters, runSearch]);
+
+  // ---------------------------------------------------------------------------
+  // Which projects get map pins, depending on the active tab.
+  //
+  // Projects tab: pass every project through unchanged — ProjectMap applies the
+  // project filters (status tabs, permit, dealer, dates, ...) to the pins.
+  //
+  // Runs tab: the RUN status tabs govern the map, overriding the project
+  // status filter. A project shows a pin when either:
+  //   1. It has NO assigned run yet — always visible, regardless of the run
+  //      status filter or the selected run. Business rule: the Runs tab is
+  //      where unscheduled projects get assigned to runs, so hiding them would
+  //      make that impossible (right-click an unassigned pin → "Add to Run").
+  //   2. Its assigned run's status matches the selected run statuses (same
+  //      multi-select OR rule as filteredRuns above). With no statuses
+  //      selected ("All" tab) every run matches, so all assigned projects show.
+  //
+  // While a run IS selected, the map focuses on that run: its own stop pins
+  // stay (the route line and the "Remove from Run" right-click need them) and
+  // unassigned pins stay (the add candidates), but pins belonging to OTHER
+  // runs are hidden so the map shows only what this run could look like.
+  // ---------------------------------------------------------------------------
+  const mapProjects = useMemo(() => {
+    if (mode !== "runs") return projects;
+    const selectedStatuses = Array.isArray(runFilters.status) ? runFilters.status : [];
+    return projects.filter((p) => {
+      const assignment = projectRunLookup.get(p.id);
+      if (!assignment) return true; // unassigned — always visible for run assignment
+      if (selectedRunId) {
+        // A run is open: keep its own stops, hide every other run's pins.
+        return assignment.run.id === selectedRunId;
+      }
+      if (selectedStatuses.length === 0) return true; // "All" — every run matches
+      return selectedStatuses.includes(assignment.run.status);
+    });
+  }, [mode, projects, runFilters.status, projectRunLookup, selectedRunId]);
+
+  // Project filters for the map. On the Runs tab the map ignores the project
+  // filters entirely (the run status tabs override them) — ProjectMap receives
+  // an empty filter object there. See mapProjects above for the full rule.
+  const mapFilters = mode === "runs" ? EMPTY_PROJECT_FILTERS : filters;
 
   const selectedOrigin = useMemo(() => {
     if (!selectedOriginId) return null;
@@ -1108,7 +1157,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
         </div>
 
         <div style={{ flex: 1, position: "relative", minHeight: 0, minWidth: 0 }}>
-          <ProjectMap projects={projects} selectedProjectId={selectedProjectId} onSelectProject={handleSelectProject} filters={filters} selectedOrigin={selectedOrigin} routeData={routeData} stateColorLookup={stateColorLookup} statuses={statuses} buildingCategories={buildingCategories} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} searchResults={searchResults} mode={mode} runs={runs} selectedRunId={selectedRunId} runProjects={runProjects} runRouteData={runRouteData} onAddToRun={handleAddProjectToRun} onRemoveFromRun={handleRemoveProjectFromRun} projectRunLookup={projectRunLookup} showLabels={showLabels} onMapRightClick={handleMapRightClick} tempMarker={tempMarker} searchMarker={searchMarker} onSearchMarkerClick={handleSearchMarkerClick} />
+          <ProjectMap projects={mapProjects} selectedProjectId={selectedProjectId} onSelectProject={handleSelectProject} filters={mapFilters} selectedOrigin={selectedOrigin} routeData={routeData} stateColorLookup={stateColorLookup} statuses={statuses} buildingCategories={buildingCategories} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} searchResults={searchResults} mode={mode} runs={runs} selectedRunId={selectedRunId} runProjects={runProjects} runRouteData={runRouteData} onAddToRun={handleAddProjectToRun} onRemoveFromRun={handleRemoveProjectFromRun} projectRunLookup={projectRunLookup} showLabels={showLabels} onMapRightClick={handleMapRightClick} tempMarker={tempMarker} searchMarker={searchMarker} onSearchMarkerClick={handleSearchMarkerClick} />
         </div>
 
         {mode === "projects" && selectedProject && (

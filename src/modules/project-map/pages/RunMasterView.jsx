@@ -14,7 +14,7 @@ import { useRouter } from "next/navigation";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCircleInfo, faCheckCircle, faPrint, faMoneyCheckDollar, faPen } from "@fortawesome/free-solid-svg-icons";
 import { Button, Modal, toastError, TableZ } from "@/shared/components/ui";
-import { resolveRunStatusOptions, getRunStatusColor, formatProjectDescriptionForDisplay, stripTownshipLabel } from "../data/projectMap.data";
+import { resolveRunStatusOptions, getRunStatusColor, formatProjectDescriptionForDisplay, stripTownshipLabel, parseStateRoute } from "../data/projectMap.data";
 import { loadRunDetails, loadRuns, loadPaidSheet } from "../data/projectMap.actions";
 import { generateRunManifestPrint } from "../utils/printRunManifest";
 import { generatePaidSheetPrint } from "../utils/printPaidSheet";
@@ -84,8 +84,8 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
 
   const getRunRevenue = useCallback(
     (run) => {
-      if (Array.isArray(run.runs_stops)) {
-        return run.runs_stops.reduce((sum, rp) => {
+      if (Array.isArray(run.proj_t_run_projects)) {
+        return run.proj_t_run_projects.reduce((sum, rp) => {
           const proj = rp.proj_t_projects || {};
           return sum + (Number(proj.project_subtotal) || 0);
         }, 0);
@@ -443,7 +443,7 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
         key: "state_route",
         label: "State",
         sortable: true,
-        render: (row) => row.state_route || "—",
+        render: (row) => parseStateRoute(row.state_route).join(", ") || "—",
       },
       {
         key: "status",

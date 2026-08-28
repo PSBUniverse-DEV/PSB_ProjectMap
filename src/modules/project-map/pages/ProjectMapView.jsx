@@ -74,7 +74,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
   const [editingProjectPrice, setEditingProjectPrice] = useState(null);
   const [priceValue, setPriceValue] = useState("");
   const [allRunProjects, setAllRunProjects] = useState([]);
-  const [runFilters, setRunFilters] = useState({ status: "Scheduled" });
+  const [runFilters, setRunFilters] = useState({ status: ["Scheduled"] });
   const [runSearch, setRunSearch] = useState("");
   const [isLoadingRunDetails, setIsLoadingRunDetails] = useState(false);
   const [runReloadKey, setRunReloadKey] = useState(0);
@@ -150,47 +150,73 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
     setEditingStopNote(null);
   }, []);
 
-  const handleRemoveFilter = useCallback((filterKey) => {
+  const handleRemoveFilter = useCallback((filterKey, value) => {
+    // Called with a specific value: remove just that value from a multi-select
+    // filter array (permitStatus, welcomeCallStatus, dealer, state), leaving
+    // any other selected values in place.
+    if (value !== undefined) {
+      setFilters((prev) => ({
+        ...prev,
+        [filterKey]: (prev[filterKey] || []).filter((v) => v !== value),
+      }));
+      return;
+    }
+
     const filterResets = {
-      status: "",
-      permitStatus: "",
-      welcomeCallStatus: "",
-      dealer: "",
-      state: "",
+      status: [],
+      permitStatus: [],
+      welcomeCallStatus: [],
+      dealer: [],
+      state: [],
       orderReceived: { orderReceivedFrom: "", orderReceivedTo: "" },
       scheduled: { scheduledFrom: "", scheduledTo: "" },
       install: { installFrom: "", installTo: "" },
     };
 
     const reset = filterResets[filterKey];
-    if (typeof reset === "object") {
+    if (reset && typeof reset === "object" && !Array.isArray(reset)) {
       setFilters({ ...filters, ...reset });
     } else {
       setFilters({ ...filters, [filterKey]: reset });
     }
   }, [filters]);
 
-  // Selects a project status from the status tabs shown above the project list.
-  // Writes to the same `filters.status` value the old dropdown used, so the list
-  // and the map pins update together. An empty string means "All" projects.
+  // Toggles a project status in the status-tabs multi-select filter. Clicking
+  // an already-selected tab deselects it; clicking "All" (empty statusId)
+  // clears every selection. `filters.status` is now an array of status id
+  // strings, OR'd together in filteredProjects/ProjectList/ProjectMap.
   const handleProjectStatusSelect = useCallback((statusId) => {
-    setFilters((prev) => ({ ...prev, status: statusId || "" }));
+    setFilters((prev) => {
+      if (!statusId) {
+        return { ...prev, status: [] };
+      }
+      const current = prev.status || [];
+      const next = current.includes(statusId)
+        ? current.filter((s) => s !== statusId)
+        : [...current, statusId];
+      return { ...prev, status: next };
+    });
   }, []);
 
   const handleRemoveRunFilter = useCallback((filterKey) => {
     if (filterKey === "status") {
-      setRunFilters({ ...runFilters, status: "" });
+      setRunFilters({ ...runFilters, status: [] });
     } else if (filterKey === "runDate") {
       setRunFilters({ ...runFilters, runDateFrom: "", runDateTo: "" });
     }
   }, [runFilters]);
 
-  // Selects a run status from the status tabs shown above the run list. Writes
-  // to the same `runFilters.status` value the old dropdown used so the run list
-  // stays in sync. An empty string ("All") means no status filter — the
-  // filteredRuns logic already treats empty status as "show all runs".
   const handleRunStatusSelect = useCallback((statusName) => {
-    setRunFilters((prev) => ({ ...prev, status: statusName || "" }));
+    setRunFilters((prev) => {
+      if (!statusName) {
+        return { ...prev, status: [] };
+      }
+      const current = prev.status || [];
+      const next = current.includes(statusName)
+        ? current.filter((s) => s !== statusName)
+        : [...current, statusName];
+      return { ...prev, status: next };
+    });
   }, []);
 
   const dealers = useMemo(() => projects.map((p) => p.dealer).filter(Boolean), [projects]);
@@ -209,20 +235,20 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
 
   const filteredProjects = useMemo(() => {
     return projects.filter((p) => {
-      // Single-select scalar filters
-      if (filters.status && String(p.status_id) !== filters.status) {
+      // Multi-select status filter — OR across selected statuses.
+      if (Array.isArray(filters.status) && filters.status.length > 0 && !filters.status.includes(String(p.status_id))) {
         return false;
       }
-      if (filters.permitStatus && String(p.permit_status_id) !== filters.permitStatus) {
+      if (Array.isArray(filters.permitStatus) && filters.permitStatus.length > 0 && !filters.permitStatus.includes(String(p.permit_status_id))) {
         return false;
       }
-      if (filters.welcomeCallStatus && String(p.welcome_call_status_id) !== filters.welcomeCallStatus) {
+      if (Array.isArray(filters.welcomeCallStatus) && filters.welcomeCallStatus.length > 0 && !filters.welcomeCallStatus.includes(String(p.welcome_call_status_id))) {
         return false;
       }
-      if (filters.dealer && p.dealer !== filters.dealer) {
+      if (Array.isArray(filters.dealer) && filters.dealer.length > 0 && !filters.dealer.includes(p.dealer)) {
         return false;
       }
-      if (filters.state && p.state_code !== filters.state) {
+      if (Array.isArray(filters.state) && filters.state.length > 0 && !filters.state.includes(p.state_code)) {
         return false;
       }
       
@@ -305,10 +331,11 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
   // Filter runs by search and filters
   const filteredRuns = useMemo(() => {
     return runs.filter((run) => {
-      // Status filter
+      // Multi-select status filter — OR across selected statuses.
       if (
-        runFilters.status &&
-        run.status !== runFilters.status
+        Array.isArray(runFilters.status) &&
+        runFilters.status.length > 0 &&
+        !runFilters.status.includes(run.status)
       ) {
         return false;
       }
@@ -1010,7 +1037,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
         <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", flexShrink: 0 }}>
           <ProjectStatusTabs
             statuses={statuses}
-            selectedStatus={filters.status || ""}
+            selectedStatuses={filters.status || []}
             onSelectStatus={handleProjectStatusSelect}
           />
         </div>
@@ -1020,7 +1047,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
         <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", flexShrink: 0 }}>
           <RunStatusTabs
             runStatuses={runStatuses}
-            selectedStatus={runFilters.status || ""}
+            selectedStatuses={runFilters.status || []}
             onSelectStatus={handleRunStatusSelect}
           />
         </div>

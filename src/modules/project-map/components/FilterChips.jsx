@@ -15,39 +15,43 @@ export default function FilterChips({
   const filterLabels = useMemo(() => {
     const labels = [];
 
-    if (filters.permitStatus) {
-      const permit = permitStatuses.find((p) => String(p.id) === filters.permitStatus);
+    (filters.permitStatus || []).forEach((val) => {
+      const permit = permitStatuses.find((p) => String(p.id) === val);
       if (permit) {
         labels.push({
           key: "permitStatus",
+          value: val,
           label: `Permit Status: ${permit.status_name}`,
         });
       }
-    }
+    });
 
-    if (filters.welcomeCallStatus) {
-      const welcome = welcomeCallStatuses.find((w) => String(w.id) === filters.welcomeCallStatus);
+    (filters.welcomeCallStatus || []).forEach((val) => {
+      const welcome = welcomeCallStatuses.find((w) => String(w.id) === val);
       if (welcome) {
         labels.push({
           key: "welcomeCallStatus",
+          value: val,
           label: `Welcome Call: ${welcome.status_name}`,
         });
       }
-    }
+    });
 
-    if (filters.dealer) {
+    (filters.dealer || []).forEach((val) => {
       labels.push({
         key: "dealer",
-        label: `Dealer: ${filters.dealer}`,
+        value: val,
+        label: `Dealer: ${val}`,
       });
-    }
+    });
 
-    if (filters.state) {
+    (filters.state || []).forEach((val) => {
       labels.push({
         key: "state",
-        label: `State: ${filters.state}`,
+        value: val,
+        label: `State: ${val}`,
       });
-    }
+    });
 
     if (filters.orderReceivedFrom || filters.orderReceivedTo) {
       const from = filters.orderReceivedFrom ? filters.orderReceivedFrom : "—";
@@ -97,7 +101,7 @@ export default function FilterChips({
     >
       {filterLabels.map((item) => (
         <div
-          key={item.key}
+          key={`${item.key}-${item.value ?? "range"}`}
           style={{
             display: "inline-flex",
             alignItems: "center",
@@ -112,7 +116,7 @@ export default function FilterChips({
         >
           <span>{item.label}</span>
           <button
-            onClick={() => onRemoveFilter?.(item.key)}
+            onClick={() => onRemoveFilter?.(item.key, item.value)}
             style={{
               background: "none",
               border: "none",

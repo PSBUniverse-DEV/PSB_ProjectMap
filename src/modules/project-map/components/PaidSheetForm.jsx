@@ -3,7 +3,8 @@
 import { useState, useEffect, useMemo } from "react";
 import { Button, Modal, toastError, toastSuccess } from "@/shared/components/ui";
 import { updateRun, updateProjectPaymentInfo, loadPaidSheet, upsertPaidSheet } from "../data/projectMap.actions";
-import { formatProjectDescriptionForDisplay } from "../data/projectMap.data";
+import { formatProjectDescriptionForDisplay, parseStateRoute, formatStateRoute } from "../data/projectMap.data";
+import MultiSelectDropdown from "@/shared/components/ui/controls/MultiSelectDropdown";
 
 /**
  * formatCurrency — local copy of the helper used in RunMasterView.jsx so
@@ -52,7 +53,7 @@ export default function PaidSheetForm({
   const [headerFields, setHeaderFields] = useState({
     phone_number: "",
     dot_number: "",
-    state_route: "",
+    state_route: [],
     extra_notes: "",
     is_paid: false,
     paid_date: "",
@@ -79,7 +80,7 @@ export default function PaidSheetForm({
 
     if (!show || !run?.id) {
       setHeaderFields({
-        phone_number: "", dot_number: "", state_route: "", extra_notes: "",
+        phone_number: "", dot_number: "", state_route: [], extra_notes: "",
         is_paid: false, paid_date: "", paid_reference: "",
         installer_signature_date: "", psb_representative_name: "", psb_representative_date: "",
       });
@@ -94,7 +95,7 @@ export default function PaidSheetForm({
         setHeaderFields({
           phone_number: existing?.phone_number || "",
           dot_number: existing?.dot_number || "",
-          state_route: existing?.state_route || "",
+          state_route: parseStateRoute(existing?.state_route),
           extra_notes: existing?.extra_notes || "",
           is_paid: existing?.is_paid || false,
           paid_date: existing?.paid_date || "",
@@ -150,7 +151,7 @@ export default function PaidSheetForm({
       await updateRun(run.id, { team_assigned: installer || null });
 
       // Run-level paid-sheet header row (one per run, upserted).
-      await upsertPaidSheet(run.id, headerFields);
+      await upsertPaidSheet(run.id, { ...headerFields, state_route: formatStateRoute(headerFields.state_route) });
 
       // Payment fields + per-stop "done" flag live on each project/stop.
       await Promise.all(
@@ -223,20 +224,16 @@ export default function PaidSheetForm({
             </div>
             <div>
               <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>State</label>
-              <select
-                value={headerFields.state_route || ""}
-                onChange={(e) => handleHeaderChange("state_route", e.target.value || null)}
-                style={inputStyle}
-              >
-                <option value="">Select...</option>
-                {(states || [])
+              <MultiSelectDropdown
+                options={(states || [])
                   .filter((s) => s.is_active !== false)
                   .slice()
                   .sort((a, b) => (a.display_order || 0) - (b.display_order || 0))
-                  .map((s) => (
-                    <option key={s.id} value={s.state_code}>{s.state_name}</option>
-                  ))}
-              </select>
+                  .map((s) => ({ value: s.state_code, label: s.state_name }))}
+                selectedValues={headerFields.state_route || []}
+                onChange={(values) => handleHeaderChange("state_route", values)}
+                placeholder="Select..."
+              />
             </div>
           </div>
           <div>

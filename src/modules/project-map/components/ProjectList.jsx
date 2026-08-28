@@ -29,11 +29,11 @@ export default function ProjectList({ projects = [], selectedProjectId, onSelect
 
   const filteredProjects = useMemo(() => {
     return projects.filter((p) => {
-      if (filters.status && String(p.status_id) !== String(filters.status)) return false;
-      if (filters.permitStatus && String(p.permit_status_id) !== String(filters.permitStatus)) return false;
-      if (filters.welcomeCallStatus && String(p.welcome_call_status_id) !== String(filters.welcomeCallStatus)) return false;
-      if (filters.dealer && p.dealer !== filters.dealer) return false;
-      if (filters.state && p.state_code !== filters.state) return false;
+      if (Array.isArray(filters.status) && filters.status.length > 0 && !filters.status.includes(String(p.status_id))) return false;
+      if (Array.isArray(filters.permitStatus) && filters.permitStatus.length > 0 && !filters.permitStatus.includes(String(p.permit_status_id))) return false;
+      if (Array.isArray(filters.welcomeCallStatus) && filters.welcomeCallStatus.length > 0 && !filters.welcomeCallStatus.includes(String(p.welcome_call_status_id))) return false;
+      if (Array.isArray(filters.dealer) && filters.dealer.length > 0 && !filters.dealer.includes(p.dealer)) return false;
+      if (Array.isArray(filters.state) && filters.state.length > 0 && !filters.state.includes(p.state_code)) return false;
       
       // Order Received date filter (compare calendar dates only)
       if (filters.orderReceivedFrom || filters.orderReceivedTo) {

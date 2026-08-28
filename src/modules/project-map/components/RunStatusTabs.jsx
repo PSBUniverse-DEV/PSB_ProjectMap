@@ -27,7 +27,7 @@ function toRgba(hex, alpha) {
  */
 export default function RunStatusTabs({
   runStatuses = [],
-  selectedStatus = "",
+  selectedStatuses = [],
   onSelectStatus,
 }) {
   const trackRef = useRef(null);
@@ -43,10 +43,11 @@ export default function RunStatusTabs({
       .sort((a, b) => Number(a.display_order ?? 0) - Number(b.display_order ?? 0));
   }, [runStatuses]);
 
-  // A tab is selected when its value (status_name string) equals the active
-  // filter. Falsy selectedStatus means "Any".
+  // A tab is selected when its status_name string is present in the active
+  // filter array. The "All" tab (statusName === "") is considered selected
+  // when nothing else is selected — clicking it clears every other selection.
   const isSelected = (statusName) =>
-    statusName ? String(selectedStatus) === statusName : !selectedStatus;
+    statusName ? selectedStatuses.includes(statusName) : selectedStatuses.length === 0;
 
   const updateFadeState = () => {
     const el = trackRef.current;

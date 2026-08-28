@@ -12,7 +12,7 @@ function toRgba(hex, alpha) {
 
 export default function ProjectStatusTabs({
   statuses = [],
-  selectedStatus = "",
+  selectedStatuses = [],
   onSelectStatus,
 }) {
   const trackRef = useRef(null);
@@ -28,10 +28,11 @@ export default function ProjectStatusTabs({
       .sort((a, b) => Number(a.display_order ?? 0) - Number(b.display_order ?? 0));
   }, [statuses]);
 
-  // A tab is selected when its value equals the active filter. `selectedStatus`
-  // is the `filters.status` string; "" (or any falsy value) means "All".
+  // A tab is selected when its id is present in the active filter array.
+  // The "All" tab (statusId === "") is considered selected when nothing else
+  // is selected — clicking it clears every other selection.
   const isSelected = (statusId) =>
-    statusId ? String(selectedStatus) === String(statusId) : !selectedStatus;
+    statusId ? selectedStatuses.includes(String(statusId)) : selectedStatuses.length === 0;
 
   // Detect overflow at the row's left/right edges so the fade gradients and
   // arrow buttons only appear when there is actually more content to scroll to.

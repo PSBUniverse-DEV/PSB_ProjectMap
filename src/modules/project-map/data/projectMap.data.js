@@ -178,3 +178,34 @@ export function stripTownshipLabel(value) {
   if (!value) return value;
   return String(value).replace(/\s+Township\b/gi, "").replace(/\s{2,}/g, " ").trim();
 }
+
+/**
+ * Splits a stored paid-sheet state-route string back into an array of
+ * state codes for the multi-select form control.
+ *
+ * Storage format (proj_t_paid_sheet.state_route) is brace-delimited with
+ * no separator — same pattern as proj_t_projects.dimension:
+ *   "{TX}{OK}{AR}"
+ *
+ * Examples:
+ *   parseStateRoute("{TX}{OK}{AR}") -> ["TX", "OK", "AR"]
+ *   parseStateRoute("")             -> []
+ *   parseStateRoute("AAA")          -> []  // legacy unbracketed value -> no selection
+ */
+export function parseStateRoute(value) {
+  if (!value) return [];
+  const matches = value.match(/\{([^}]*)\}/g) || [];
+  return matches.map((m) => m.slice(1, -1)).filter(Boolean);
+}
+
+/**
+ * Turns an array of selected state codes into the brace-delimited storage
+ * string written to proj_t_paid_sheet.state_route.
+ *
+ *   formatStateRoute(["TX", "OK", "AR"]) -> "{TX}{OK}{AR}"
+ *   formatStateRoute([])                 -> ""
+ */
+export function formatStateRoute(values) {
+  if (!Array.isArray(values) || values.length === 0) return "";
+  return values.map((v) => `{${v}}`).join("");
+}

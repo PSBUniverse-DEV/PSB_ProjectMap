@@ -53,6 +53,12 @@ export default function ProjectMap({
   const originMarkerRef = useRef(null);
   const routeSourceRef = useRef("route-line");
   const initialFitDone = useRef(false);
+  // Signature of the last route the map auto-fitted to. Without this, every
+  // data refresh (realtime sync, 30s polling, any refetch producing new array
+  // identities) re-ran fitBounds and yanked the viewport back to the run
+  // while the user was panning. The map should only re-fit when the route
+  // meaningfully changes — not when identical data is refetched.
+  const lastRouteFitSignatureRef = useRef("");
   const mapInitAttemptedRef = useRef(false);
   const contextMenuPopupRef = useRef(null);
   const tempMarkerRef = useRef(null);
@@ -319,6 +325,7 @@ export default function ProjectMap({
       try { map.remove(); } catch (e) { }
       mapRef.current = null;
       initialFitDone.current = false;
+      lastRouteFitSignatureRef.current = "";
       mapInitAttemptedRef.current = false;
     };
   }, [osmStyle]);
@@ -670,7 +677,26 @@ export default function ProjectMap({
                 bounds.extend([lng, lat]);
               }
             });
-            map.fitBounds(bounds, { padding: 60, maxZoom: 14 });
+
+            // Auto-fit ONLY when the route actually changed (different run,
+            // stops added/removed/reordered, recalculated geometry). A cheap
+            // signature identifies the route; identity-only refetches of the
+            // same run (polling/realtime syncs) must NOT move the viewport,
+            // otherwise the map keeps zooming back while the user pans.
+            const coords = currentRouteData.geometry.coordinates || [];
+            const routeShapeSig = `${coords.length}:${JSON.stringify(coords[0] || "")}:${JSON.stringify(coords[coords.length - 1] || "")}`;
+            const stopsSig = runProjects
+              .map((rp) => {
+                const proj = rp.proj_t_projects || {};
+                return `${proj.site_latitude || proj.address_latitude},${proj.site_longitude || proj.address_longitude}`;
+              })
+              .join(";");
+            const fitSignature = `${mode}|${selectedRunId ?? ""}|${origin.latitude},${origin.longitude}|${routeShapeSig}|${stopsSig}`;
+
+            if (fitSignature !== lastRouteFitSignatureRef.current) {
+              lastRouteFitSignatureRef.current = fitSignature;
+              map.fitBounds(bounds, { padding: 60, maxZoom: 14 });
+            }
           }
         }
       } catch (e) {}

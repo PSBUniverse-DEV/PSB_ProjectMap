@@ -32,6 +32,51 @@ import ProjectStatusTabs from "../components/ProjectStatusTabs";
 // filtering from re-running needlessly).
 const EMPTY_PROJECT_FILTERS = Object.freeze({});
 
+/**
+ * buildRouteFingerprint — a cheap string signature of everything that can
+ * change a run's driving route: the run's origin coordinates plus the stop
+ * coordinates in stop order. Used by the route cache (see the route
+ * calculation effect) to decide whether a stored OSRM result can be reused.
+ *
+ * The route depends ONLY on these inputs — edits to stop dates, invoices,
+ * notes, or prices never change the fingerprint, so they safely reuse the
+ * cached route. Adding, removing, or REORDERING stops (or moving the origin)
+ * changes it, which forces a recalculation — so no manual cache
+ * invalidation is ever needed. Coordinates are rounded to 6 decimal places
+ * (~0.1 m) to match how the OSRM action sanitizes them.
+ */
+function buildRouteFingerprint(run, runProjects) {
+  const parts = [String(run?.id ?? "no-run")];
+  const origin = run?.proj_s_origin_addresses;
+  if (origin && origin.latitude != null && origin.longitude != null) {
+    parts.push(`${Number(origin.latitude).toFixed(6)},${Number(origin.longitude).toFixed(6)}`);
+  } else {
+    parts.push("no-origin");
+  }
+  (runProjects || []).forEach((rp) => {
+    const proj = rp.proj_t_projects || {};
+    const lat = Number(proj.site_latitude ?? proj.address_latitude);
+    const lng = Number(proj.site_longitude ?? proj.address_longitude);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      parts.push(`${lat.toFixed(6)},${lng.toFixed(6)}`);
+    }
+  });
+  return parts.join("|");
+}
+
+/**
+ * storeRouteCache — saves a computed route in the session cache and keeps the
+ * cache bounded. Route geometry payloads are sizable, so entries beyond the
+ * ~25 most recently cached runs are evicted (Map preserves insertion order,
+ * so the first key is the oldest).
+ */
+function storeRouteCache(map, runId, entry) {
+  map.set(runId, entry);
+  if (map.size > 25) {
+    map.delete(map.keys().next().value);
+  }
+}
+
 
 export default function ProjectMapView({ projects: initialProjects = [], statuses = [], origins = [], states = [], runs: initialRuns = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [], runStatuses = [] }) {
   const router = useRouter();
@@ -94,6 +139,12 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
   const selectedRunIdRef = useRef(null);
   const runProjectsRef = useRef([]);
   const runSelectionInProgressRef = useRef(false);
+  // Session cache of computed run routes (see buildRouteFingerprint /
+  // storeRouteCache). Keyed by run id → { fingerprint, routeData, segmentData }.
+  // Deliberately survives closing/reopening the Run Detail Panel, so
+  // re-selecting a recently viewed run redraws its route instantly instead
+  // of waiting on the slow public OSRM server again.
+  const runRouteCacheRef = useRef(new Map());
 
   // Keep selectedRunIdRef in sync (in an effect, not during render).
   useEffect(() => {
@@ -599,34 +650,50 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
         toastError("Not enough valid coordinates to calculate a route.", "Recalculate"); return;
       }
       if (data.hasPartialFailure) setShowRouteErrorModal(true);
-      setRunRouteData({ distance: data.totalDistance, duration: data.totalDuration, geometry: data.geometry });
+      const routeData = { distance: data.totalDistance, duration: data.totalDuration, geometry: data.geometry };
+      setRunRouteData(routeData);
       setRunSegmentData(data);
+      // Write-through: the manual recalculation is authoritative, so refresh
+      // the route cache with exactly what it produced. Without this, the next
+      // route-effect run (triggered by the setRunProjects above) would hit
+      // the cache and re-serve the previous route.
+      if (!data.hasPartialFailure) {
+        storeRouteCache(runRouteCacheRef.current, selectedRunId, {
+          fingerprint: buildRouteFingerprint(selectedRun, freshProjects),
+          routeData,
+          segmentData: data,
+        });
+      }
       const subtotal = freshProjects.reduce((sum, rp) => {
         const proj = rp.proj_t_projects || {};
         return sum + (Number(proj.project_subtotal) || 0);
       }, 0);
       const totalMileage = data.totalDistance / 1609.344;
       await updateRun(selectedRunId, { estimated_distance: data.totalDistance, estimated_duration: data.totalDuration, estimated_mileage: totalMileage, estimated_subtotal: subtotal });
-      
-      // Calculate and persist arrival_datetime for each stop
-      const runDate = selectedRun?.run_date ? new Date(selectedRun.run_date) : new Date();
-      const originStart = new Date(runDate);
-      originStart.setHours(8, 0, 0, 0); // Default start time: 8:00 AM
-      let cumulativeSeconds = 0;
-      const arrivalUpdates = [];
+
+      // Normalize stop_sequence to match the display order (0..n-1) after a
+      // recalculation. Sequence drift can happen when stops are removed (the
+      // delete leaves gaps), so this keeps sequences contiguous.
+      //
+      // Only rows whose stored sequence actually differs are written —
+      // identical-value UPDATEs would still fire realtime events on
+      // proj_t_run_projects and cause needless sync passes on other users'
+      // screens.
+      //
+      // Note: an earlier version also computed a per-stop arrival_datetime
+      // here (run date 8:00 AM + cumulative OSRM durations), but it was never
+      // persisted or displayed anywhere — the UI shows the project's agreed
+      // arrival window (install_start/install_end) instead. Removed as dead
+      // code; per-stop ETAs would be a separate feature (see rule.md §12).
+      const sequenceUpdates = [];
       for (let i = 0; i < freshProjects.length; i++) {
-        const segment = data.segments[i];
-        if (segment && !segment.error) {
-          cumulativeSeconds += segment.duration;
-        }
-        const arrivalTime = new Date(originStart.getTime() + cumulativeSeconds * 1000);
         const rp = freshProjects[i];
-        if (rp && rp.id) {
-          arrivalUpdates.push(updateStopSequence(rp.id, i));
+        if (rp && rp.id && rp.stop_sequence !== i) {
+          sequenceUpdates.push(updateStopSequence(rp.id, i));
         }
       }
-      if (arrivalUpdates.length > 0) {
-        await Promise.all(arrivalUpdates);
+      if (sequenceUpdates.length > 0) {
+        await Promise.all(sequenceUpdates);
       }
       
       await updateRunStopsCount(selectedRunId, freshProjects.length);
@@ -1072,29 +1139,55 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
       .finally(() => { 
         if (!cancelled && requestId === runRequestIdRef.current) {
           setBusy(false);
-          // Do NOT clear isLoadingRunDetails here.
-          // The route calculation effect will clear it when map processing completes,
-          // keeping the drawer loading until both backend data AND map routes are ready.
+          // The drawer is ready to render as soon as the stop data arrives —
+          // it no longer waits for the OSRM route calculation (the route line
+          // has its own smaller loading indicator; see the route effect
+          // below). Clearing here also guarantees the spinner clears even
+          // when the details fetch itself fails.
+          setIsLoadingRunDetails(false);
         }
       });
     return () => { cancelled = true; };
   }, [selectedRunId, runReloadKey]);
 
-  // Calculate multi-stop route for runs
+  // Calculate multi-stop route for runs.
+  //
+  // Performance: the route is a pure function of its inputs — origin
+  // coordinates plus ordered stop coordinates — and the OSRM demo server is
+  // slow. Results are therefore cached per run, keyed by a fingerprint of
+  // exactly those inputs:
+  //   - Cache HIT  → reuse instantly (no network, no spinner). This makes
+  //     re-opening a recently viewed run instant, and it stops the
+  //     realtime/polling sync from re-calling OSRM every pass — a sync
+  //     replaces the runProjects array even when nothing changed, which
+  //     re-runs this effect; the fingerprint check absorbs that.
+  //   - Cache MISS → calculate and store. Stops added/removed/REORDERED or
+  //     an origin change all alter the fingerprint, so the cache
+  //     self-invalidates with no manual invalidation logic.
+  // Only successful results are cached, so a transient OSRM outage is
+  // retried on the next pass instead of being pinned.
   useEffect(() => {
     if (mode !== "runs" || !selectedRunId || runProjects.length === 0) {
       setRunRouteData(null); setRunSegmentData(null);
-      // No projects → no route to calculate — clear loading immediately
-      setIsLoadingRunDetails(false);
+      setRunRouteLoading(false);
       return;
     }
     const origin = selectedRun?.proj_s_origin_addresses;
     if (!origin || origin.latitude == null || origin.longitude == null) {
       setRunRouteData(null);
-      // No usable origin coordinates → nothing to map — clear loading
-      setIsLoadingRunDetails(false);
+      setRunRouteLoading(false);
       return;
     }
+
+    const fingerprint = buildRouteFingerprint(selectedRun, runProjects);
+    const cached = runRouteCacheRef.current.get(selectedRunId);
+    if (cached && cached.fingerprint === fingerprint) {
+      setRunRouteData(cached.routeData);
+      setRunSegmentData(cached.segmentData);
+      setRunRouteLoading(false);
+      return;
+    }
+
     let cancelled = false;
     setRunRouteLoading(true);
     computeRunSegmentData(selectedRun, runProjects)
@@ -1104,8 +1197,12 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
             setRunRouteData(null); setRunSegmentData(null); setRunRouteLoading(false); return;
           }
           if (data.hasPartialFailure) setShowRouteErrorModal(true);
-          setRunRouteData({ distance: data.totalDistance, duration: data.totalDuration, geometry: data.geometry });
+          const routeData = { distance: data.totalDistance, duration: data.totalDuration, geometry: data.geometry };
+          setRunRouteData(routeData);
           setRunSegmentData(data);
+          if (!data.hasPartialFailure) {
+            storeRouteCache(runRouteCacheRef.current, selectedRunId, { fingerprint, routeData, segmentData: data });
+          }
           const subtotal = runProjects.reduce((sum, rp) => {
             const proj = rp.proj_t_projects || {};
             return sum + (Number(proj.project_subtotal) || 0);
@@ -1129,13 +1226,10 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
         if (!cancelled) { console.error("[ProjectMapView] Route calculation failed:", err); toastError(err?.message || "Failed to calculate route.", "Route"); setRunRouteData(null); setRunSegmentData(null); }
       })
       .finally(() => {
-        if (!cancelled) {
-          setRunRouteLoading(false);
-          // Route calculation is done — now the drawer can stop loading.
-          // This ensures the drawer only shows content after BOTH the backend
-          // data load AND the map route processing have completed.
-          setIsLoadingRunDetails(false);
-        }
+        // The drawer no longer waits for this calculation — isLoadingRunDetails
+        // is cleared by the details-load effect, so the stop list renders
+        // immediately and the route line pops in whenever OSRM answers.
+        if (!cancelled) setRunRouteLoading(false);
       });
     return () => { cancelled = true; };
   }, [mode, selectedRunId, runProjects]);

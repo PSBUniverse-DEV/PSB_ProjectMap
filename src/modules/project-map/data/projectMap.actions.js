@@ -1397,7 +1397,13 @@ export async function loadAllRunProjects() {
 
   const { data, error } = await supabase
     .from("proj_t_run_projects")
-    .select("id, run_id, project_id, stop_sequence, notes, estimated_arrival, estimated_departure, arrival_datetime")
+    // Only the columns the app actually reads. The arrival columns
+    // (estimated_arrival, estimated_departure, arrival_datetime) exist in the
+    // table but are intentionally NOT fetched: nothing in the app reads them —
+    // the UI shows the project's agreed arrival window
+    // (install_start/install_end) instead. Add them back only if per-stop
+    // route ETAs become a real feature (see rule.md §12).
+    .select("id, run_id, project_id, stop_sequence, notes")
     .order("run_id", { ascending: true });
 
   if (error) throw new Error(error.message);

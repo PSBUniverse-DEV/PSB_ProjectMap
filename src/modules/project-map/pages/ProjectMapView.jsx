@@ -89,8 +89,16 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
   const [isLoadingRunDetails, setIsLoadingRunDetails] = useState(false);
   const [runReloadKey, setRunReloadKey] = useState(0);
   const runRequestIdRef = useRef(0);
+  // Latest selected run id for async callbacks (refreshRunData) — avoids
+  // stale closures when a sync fires long after the callback was created.
+  const selectedRunIdRef = useRef(null);
   const runProjectsRef = useRef([]);
   const runSelectionInProgressRef = useRef(false);
+
+  // Keep selectedRunIdRef in sync (in an effect, not during render).
+  useEffect(() => {
+    selectedRunIdRef.current = selectedRunId;
+  }, [selectedRunId]);
 
   useEffect(() => { window.scrollTo(0, 0); }, []);
 
@@ -704,10 +712,26 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
   const handleRunSaved = () => { setShowRunForm(false); setEditingRun(null); refreshRuns(); };
   const handleCloseRunForm = () => { setShowRunForm(false); setEditingRun(null); };
 
+  // Re-fetches the currently selected run's details (stop list + header).
+  // Called by user actions AND by the realtime/polling sync passes.
+  //
+  // Race safety: because syncs can fire at any moment, a response that was
+  // STARTED for run A may land AFTER the user has already switched to run B.
+  // Without guards it would overwrite B's panel with A's stops (the "all runs
+  // show the same details" bug). Two guards prevent that:
+  //   1. selectedRunIdRef — the response is discarded if the selection changed
+  //      while the fetch was in flight.
+  //   2. runRequestIdRef  — shared with the selection-load effect, so whichever
+  //      request started LAST owns the panel and older ones cannot clobber it.
   const refreshRunData = useCallback(async () => {
-    if (!selectedRunId) return;
+    const runId = selectedRunIdRef.current;
+    if (!runId) return;
+    const requestId = ++runRequestIdRef.current;
     try {
-      const details = await loadRunDetails(selectedRunId);
+      const details = await loadRunDetails(runId);
+      if (selectedRunIdRef.current !== runId || requestId !== runRequestIdRef.current) {
+        return; // stale — a newer selection/fetch owns the panel now
+      }
       if (!details.run) {
         // Run no longer exists — clear all run state
         clearRunState();
@@ -716,13 +740,18 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
       }
       const projects = details.projects || [];
       setRunProjects(projects);
-      await updateRunStopsCount(selectedRunId, projects.length);
+      // Only write the stops count when it actually differs. Writing the same
+      // value still emits a realtime UPDATE event on the run row, which would
+      // make every client sync again — an endless loop with no real changes.
+      if (Number(details.run.stops) !== projects.length) {
+        await updateRunStopsCount(runId, projects.length);
+      }
       await refreshRuns();
       await refreshRunProjects();
     } catch (err) {
       console.error("[ProjectMapView] Failed to refresh run data:", err);
     }
-  }, [selectedRunId, refreshRuns, refreshRunProjects, clearRunState]);
+  }, [refreshRuns, refreshRunProjects, clearRunState]);
 
   // Re-fetches the project list from the database. The page's initial list
   // comes from the server component, so this is the only way to refresh it
@@ -1081,7 +1110,19 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
             const proj = rp.proj_t_projects || {};
             return sum + (Number(proj.project_subtotal) || 0);
           }, 0);
-          updateRun(selectedRunId, { estimated_distance: data.totalDistance, estimated_duration: data.totalDuration, estimated_subtotal: subtotal }).catch((err) => console.error("[ProjectMapView] Failed to save route estimates:", err));
+          // Only write the estimates when they actually changed. updateRun
+          // always bumps updated_at, so an unconditional write here would
+          // change the data version on EVERY sync pass — making every client
+          // re-sync and re-recalculate in an endless loop with no real
+          // changes. null is normalized so a genuine first write still lands.
+          const normalize = (v) => (v == null ? null : Number(v));
+          const estimatesChanged =
+            normalize(selectedRun?.estimated_distance) !== normalize(data.totalDistance) ||
+            normalize(selectedRun?.estimated_duration) !== normalize(data.totalDuration) ||
+            normalize(selectedRun?.estimated_subtotal) !== normalize(subtotal);
+          if (estimatesChanged) {
+            updateRun(selectedRunId, { estimated_distance: data.totalDistance, estimated_duration: data.totalDuration, estimated_subtotal: subtotal }).catch((err) => console.error("[ProjectMapView] Failed to save route estimates:", err));
+          }
         }
       })
       .catch((err) => {

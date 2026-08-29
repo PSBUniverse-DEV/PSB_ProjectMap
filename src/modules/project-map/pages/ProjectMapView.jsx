@@ -1110,40 +1110,41 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
     }
   }, [filteredRuns, selectedRunId]);
 
-  // Load run details when selected — with race condition protection
+  // Load run details when selected — with race condition protection.
+  //
+  // Loading contract (shared with the route effect below): the Run Detail
+  // Panel's spinner is `isLoadingRunDetails || runRouteLoading`, i.e. it
+  // stays up until BOTH the stop data and the OSRM route have arrived and
+  // are displayed. This effect owns the details half; the route effect owns
+  // the route half. Both sides clear on failure too, so the spinner can
+  // never get stuck.
   useEffect(() => {
-    console.log("[DEBUG] loadRunDetails effect:", selectedRunId);
-    if (!selectedRunId) { 
-      console.log("[DEBUG] No selectedRunId, clearing runProjects");
-      setRunProjects([]); 
+    if (!selectedRunId) {
+      setRunProjects([]);
       setIsLoadingRunDetails(false);
-      return; 
+      return;
     }
     const requestId = ++runRequestIdRef.current;
     let cancelled = false;
     setIsLoadingRunDetails(true);
     setBusy(true);
     loadRunDetails(selectedRunId)
-      .then((details) => { 
-        console.log("[DEBUG] loadRunDetails result:", details); 
+      .then((details) => {
         if (!cancelled && requestId === runRequestIdRef.current) {
-          setRunProjects(details.projects || []); 
+          setRunProjects(details.projects || []);
         }
       })
-      .catch((err) => { 
-        console.error("[DEBUG] loadRunDetails error:", err);
+      .catch((err) => {
+        console.error("[ProjectMapView] Failed to load run details:", err);
         if (!cancelled && requestId === runRequestIdRef.current) {
-          toastError(err?.message || "Failed to load run details.", "Runs"); 
+          toastError(err?.message || "Failed to load run details.", "Runs");
         }
       })
-      .finally(() => { 
+      .finally(() => {
         if (!cancelled && requestId === runRequestIdRef.current) {
           setBusy(false);
-          // The drawer is ready to render as soon as the stop data arrives —
-          // it no longer waits for the OSRM route calculation (the route line
-          // has its own smaller loading indicator; see the route effect
-          // below). Clearing here also guarantees the spinner clears even
-          // when the details fetch itself fails.
+          // Details half done (or failed) — the route half is tracked by
+          // runRouteLoading in the route effect below.
           setIsLoadingRunDetails(false);
         }
       });
@@ -1226,9 +1227,12 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
         if (!cancelled) { console.error("[ProjectMapView] Route calculation failed:", err); toastError(err?.message || "Failed to calculate route.", "Route"); setRunRouteData(null); setRunSegmentData(null); }
       })
       .finally(() => {
-        // The drawer no longer waits for this calculation — isLoadingRunDetails
-        // is cleared by the details-load effect, so the stop list renders
-        // immediately and the route line pops in whenever OSRM answers.
+        // Route half of the Run Detail Panel's spinner: runRouteLoading is
+        // combined with isLoadingRunDetails (see the details-load effect for
+        // the full loading contract), so the panel stays in its loading
+        // state until BOTH the stop data and this route have arrived.
+        // Clearing on failure as well as success guarantees the spinner
+        // can never get stuck.
         if (!cancelled) setRunRouteLoading(false);
       });
     return () => { cancelled = true; };
@@ -1356,8 +1360,11 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
         {mode === "projects" && selectedProject && (
           <ProjectDetailDrawer project={selectedProject} statuses={statuses} buildingCategories={buildingCategories} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} projectRunLookup={projectRunLookup} onClose={handleCloseDrawer} onEdit={handleEdit} onDelete={() => setConfirmDeleteId(selectedProject.id)} onRemoveFromRun={handleRemoveProjectFromRunById} routeInfo={routeInfo} />
         )}
+        {/* Panel spinner = details fetch + OSRM route (loading contract is
+            documented on the two effects above): it shows while either is in
+            flight and hides only once ALL panel data is displayed. */}
         {mode === "runs" && selectedRun && (
-          <RunDetailPanel run={selectedRun} runProjects={runProjects} runSegmentData={runSegmentData} onClose={handleCloseRunDetail} onEdit={handleEditRun} onDelete={() => setConfirmDeleteRunId(selectedRun.id)} onRemoveProject={handleRemoveProjectFromRun} onReorderStops={handleReorderStops} onRecalculate={handleRecalculate} recalculating={recalculating} onEditStopNote={handleEditStopNote} onEditStopDate={handleEditStopDate} onEditStopInvoice={handleEditStopInvoice} onEditProjectPrice={handleEditProjectPrice} isLoading={isLoadingRunDetails} runStatuses={runStatuses} onStatusChange={handleRunStatusChange} />
+          <RunDetailPanel run={selectedRun} runProjects={runProjects} runSegmentData={runSegmentData} onClose={handleCloseRunDetail} onEdit={handleEditRun} onDelete={() => setConfirmDeleteRunId(selectedRun.id)} onRemoveProject={handleRemoveProjectFromRun} onReorderStops={handleReorderStops} onRecalculate={handleRecalculate} recalculating={recalculating} onEditStopNote={handleEditStopNote} onEditStopDate={handleEditStopDate} onEditStopInvoice={handleEditStopInvoice} onEditProjectPrice={handleEditProjectPrice} isLoading={isLoadingRunDetails || runRouteLoading} runStatuses={runStatuses} onStatusChange={handleRunStatusChange} />
         )}
       </div>
 

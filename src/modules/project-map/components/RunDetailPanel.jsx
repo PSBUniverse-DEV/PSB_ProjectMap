@@ -130,8 +130,8 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
         {isLoading ? (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 20px", textAlign: "center" }}>
             <div style={{ fontSize: "28px", marginBottom: "12px", animation: "recalcSpin 0.8s linear infinite" }}>⟳</div>
-            <div style={{ fontSize: "12px", fontWeight: 600, color: "#1e293b", marginBottom: "4px" }}>Loading Run Details...</div>
-            <div style={{ fontSize: "10px", color: "#64748b" }}>Please wait while we fetch the run data.</div>
+            <div style={{ fontSize: "12px", fontWeight: 600, color: "#1e293b", marginBottom: "4px" }}>Loading Run Data...</div>
+            <div style={{ fontSize: "10px", color: "#64748b" }}>Fetching stops and calculating the route.</div>
           </div>
         ) : (
           <>

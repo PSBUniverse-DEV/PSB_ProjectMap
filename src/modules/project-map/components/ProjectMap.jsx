@@ -619,7 +619,14 @@ export default function ProjectMap({
           }
         });
         if (hasValid) {
-          try { map.fitBounds(bounds, { padding: 50, maxZoom: 14 }); } catch (e) {}
+          // animate: false — this is the very first fit on page load, going
+          // from the wide zoom-3 default view to the real project bounds.
+          // An animated flight here fetches tiles for every intermediate
+          // zoom/pan frame (most immediately discarded), which was the
+          // direct cause of ~7s LCP and ~300+ wasted tile requests on load.
+          // Jumping straight to the final bounds is visually equivalent —
+          // the user never sees the zoom-3 world view anyway.
+          try { map.fitBounds(bounds, { padding: 50, maxZoom: 14, animate: false }); } catch (e) {}
         }
       }
       initialFitDone.current = true;

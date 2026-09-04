@@ -733,6 +733,38 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
         );
       }
 
+      if (updatedRun?._restoredProjectStatuses?.length) {
+        const restoredByProjectId = new Map(
+          updatedRun._restoredProjectStatuses.map(({ projectId, statusId }) => [projectId, statusId])
+        );
+        setProjects((prev) =>
+          prev.map((project) => {
+            const statusId = restoredByProjectId.get(project.id);
+            if (statusId == null) return project;
+            return {
+              ...project,
+              status_id: statusId,
+              proj_s_project_status: statuses.find((s) => s.status_id === statusId) || null,
+            };
+          })
+        );
+        setRunProjects((prev) =>
+          prev.map((mapping) => {
+            const statusId = restoredByProjectId.get(mapping.proj_t_projects?.id);
+            if (statusId == null) return mapping;
+            return {
+              ...mapping,
+              proj_t_projects: {
+                ...mapping.proj_t_projects,
+                status_id: statusId,
+                status_before_run_completion_id: null,
+                proj_s_project_status: statuses.find((s) => s.status_id === statusId) || null,
+              },
+            };
+          })
+        );
+      }
+
       await refreshRuns();
       toastSuccess("Run status updated.", "Runs");
     } catch (err) {

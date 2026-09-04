@@ -242,6 +242,11 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
                   {runProjects.map((rp, idx) => {
                     const proj = rp.proj_t_projects || {};
                     const segment = runSegmentData?.segments?.[idx];
+                    const currentProjectStatus = proj.proj_s_project_status?.status_name || "—";
+                    const previousProjectStatus = proj.previous_project_status?.status_name || null;
+                    const projectStatusLabel = run.status === "Completed" && previousProjectStatus && currentProjectStatus !== previousProjectStatus
+                      ? `${previousProjectStatus} -> ${currentProjectStatus}`
+                      : currentProjectStatus;
                     const hasError = segment?.error;
                     const segDistance = hasError ? "Route unavailable" : formatDistance(segment?.distance);
                     const segDuration = hasError ? "" : formatDuration(segment?.duration);
@@ -265,6 +270,7 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
                                 <div style={{ flex: 1 }}>
                                   <div style={{ fontWeight: 600, fontSize: "11px", color: "#1e293b", marginBottom: "1px" }}>{idx + 1}. {proj.client_name || "Untitled"}</div>
                                   <div style={{ fontSize: "9px", color: "#64748b" }}>{proj.city && proj.state ? `${stripTownshipLabel(proj.city)}, ${proj.state}` : stripTownshipLabel(proj.formatted_address) || "No address"}</div>
+                                  <div style={{ fontSize: "9px", color: "#64748b", marginTop: "2px" }}>Status: {projectStatusLabel}</div>
                                   <div style={{ fontSize: "10px", color: "#16a34a", fontWeight: 500, marginTop: "2px" }}>{sub}</div>
                                   <div style={{ marginTop: "3px", display: "flex", gap: "8px", alignItems: "center" }}>
                                     <button onClick={() => onEditStopNote?.(rp)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "10px", padding: "0", color: rp.notes ? "#6366f1" : "#94a3b8", fontWeight: rp.notes ? 600 : 400 }} title={rp.notes ? "Edit note" : "Add note"}>{rp.notes ? "📝 Note" : "📄 Note"}</button>

@@ -1093,6 +1093,7 @@ export async function updateRun(runId, updates) {
   // When the cascade actually moves projects, remembers which ones (and to what
   // status) so the caller can patch local state without a refetch.
   let cascadeResult = null;
+  let restoredProjectStatuses = [];
 
   if (previousStatus !== "Completed" && newStatus === "Completed") {
     try {
@@ -1116,7 +1117,7 @@ export async function updateRun(runId, updates) {
         // Collect every project assigned to this run.
         const { data: mappings, error: mappingsError } = await supabase
           .from("proj_t_run_projects")
-          .select("project_id")
+          .select("project_id, proj_t_projects(status_id, status_before_run_completion_id)")
           .eq("run_id", runId);
 
         if (mappingsError) throw mappingsError;
@@ -1125,12 +1126,21 @@ export async function updateRun(runId, updates) {
 
         // Zero stops → nothing to update; not an error.
         if (projectIds.length > 0) {
-          const { error: cascadeError } = await supabase
-            .from("proj_t_projects")
-            .update({ status_id: fullyInstalled.status_id, updated_at: now })
-            .in("id", projectIds);
+          for (const mapping of mappings || []) {
+            const project = mapping.proj_t_projects;
+            if (!project || project.status_id === fullyInstalled.status_id) continue;
 
-          if (cascadeError) throw cascadeError;
+            const { error: cascadeError } = await supabase
+              .from("proj_t_projects")
+              .update({
+                status_id: fullyInstalled.status_id,
+                status_before_run_completion_id: project.status_before_run_completion_id ?? project.status_id,
+                updated_at: now,
+              })
+              .eq("id", mapping.project_id);
+
+            if (cascadeError) throw cascadeError;
+          }
 
           cascadeResult = { projectIds, statusId: fullyInstalled.status_id };
         }
@@ -1145,12 +1155,43 @@ export async function updateRun(runId, updates) {
     }
   }
 
+  if (previousStatus === "Completed" && newStatus !== "Completed") {
+    try {
+      const { data: mappings, error: mappingsError } = await supabase
+        .from("proj_t_run_projects")
+        .select("project_id, proj_t_projects(status_before_run_completion_id)")
+        .eq("run_id", runId);
+
+      if (mappingsError) throw mappingsError;
+
+      for (const mapping of mappings || []) {
+        const previousStatusId = mapping.proj_t_projects?.status_before_run_completion_id;
+        if (previousStatusId == null) continue;
+
+        const { error: restoreError } = await supabase
+          .from("proj_t_projects")
+          .update({ status_id: previousStatusId, status_before_run_completion_id: null, updated_at: now })
+          .eq("id", mapping.project_id);
+
+        if (restoreError) throw restoreError;
+        restoredProjectStatuses.push({ projectId: mapping.project_id, statusId: previousStatusId });
+      }
+    } catch (restoreErr) {
+      console.error(
+        "[updateRun] Failed to restore project statuses after reopening run #" + runId + ":",
+        restoreErr?.message ?? restoreErr
+      );
+    }
+  }
+
   // Attach cascade metadata only when it actually ran, so callers that don't
   // care (RunForm, PaidSheetForm, route-estimate saves) see the plain run row
   // exactly as before and nothing can be mistaken for a real column.
-  return cascadeResult
-    ? { ...data, _cascadedProjectIds: cascadeResult.projectIds, _cascadedStatusId: cascadeResult.statusId }
-    : data;
+  return {
+    ...data,
+    ...(cascadeResult ? { _cascadedProjectIds: cascadeResult.projectIds, _cascadedStatusId: cascadeResult.statusId } : {}),
+    ...(restoredProjectStatuses.length > 0 ? { _restoredProjectStatuses: restoredProjectStatuses } : {}),
+  };
 }
 
 export async function deleteRun(runId) {
@@ -1417,7 +1458,7 @@ export async function loadRunDetails(runId) {
     supabase.from("proj_t_runs").select("*, proj_s_origin_addresses(*)").eq("id", runId).maybeSingle(),
     supabase
       .from("proj_t_run_projects")
-      .select("*, proj_t_projects(id, client_name, formatted_address, address_line_1, city, state, state_code, postal_code, country, address_latitude, address_longitude, site_latitude, site_longitude, dealer, building_category_id, permit_status_id, welcome_call_status_id, invoice_number, project_subtotal, order_received_at, scheduled_project_start, scheduled_project_end, install_start, install_end, project_notes, dimension, payment_method_type, payment_method_number, paid_sheet_notes, paid_sheet_done, proj_s_project_status(*), proj_s_building_categories(*), proj_s_permit_status(*), proj_s_welcome_call_status(*), proj_s_payment_method(id, method_name, method_description))")
+      .select("*, proj_t_projects(id, client_name, formatted_address, address_line_1, city, state, state_code, postal_code, country, address_latitude, address_longitude, site_latitude, site_longitude, dealer, building_category_id, permit_status_id, welcome_call_status_id, invoice_number, project_subtotal, order_received_at, scheduled_project_start, scheduled_project_end, install_start, install_end, project_notes, dimension, payment_method_type, payment_method_number, paid_sheet_notes, paid_sheet_done, status_before_run_completion_id, proj_s_project_status(*), previous_project_status:proj_s_project_status!proj_t_projects_status_before_run_completion_id_fkey(*), proj_s_building_categories(*), proj_s_permit_status(*), proj_s_welcome_call_status(*), proj_s_payment_method(id, method_name, method_description))")
       .eq("run_id", runId)
       .order("stop_sequence"),
   ]);

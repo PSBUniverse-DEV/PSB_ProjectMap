@@ -267,6 +267,7 @@ export default function PaidSheetForm({
                 selectedValues={headerFields.state_route || []}
                 onChange={(values) => handleHeaderChange("state_route", values)}
                 placeholder="Select..."
+                menuStyle={{ zIndex: 10000 }}
               />
             </div>
           </div>

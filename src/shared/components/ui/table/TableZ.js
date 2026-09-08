@@ -221,6 +221,7 @@ export default function TableZ({
   onHeaderContextMenu,
   loading = false,
   className = "",
+  variant = "",
   emptyMessage = "No records found.",
   loadingMessage = "Loading records...",
   searchPlaceholder = "Search",
@@ -234,9 +235,10 @@ export default function TableZ({
 }) {
   const tableId = useId();
   const controlledMode = isPlainObject(state) && typeof onChange === "function";
+  const variantClassName = variant ? `psb-ui-table--${variant}` : "";
   const tableClassName = controlledMode
-    ? ["psb-ui-table", "psb-ui-data-table", className].filter(Boolean).join(" ")
-    : ["psb-ui-table", "psb-ui-data-table", "table-sm", "mb-0"].join(" ");
+    ? ["psb-ui-table", "psb-ui-data-table", variantClassName, className].filter(Boolean).join(" ")
+    : ["psb-ui-table", "psb-ui-data-table", "table-sm", "mb-0", variantClassName, className].filter(Boolean).join(" ");
 
   if (isDevEnvironment()) {
     validateTableProps({
@@ -995,7 +997,7 @@ export default function TableZ({
   );
 
   return (
-    <section className={["psb-ui-table-shell", className].filter(Boolean).join(" ")} aria-label="Data table">
+    <section className={["psb-ui-table-shell", variantClassName, className].filter(Boolean).join(" ")} aria-label="Data table">
       {batchControls}
       {hasFilterControls ? (
         <div className={`psb-ui-table-filters-shell${filtersExpanded ? " psb-ui-table-filters-shell--inline" : ""}`}>

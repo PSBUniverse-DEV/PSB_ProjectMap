@@ -1050,26 +1050,25 @@ export async function createRun(runData) {
 /**
  * updateRun — updates a single run row.
  *
- * Beyond the normal save, this is where the "run completed" cascade lives:
- * the first time a run transitions INTO the "Completed" status, every project
- * assigned to the run (via proj_t_run_projects) is set to the "Fully Installed"
- * project status — regardless of what status they had before.
+ * Beyond the normal save, this is where run-status project synchronization lives.
+ * When a run transitions into a mapped status, every project assigned to the run
+ * is updated to the corresponding project status.
  *
  * Business rules:
- * - The cascade is deliberately ONE-WAY. Reopening a run to another status
- *   later does NOT revert the projects back to their prior statuses.
- * - The cascade fires only on the actual transition into "Completed"
- *   (previousStatus !== "Completed" && newStatus === "Completed"), not on every
- *   save of a run that is already "Completed".
+ * - Planned → Ready for Install
+ * - In Progress → Currently Being Installed
+ * - Completed → Fully Installed
+ * - The cascade fires only when the run enters a mapped status, not on every
+ *   save of a run that is already in that status.
+ * - Project statuses remain independently editable after the cascade. There is
+ *   no stored previous status and no automatic restoration when a run reopens.
  * - The previous status must be read from proj_t_runs first because the caller
  *   only passes the new update values, and we need the old value to compare.
  * - Cascade failures are logged but never thrown: the run itself saved fine,
  *   so a failed project-status sync must not surface as a failed run save.
  * - Return value: the updated run row, plus `_cascadedProjectIds` and
- *   `_cascadedStatusId` when THIS save's transition into "Completed" moved
- *   projects to "Fully Installed". Those underscore-prefixed keys (never real
- *   proj_t_runs columns) let the client patch its local state without a
- *   refetch; they are absent whenever nothing cascaded.
+ *   `_cascadedStatusId` when a mapped transition updated projects. Those
+ *   underscore-prefixed keys are client metadata, never database columns.
  */
 export async function updateRun(runId, updates) {
   const supabase = getSupabaseAdmin();
@@ -1098,38 +1097,42 @@ export async function updateRun(runId, updates) {
   const { data, error } = await supabase.from("proj_t_runs").update(payload).eq("id", runId).select("*").single();
   if (error) throw new Error(error.message);
 
-  // ─── One-way cascade: run → "Completed" sets every stop to "Fully Installed" ───
+  // ─── Transition cascade: run status → project status ───
   const previousStatus = existingRun?.status ?? null;
   const newStatus = payload.status !== undefined ? payload.status : previousStatus;
 
-  // When the cascade actually moves projects, remembers which ones (and to what
-  // status) so the caller can patch local state without a refetch.
   let cascadeResult = null;
-  let restoredProjectStatuses = [];
 
-  if (previousStatus !== "Completed" && newStatus === "Completed") {
+  const projectStatusByRunStatus = {
+    Planned: "Ready for Install",
+    "In Progress": "Currently Being Installed",
+    Completed: "Fully Installed",
+  };
+  const targetProjectStatusName = previousStatus !== newStatus
+    ? projectStatusByRunStatus[newStatus]
+    : null;
+
+  if (targetProjectStatusName) {
     try {
-      // Resolve the "Fully Installed" status_id dynamically by name. The id is a
-      // serial PK (currently 9) and setup rows are user-editable, so hardcoding
-      // it would silently corrupt the cascade if the row is ever re-created.
-      const { data: fullyInstalled, error: statusError } = await supabase
+      // Resolve by name because setup rows are user-editable and IDs must not be hardcoded.
+      const { data: targetStatus, error: statusError } = await supabase
         .from("proj_s_project_status")
         .select("status_id")
-        .eq("status_name", "Fully Installed")
+        .eq("status_name", targetProjectStatusName)
         .maybeSingle();
 
       if (statusError) throw statusError;
 
-      if (!fullyInstalled) {
+      if (!targetStatus) {
         // A missing lookup row is not a run-save failure; log and skip the cascade.
         console.error(
-          "[updateRun] 'Fully Installed' status row not found in proj_s_project_status; skipping project status cascade for run #" + runId
+          `[updateRun] '${targetProjectStatusName}' status row not found in proj_s_project_status; skipping project status cascade for run #${runId}`
         );
       } else {
         // Collect every project assigned to this run.
         const { data: mappings, error: mappingsError } = await supabase
           .from("proj_t_run_projects")
-          .select("project_id, proj_t_projects(status_id, status_before_run_completion_id)")
+          .select("project_id, proj_t_projects(status_id)")
           .eq("run_id", runId);
 
         if (mappingsError) throw mappingsError;
@@ -1140,13 +1143,12 @@ export async function updateRun(runId, updates) {
         if (projectIds.length > 0) {
           for (const mapping of mappings || []) {
             const project = mapping.proj_t_projects;
-            if (!project || project.status_id === fullyInstalled.status_id) continue;
+            if (!project || project.status_id === targetStatus.status_id) continue;
 
             const { error: cascadeError } = await supabase
               .from("proj_t_projects")
               .update({
-                status_id: fullyInstalled.status_id,
-                status_before_run_completion_id: project.status_before_run_completion_id ?? project.status_id,
+                status_id: targetStatus.status_id,
                 updated_at: now,
               })
               .eq("id", mapping.project_id);
@@ -1154,44 +1156,15 @@ export async function updateRun(runId, updates) {
             if (cascadeError) throw cascadeError;
           }
 
-          cascadeResult = { projectIds, statusId: fullyInstalled.status_id };
+          cascadeResult = { projectIds, statusId: targetStatus.status_id };
         }
       }
     } catch (cascadeErr) {
       // Run save already succeeded; a failure here must not fail the response.
       // Log it so this silent partial failure stays visible in server logs.
       console.error(
-        "[updateRun] Failed to cascade project status to 'Fully Installed' for run #" + runId + ":",
+        `[updateRun] Failed to cascade project status to '${targetProjectStatusName}' for run #${runId}:`,
         cascadeErr?.message ?? cascadeErr
-      );
-    }
-  }
-
-  if (previousStatus === "Completed" && newStatus !== "Completed") {
-    try {
-      const { data: mappings, error: mappingsError } = await supabase
-        .from("proj_t_run_projects")
-        .select("project_id, proj_t_projects(status_before_run_completion_id)")
-        .eq("run_id", runId);
-
-      if (mappingsError) throw mappingsError;
-
-      for (const mapping of mappings || []) {
-        const previousStatusId = mapping.proj_t_projects?.status_before_run_completion_id;
-        if (previousStatusId == null) continue;
-
-        const { error: restoreError } = await supabase
-          .from("proj_t_projects")
-          .update({ status_id: previousStatusId, status_before_run_completion_id: null, updated_at: now })
-          .eq("id", mapping.project_id);
-
-        if (restoreError) throw restoreError;
-        restoredProjectStatuses.push({ projectId: mapping.project_id, statusId: previousStatusId });
-      }
-    } catch (restoreErr) {
-      console.error(
-        "[updateRun] Failed to restore project statuses after reopening run #" + runId + ":",
-        restoreErr?.message ?? restoreErr
       );
     }
   }
@@ -1202,7 +1175,6 @@ export async function updateRun(runId, updates) {
   return {
     ...data,
     ...(cascadeResult ? { _cascadedProjectIds: cascadeResult.projectIds, _cascadedStatusId: cascadeResult.statusId } : {}),
-    ...(restoredProjectStatuses.length > 0 ? { _restoredProjectStatuses: restoredProjectStatuses } : {}),
   };
 }
 

@@ -712,9 +712,8 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
       const updatedRun = await updateRun(selectedRunId, { status: newStatus });
 
       // When the run cascade fires, updateRun reports which projects it moved
-      // to "Fully Installed". Patch local projects state so the project list,
-      // map pins, and detail drawer update immediately — same targeted-patch
-      // pattern as the stop note/date/invoice handlers, no full reload.
+      // to the mapped project status. Patch local projects and run details so
+      // the UI updates immediately without locking future project edits.
       if (updatedRun?._cascadedProjectIds?.length) {
         // The list/map/drawer read the label from the nested relation first,
         // so patch both the status FK and the joined status object.
@@ -731,34 +730,15 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
               : p
           )
         );
-      }
-
-      if (updatedRun?._restoredProjectStatuses?.length) {
-        const restoredByProjectId = new Map(
-          updatedRun._restoredProjectStatuses.map(({ projectId, statusId }) => [projectId, statusId])
-        );
-        setProjects((prev) =>
-          prev.map((project) => {
-            const statusId = restoredByProjectId.get(project.id);
-            if (statusId == null) return project;
-            return {
-              ...project,
-              status_id: statusId,
-              proj_s_project_status: statuses.find((s) => s.status_id === statusId) || null,
-            };
-          })
-        );
         setRunProjects((prev) =>
           prev.map((mapping) => {
-            const statusId = restoredByProjectId.get(mapping.proj_t_projects?.id);
-            if (statusId == null) return mapping;
+            if (!updatedRun._cascadedProjectIds.includes(mapping.proj_t_projects?.id)) return mapping;
             return {
               ...mapping,
               proj_t_projects: {
                 ...mapping.proj_t_projects,
-                status_id: statusId,
-                status_before_run_completion_id: null,
-                proj_s_project_status: statuses.find((s) => s.status_id === statusId) || null,
+                status_id: updatedRun._cascadedStatusId,
+                proj_s_project_status: cascadedStatus ?? mapping.proj_t_projects.proj_s_project_status,
               },
             };
           })

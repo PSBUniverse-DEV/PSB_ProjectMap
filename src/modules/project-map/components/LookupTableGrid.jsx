@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useMemo, useCallback, useRef } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Form } from "react-bootstrap";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faPlus, faPen, faTrash, faGripVertical, faMagnifyingGlass } from "@fortawesome/free-solid-svg-icons";
-import { Button, Modal, toastSuccess, toastError } from "@/shared/components/ui";
+import { faPlus, faMagnifyingGlass } from "@fortawesome/free-solid-svg-icons";
+import { Button, Modal, TableZ, toastSuccess, toastError } from "@/shared/components/ui";
 
 /**
  * LookupTableGrid — Reusable component for managing lookup/setup tables.
@@ -66,10 +66,6 @@ export default function LookupTableGrid({
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null);
 
-  // Drag state
-  const [dragOverId, setDragOverId] = useState(null);
-  const dragItem = useRef(null);
-
   // ─── Local data ────────────────────────────────────────────
   const [localData, setLocalData] = useState(null);
   const displayData = localData ?? data;
@@ -100,77 +96,29 @@ export default function LookupTableGrid({
 
   // ─── Drag & Drop ───────────────────────────────────────────
 
-  const handleDragStart = useCallback((e, id) => {
-    dragItem.current = id;
-    e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/plain", String(id));
-    setTimeout(() => {
-      e.target.closest(".ltg-row")?.classList.add("ltg-row--dragging");
-    }, 0);
-  }, []);
+  const handleReorder = useCallback(async (nextRows) => {
+    if (!hasOrder || typeof onReorder !== "function") return;
 
-  const handleDragOver = useCallback((e, id) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    if (id !== dragItem.current) {
-      setDragOverId(id);
+    const reordered = nextRows.map((item, index) => ({
+      ...item,
+      display_order: (index + 1) * 10,
+    }));
+    const updates = reordered.map((item) => ({
+      [idField]: item[idField],
+      display_order: item.display_order,
+    }));
+    setLocalData(reordered);
+
+    try {
+      await onReorder(updates);
+      toastSuccess("Display order updated.", "Reorder");
+      router.refresh();
+      onRefresh?.();
+    } catch (err) {
+      toastError(err?.message || "Unable to update display order. Please try again.", "Reorder");
+      setLocalData(null);
     }
-  }, []);
-
-  const handleDragLeave = useCallback(() => {
-    setDragOverId(null);
-  }, []);
-
-  const handleDrop = useCallback(
-    async (e, targetId) => {
-      e.preventDefault();
-      setDragOverId(null);
-
-      const sourceId = dragItem.current;
-      if (!sourceId || sourceId === targetId) return;
-
-      e.target.closest(".ltg-row")?.classList.remove("ltg-row--dragging");
-
-      const items = [...displayData];
-      const sourceIndex = items.findIndex((r) => r[idField] === sourceId);
-      const targetIndex = items.findIndex((r) => r[idField] === targetId);
-
-      if (sourceIndex === -1 || targetIndex === -1) return;
-
-      const [movedItem] = items.splice(sourceIndex, 1);
-      items.splice(targetIndex, 0, movedItem);
-
-      const updates = items.map((item, idx) => ({
-        [idField]: item[idField],
-        display_order: (idx + 1) * 10,
-      }));
-
-      const reordered = items.map((item, idx) => ({
-        ...item,
-        display_order: (idx + 1) * 10,
-      }));
-      setLocalData(reordered);
-
-      try {
-        await onReorder(updates);
-        toastSuccess("Display order updated.", "Reorder");
-        router.refresh();
-        onRefresh?.();
-      } catch (err) {
-        toastError(err?.message || "Unable to update display order. Please try again.", "Reorder");
-        setLocalData(null);
-      }
-    },
-    [displayData, idField, onReorder, router, onRefresh]
-  );
-
-  const handleDragEnd = useCallback(() => {
-    dragItem.current = null;
-    setDragOverId(null);
-    document.querySelectorAll(".ltg-row--dragging").forEach((el) => {
-      el.classList.remove("ltg-row--dragging");
-    });
-  }, []);
+  }, [hasOrder, idField, onReorder, onRefresh, router]);
 
   // ─── Active Toggle ─────────────────────────────────────────
 
@@ -325,6 +273,73 @@ export default function LookupTableGrid({
     );
   };
 
+  const tableColumns = useMemo(() => [
+    ...(hasOrder ? [{
+      key: "display_order",
+      label: "Order",
+      sortable: true,
+      width: 86,
+      render: (row) => row.display_order ?? "",
+    }] : []),
+    ...(hasColor ? [{
+      key: "display_color",
+      label: "Color",
+      sortable: false,
+      width: 140,
+      render: (row) => renderColorPreview(row.display_color),
+    }] : []),
+    {
+      key: nameField,
+      label: nameLabel,
+      sortable: true,
+      minWidth: 150,
+      render: (row) => <span className="ltg-name">{row[nameField]}</span>,
+    },
+    ...(descField ? [{
+      key: descField,
+      label: descLabel,
+      sortable: true,
+      minWidth: 200,
+      render: (row) => <span className="ltg-description">{row[descField] || "--"}</span>,
+    }] : []),
+    ...(hasActive ? [{
+      key: "is_active",
+      label: "Active",
+      sortable: true,
+      width: 120,
+      render: (row) => (
+        <div className="ltg-active-cell">
+          <Form.Check
+            type="switch"
+            id={`active-${row[idField]}`}
+            checked={row.is_active === true}
+            onChange={() => handleToggleActive(row[idField], row.is_active === true)}
+            disabled={busy}
+            className="ltg-active-switch"
+          />
+          {renderActiveBadge(row.is_active === true)}
+        </div>
+      ),
+    }] : []),
+  ], [busy, descField, descLabel, handleToggleActive, hasActive, hasColor, hasOrder, idField, nameField, nameLabel, renderActiveBadge, renderColorPreview]);
+
+  const tableActions = useMemo(() => [
+    {
+      key: "edit",
+      label: "Edit",
+      icon: "pen",
+      type: "primary",
+      onClick: (row) => openEdit(row),
+    },
+    {
+      key: "delete",
+      label: softDelete ? "Deactivate" : "Delete",
+      icon: softDelete ? "ban" : "trash",
+      type: softDelete ? "secondary" : "danger",
+      onClick: (row) => setConfirmDelete(row),
+    },
+  ], [openEdit, softDelete]);
+
   // ─── Render ────────────────────────────────────────────────
 
   return (
@@ -373,116 +388,20 @@ export default function LookupTableGrid({
 
       {/* ─── Grid ─────────────────────────────────────────────── */}
       <div className="ltg-grid-wrap">
-        {filteredData.length === 0 ? (
-          <div className="ltg-empty">
-            {searchValue || filterActive !== "all" ? (
-              <>
-                <p className="ltg-empty__title">No matching {title.toLowerCase()}</p>
-                <p className="ltg-empty__desc">Try adjusting your search or filter.</p>
-              </>
-            ) : (
-              <>
-                <p className="ltg-empty__title">No {title}</p>
-                <p className="ltg-empty__desc">Click "Add {singularName}" to create one.</p>
-              </>
-            )}
-          </div>
-        ) : (
-          <table className="ltg-table">
-            <thead>
-              <tr>
-                <th className="ltg-col-actions">Actions</th>
-                {hasOrder && <th className="ltg-col-order">Order</th>}
-                {hasColor && <th className="ltg-col-color">Color</th>}
-                <th className="ltg-col-name">{nameLabel}</th>
-                {descField && <th className="ltg-col-desc">{descLabel}</th>}
-                {hasActive && <th className="ltg-col-active">Active</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {filteredData.map((row) => {
-                const rowId = row[idField];
-                const isDragOver = dragOverId === rowId;
-                return (
-                  <tr
-                    key={rowId}
-                    className={`ltg-row ${isDragOver ? "ltg-row--drag-over" : ""}`}
-                    draggable={hasOrder}
-                    onDragStart={hasOrder ? (e) => handleDragStart(e, rowId) : undefined}
-                    onDragOver={hasOrder ? (e) => handleDragOver(e, rowId) : undefined}
-                    onDragLeave={handleDragLeave}
-                    onDrop={hasOrder ? (e) => handleDrop(e, rowId) : undefined}
-                    onDragEnd={handleDragEnd}
-                  >
-                    {/* Actions */}
-                    <td className="ltg-col-actions">
-                      <div className="ltg-actions">
-                        <button
-                          className="ltg-action-btn ltg-action-btn--edit"
-                          title="Edit"
-                          onClick={() => openEdit(row)}
-                          disabled={busy}
-                        >
-                          <FontAwesomeIcon icon={faPen} />
-                        </button>
-                        <button
-                          className="ltg-action-btn ltg-action-btn--delete"
-                          title="Delete"
-                          onClick={() => setConfirmDelete(row)}
-                          disabled={busy}
-                        >
-                          <FontAwesomeIcon icon={faTrash} />
-                        </button>
-                      </div>
-                    </td>
-
-                    {/* Order */}
-                    {hasOrder && <td className="ltg-col-order">
-                      <span className="ltg-order-handle" title="Drag to reorder">
-                        <FontAwesomeIcon icon={faGripVertical} className="ltg-order-handle__icon" />
-                        {" "}{row.display_order ?? ""}
-                      </span>
-                    </td>}
-
-                    {/* Color (optional) */}
-                    {hasColor && (
-                      <td className="ltg-col-color">
-                        {renderColorPreview(row.display_color)}
-                      </td>
-                    )}
-
-                    {/* Name */}
-                    <td className="ltg-col-name">
-                      <span className="ltg-name">{row[nameField]}</span>
-                    </td>
-
-                    {/* Description (optional) */}
-                    {descField && (
-                      <td className="ltg-col-desc">
-                        <span className="ltg-description">{row[descField] || "—"}</span>
-                      </td>
-                    )}
-
-                    {/* Active */}
-                    {hasActive && <td className="ltg-col-active">
-                      <div className="ltg-active-cell">
-                        <Form.Check
-                          type="switch"
-                          id={`active-${rowId}`}
-                          checked={row.is_active === true}
-                          onChange={() => handleToggleActive(rowId, row.is_active === true)}
-                          disabled={busy}
-                          className="ltg-active-switch"
-                        />
-                        {renderActiveBadge(row.is_active === true)}
-                      </div>
-                    </td>}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
+        <TableZ
+          data={filteredData}
+          columns={tableColumns}
+          rowIdKey={idField}
+          actions={tableActions}
+          variant="setup"
+          draggable={hasOrder}
+          onReorder={hasOrder ? handleReorder : undefined}
+          hideSearch
+          hideFooter
+          emptyMessage={searchValue || filterActive !== "all"
+            ? `No matching ${title.toLowerCase()}.`
+            : `No ${title.toLowerCase()} found.`}
+        />
       </div>
 
       {/* ─── Add / Edit Modal ────────────────────────────────── */}

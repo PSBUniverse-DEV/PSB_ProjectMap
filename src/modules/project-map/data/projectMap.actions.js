@@ -34,6 +34,7 @@ function toIntOrNull(v) {
 
 const SETUP_TABLES = {
   projectStatuses: { table: "proj_s_project_status", pk: "status_id" },
+  runStatuses: { table: "proj_s_run_status", pk: "status_id" },
   originAddresses: { table: "proj_s_origin_addresses", pk: "id" },
   states: { table: "proj_s_states", pk: "id" },
   buildingCategories: { table: "proj_s_building_categories", pk: "id" },
@@ -597,6 +598,7 @@ export async function softDeleteState(id) {
 // ─── Generic Lookup Table Actions ────────────────────────────
 
 const LOOKUP_TABLES = {
+  runStatuses: { table: "proj_s_run_status", pk: "status_id", nameField: "status_name", descField: "status_description" },
   buildingCategories: { table: "proj_s_building_categories", pk: "id", nameField: "building_category_name", descField: "description" },
   permitStatuses: { table: "proj_s_permit_status", pk: "id", nameField: "status_name", descField: "description" },
   welcomeCallStatuses: { table: "proj_s_welcome_call_status", pk: "id", nameField: "status_name", descField: "description" },
@@ -647,6 +649,16 @@ export async function createLookupRow(tableKey, data) {
     display_order: nextOrder,
     is_active: data.is_active === true || data.is_active === "true" || data.is_active === "1",
   };
+
+  if (pk === "status_id") {
+    const { data: maxId } = await supabase
+      .from(table)
+      .select(pk)
+      .order(pk, { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    payload[pk] = (maxId?.[pk] ?? 0) + 1;
+  }
 
   const { data: result, error } = await supabase.from(table).insert(payload).select("*").single();
   if (error) throw new Error(error.message);

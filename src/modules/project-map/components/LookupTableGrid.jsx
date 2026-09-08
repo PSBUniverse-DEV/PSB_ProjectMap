@@ -51,6 +51,10 @@ export default function LookupTableGrid({
     descLabel,
     searchFields,
     hasColor = false,
+    idField = "id",
+    hasOrder = true,
+    hasActive = true,
+    softDelete = true,
   } = config;
 
   // ─── State ─────────────────────────────────────────────────
@@ -74,9 +78,9 @@ export default function LookupTableGrid({
   const filteredData = useMemo(() => {
     let result = displayData;
 
-    if (filterActive === "active") {
+    if (hasActive && filterActive === "active") {
       result = result.filter((r) => r.is_active === true);
-    } else if (filterActive === "inactive") {
+    } else if (hasActive && filterActive === "inactive") {
       result = result.filter((r) => r.is_active === false);
     }
 
@@ -128,8 +132,8 @@ export default function LookupTableGrid({
       e.target.closest(".ltg-row")?.classList.remove("ltg-row--dragging");
 
       const items = [...displayData];
-      const sourceIndex = items.findIndex((r) => r.id === sourceId);
-      const targetIndex = items.findIndex((r) => r.id === targetId);
+      const sourceIndex = items.findIndex((r) => r[idField] === sourceId);
+      const targetIndex = items.findIndex((r) => r[idField] === targetId);
 
       if (sourceIndex === -1 || targetIndex === -1) return;
 
@@ -137,7 +141,7 @@ export default function LookupTableGrid({
       items.splice(targetIndex, 0, movedItem);
 
       const updates = items.map((item, idx) => ({
-        id: item.id,
+        [idField]: item[idField],
         display_order: (idx + 1) * 10,
       }));
 
@@ -157,7 +161,7 @@ export default function LookupTableGrid({
         setLocalData(null);
       }
     },
-    [displayData, onReorder, router, onRefresh]
+    [displayData, idField, onReorder, router, onRefresh]
   );
 
   const handleDragEnd = useCallback(() => {
@@ -176,7 +180,7 @@ export default function LookupTableGrid({
       setLocalData((prev) => {
         const base = prev ?? data;
         return base.map((r) =>
-          r.id === id ? { ...r, is_active: newActive } : r
+          r[idField] === id ? { ...r, is_active: newActive } : r
         );
       });
 
@@ -190,7 +194,7 @@ export default function LookupTableGrid({
         setLocalData(null);
       }
     },
-    [data, onToggle, singularName, router, onRefresh]
+    [data, idField, onToggle, singularName, router, onRefresh]
   );
 
   // ─── Modal Handlers ────────────────────────────────────────
@@ -200,23 +204,23 @@ export default function LookupTableGrid({
       [nameField]: "",
       ...(descField && { [descField]: "" }),
       ...(hasColor && { display_color: "" }),
-      is_active: true,
+      ...(hasActive && { is_active: true }),
     });
     setEditingRow(null);
     setModalMode("add");
-  }, [nameField, descField, hasColor]);
+  }, [nameField, descField, hasColor, hasActive]);
 
   const openEdit = useCallback((row) => {
     const draft = {
       [nameField]: row[nameField] || "",
       ...(descField && { [descField]: row[descField] || "" }),
       ...(hasColor && { display_color: row.display_color || "" }),
-      is_active: row.is_active === true,
+      ...(hasActive && { is_active: row.is_active === true }),
     };
     setModalDraft(draft);
     setEditingRow(row);
     setModalMode("edit");
-  }, [nameField, descField, hasColor]);
+  }, [nameField, descField, hasColor, hasActive]);
 
   const closeModal = useCallback(() => {
     setModalMode(null);
@@ -252,14 +256,14 @@ export default function LookupTableGrid({
         [nameField]: name,
         ...(descField && { [descField]: (modalDraft[descField] || "").trim() || null }),
         ...(hasColor && { display_color: color || null }),
-        is_active: modalDraft.is_active === true,
+        ...(hasActive && { is_active: modalDraft.is_active === true }),
       };
 
       if (modalMode === "add") {
         await onCreate(payload);
         toastSuccess(`${singularName} added successfully.`, "Add");
       } else {
-        const id = editingRow?.id;
+        const id = editingRow?.[idField];
         if (!id) throw new Error("Missing id for edit.");
         await onUpdate(id, payload);
         toastSuccess(`${singularName} updated successfully.`, "Edit");
@@ -273,7 +277,7 @@ export default function LookupTableGrid({
     } finally {
       setBusy(false);
     }
-  }, [modalDraft, modalMode, editingRow, nameField, nameLabel, descField, hasColor, singularName, onCreate, onUpdate, closeModal, router, onRefresh]);
+  }, [modalDraft, modalMode, editingRow, idField, nameField, nameLabel, descField, hasColor, hasActive, singularName, onCreate, onUpdate, closeModal, router, onRefresh]);
 
   // ─── Delete Handler ────────────────────────────────────────
 
@@ -281,13 +285,13 @@ export default function LookupTableGrid({
     if (!confirmDelete) return;
     setBusy(true);
     try {
-      await onDelete(confirmDelete.id);
-      toastSuccess(`${singularName} deactivated.`, "Delete");
+      await onDelete(confirmDelete[idField]);
+      toastSuccess(`${singularName} ${softDelete ? "deactivated" : "deleted"}.`, "Delete");
       setConfirmDelete(null);
       setLocalData((prev) => {
         const base = prev ?? data;
         return base.map((r) =>
-          r.id === confirmDelete.id ? { ...r, is_active: false } : r
+          r[idField] === confirmDelete[idField] ? { ...r, is_active: false } : r
         );
       });
       router.refresh();
@@ -297,7 +301,7 @@ export default function LookupTableGrid({
     } finally {
       setBusy(false);
     }
-  }, [confirmDelete, data, onDelete, singularName, router, onRefresh]);
+  }, [confirmDelete, data, idField, onDelete, singularName, softDelete, router, onRefresh]);
 
   // ─── Render Helpers ────────────────────────────────────────
 
@@ -336,7 +340,7 @@ export default function LookupTableGrid({
         <div className="ltg-toolbar__right">
           {/* Filters */}
           <div className="ltg-filters">
-            {["all", "active", "inactive"].map((f) => (
+            {hasActive && ["all", "active", "inactive"].map((f) => (
               <button
                 key={f}
                 className={`ltg-filter-btn ${filterActive === f ? "ltg-filter-btn--active" : ""}`}
@@ -388,25 +392,26 @@ export default function LookupTableGrid({
             <thead>
               <tr>
                 <th className="ltg-col-actions">Actions</th>
-                <th className="ltg-col-order">Order</th>
+                {hasOrder && <th className="ltg-col-order">Order</th>}
                 {hasColor && <th className="ltg-col-color">Color</th>}
                 <th className="ltg-col-name">{nameLabel}</th>
                 {descField && <th className="ltg-col-desc">{descLabel}</th>}
-                <th className="ltg-col-active">Active</th>
+                {hasActive && <th className="ltg-col-active">Active</th>}
               </tr>
             </thead>
             <tbody>
               {filteredData.map((row) => {
-                const isDragOver = dragOverId === row.id;
+                const rowId = row[idField];
+                const isDragOver = dragOverId === rowId;
                 return (
                   <tr
-                    key={row.id}
+                    key={rowId}
                     className={`ltg-row ${isDragOver ? "ltg-row--drag-over" : ""}`}
-                    draggable
-                    onDragStart={(e) => handleDragStart(e, row.id)}
-                    onDragOver={(e) => handleDragOver(e, row.id)}
+                    draggable={hasOrder}
+                    onDragStart={hasOrder ? (e) => handleDragStart(e, rowId) : undefined}
+                    onDragOver={hasOrder ? (e) => handleDragOver(e, rowId) : undefined}
                     onDragLeave={handleDragLeave}
-                    onDrop={(e) => handleDrop(e, row.id)}
+                    onDrop={hasOrder ? (e) => handleDrop(e, rowId) : undefined}
                     onDragEnd={handleDragEnd}
                   >
                     {/* Actions */}
@@ -432,12 +437,12 @@ export default function LookupTableGrid({
                     </td>
 
                     {/* Order */}
-                    <td className="ltg-col-order">
+                    {hasOrder && <td className="ltg-col-order">
                       <span className="ltg-order-handle" title="Drag to reorder">
                         <FontAwesomeIcon icon={faGripVertical} className="ltg-order-handle__icon" />
                         {" "}{row.display_order ?? ""}
                       </span>
-                    </td>
+                    </td>}
 
                     {/* Color (optional) */}
                     {hasColor && (
@@ -459,19 +464,19 @@ export default function LookupTableGrid({
                     )}
 
                     {/* Active */}
-                    <td className="ltg-col-active">
+                    {hasActive && <td className="ltg-col-active">
                       <div className="ltg-active-cell">
                         <Form.Check
                           type="switch"
-                          id={`active-${row.id}`}
+                          id={`active-${rowId}`}
                           checked={row.is_active === true}
-                          onChange={() => handleToggleActive(row.id, row.is_active === true)}
+                          onChange={() => handleToggleActive(rowId, row.is_active === true)}
                           disabled={busy}
                           className="ltg-active-switch"
                         />
                         {renderActiveBadge(row.is_active === true)}
                       </div>
-                    </td>
+                    </td>}
                   </tr>
                 );
               })}
@@ -550,7 +555,7 @@ export default function LookupTableGrid({
           )}
 
           {/* Active Status */}
-          <Form.Group className="ltg-modal-field">
+          {hasActive && <Form.Group className="ltg-modal-field">
             <Form.Check
               type="switch"
               id="modal-active-switch"
@@ -559,7 +564,7 @@ export default function LookupTableGrid({
               onChange={(e) => handleDraftChange("is_active", e.target.checked)}
               className="ltg-modal-switch"
             />
-          </Form.Group>
+          </Form.Group>}
 
           {/* Actions */}
           <div className="ltg-modal-actions">
@@ -578,7 +583,7 @@ export default function LookupTableGrid({
             This {singularName.toLowerCase()} may already be referenced by existing projects.
           </p>
           <p className="ltg-delete-msg">
-            The {singularName.toLowerCase()} will be deactivated instead of permanently removed.
+            The {singularName.toLowerCase()} will be {softDelete ? "deactivated instead of permanently removed" : "permanently removed"}.
           </p>
           <div className="ltg-modal-actions">
             <Button variant="secondary" onClick={() => setConfirmDelete(null)}>Cancel</Button>

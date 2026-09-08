@@ -3,7 +3,7 @@
 import { useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Modal, TableZ, toastError, toastSuccess } from "@/shared/components/ui";
-import { createSetupRow, updateSetupRow, deleteSetupRow } from "../../data/projectMap.actions";
+import { createSetupRow, updateSetupRow, deleteSetupRow, createLookupRow, updateLookupRow, toggleLookupRowActive, reorderLookupRows, softDeleteLookupRow } from "../../data/projectMap.actions";
 import SetupWorkspaceLayout from "./SetupWorkspaceLayout";
 import SetupSidebar from "./SetupSidebar";
 import SetupToolbar from "./SetupToolbar";
@@ -29,6 +29,25 @@ const TABLE_DEFS = [
       { key: "status_name", label: "Status Name", required: true },
       { key: "status_description", label: "Description" },
       { key: "display_color", label: "Display Color", type: "color" },
+    ],
+  },
+  {
+    key: "runStatuses",
+    label: "Run Statuses",
+    pk: "status_id",
+    columns: [
+      { key: "status_name", label: "Status Name", sortable: true },
+      { key: "status_description", label: "Description", sortable: true },
+      { key: "display_color", label: "Color", sortable: false },
+      { key: "display_order", label: "Order", sortable: true },
+      { key: "is_active", label: "Active", sortable: true },
+    ],
+    fields: [
+      { key: "status_name", label: "Status Name", required: true },
+      { key: "status_description", label: "Description" },
+      { key: "display_color", label: "Display Color", type: "color" },
+      { key: "display_order", label: "Display Order", type: "number" },
+      { key: "is_active", label: "Active", type: "boolean" },
     ],
   },
   {
@@ -332,7 +351,7 @@ export default function ProjectMapSetupView({ setup = {} }) {
   const singularName = tableDef?.label?.replace(/s$/, "") || "Item";
 
   // ─── Custom Tab Components ────────────────────────────────
-  const isCustomTab = ["projectStatuses", "originAddresses", "states", "buildingCategories", "permitStatuses", "welcomeCallStatuses"].includes(activeTab);
+  const isCustomTab = ["projectStatuses", "originAddresses", "states", "buildingCategories", "permitStatuses", "welcomeCallStatuses", "runStatuses", "paymentMethods"].includes(activeTab);
 
   // Lookup table configs
   const lookupTableConfigs = {
@@ -366,15 +385,45 @@ export default function ProjectMapSetupView({ setup = {} }) {
       searchFields: "status_name,description",
       hasColor: false,
     },
+    runStatuses: {
+      title: "Run Statuses",
+      singularName: "Run Status",
+      nameField: "status_name",
+      nameLabel: "Status Name",
+      descField: "status_description",
+      descLabel: "Description",
+      searchFields: "status_name,status_description",
+      hasColor: true,
+      idField: "status_id",
+    },
+    paymentMethods: {
+      title: "Payment Methods",
+      singularName: "Payment Method",
+      nameField: "method_name",
+      nameLabel: "Method Name",
+      descField: "method_description",
+      descLabel: "Description",
+      searchFields: "method_name,method_description",
+      hasColor: false,
+      hasOrder: false,
+      hasActive: false,
+      softDelete: false,
+    },
   };
 
-  const getLookupActions = (tableKey) => ({
-    onCreate: (payload) => createLookupRow(tableKey, payload),
-    onUpdate: (id, payload) => updateLookupRow(tableKey, id, payload),
-    onToggle: (id, isActive) => toggleLookupRowActive(tableKey, id, isActive),
-    onReorder: (updates) => reorderLookupRows(tableKey, updates),
-    onDelete: (id) => softDeleteLookupRow(tableKey, id),
-  });
+  const getLookupActions = (tableKey) => tableKey === "paymentMethods"
+    ? {
+        onCreate: (payload) => createSetupRow(tableKey, payload),
+        onUpdate: (id, payload) => updateSetupRow(tableKey, id, payload),
+        onDelete: (id) => deleteSetupRow(tableKey, id),
+      }
+    : {
+        onCreate: (payload) => createLookupRow(tableKey, payload),
+        onUpdate: (id, payload) => updateLookupRow(tableKey, id, payload),
+        onToggle: (id, isActive) => toggleLookupRowActive(tableKey, id, isActive),
+        onReorder: (updates) => reorderLookupRows(tableKey, updates),
+        onDelete: (id) => softDeleteLookupRow(tableKey, id),
+      };
 
   return (
     <div className="setup-workspace-root">
@@ -405,7 +454,7 @@ export default function ProjectMapSetupView({ setup = {} }) {
           <OriginAddressesGrid data={setup.originAddresses || []} />
         ) : activeTab === "states" ? (
           <StatesGrid data={setup.states || []} />
-        ) : activeTab === "buildingCategories" || activeTab === "permitStatuses" || activeTab === "welcomeCallStatuses" ? (
+        ) : ["buildingCategories", "permitStatuses", "welcomeCallStatuses", "runStatuses", "paymentMethods"].includes(activeTab) ? (
           <LookupTableGrid
             tableKey={activeTab}
             data={setup[activeTab] || []}

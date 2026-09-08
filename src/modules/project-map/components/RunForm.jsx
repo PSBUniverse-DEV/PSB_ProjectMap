@@ -22,11 +22,15 @@ export default function RunForm({ show, mode, run, origins = [], runStatuses = [
     estimated_subtotal: "",
   });
 
+  // Setup retains inactive origins for administration, but runs may only use
+  // active origin records.
+  const activeOrigins = useMemo(() => origins.filter((origin) => origin?.is_active !== false), [origins]);
+
   // Get selected origin object for address display
   const selectedOrigin = useMemo(() => {
     if (!form.origin_id) return null;
-    return origins.find((o) => String(o.id) === String(form.origin_id)) || null;
-  }, [form.origin_id, origins]);
+    return activeOrigins.find((o) => String(o.id) === String(form.origin_id)) || null;
+  }, [activeOrigins, form.origin_id]);
 
   useEffect(() => {
     if (run) {
@@ -176,7 +180,7 @@ export default function RunForm({ show, mode, run, origins = [], runStatuses = [
               style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px", background: "#fff" }}
             >
               <option value="">Select origin...</option>
-              {origins.map((o) => (
+              {activeOrigins.map((o) => (
                 <option key={o.id} value={o.id}>{o.origin_name}</option>
               ))}
             </select>

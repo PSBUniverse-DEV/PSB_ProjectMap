@@ -131,6 +131,40 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
   const [allRunProjects, setAllRunProjects] = useState([]);
   const [runFilters, setRunFilters] = useState({ status: ["Scheduled"] });
   const [runSearch, setRunSearch] = useState("");
+
+  const activeProjectStatusIds = useMemo(
+    () => new Set(statuses.filter((status) => status?.is_active !== false).map((status) => String(status.status_id))),
+    [statuses]
+  );
+  const activeRunStatusNames = useMemo(
+    () => new Set(runStatuses.filter((status) => status?.is_active !== false).map((status) => status.status_name).filter(Boolean)),
+    [runStatuses]
+  );
+
+  // Keep selected tab filters synchronized with setup activation changes. A
+  // deactivated status should disappear from the track and stop filtering
+  // records, while activating a status should make it available immediately.
+  useEffect(() => {
+    setFilters((previous) => {
+      const selected = Array.isArray(previous.status)
+        ? previous.status.map(String)
+        : previous.status
+          ? [String(previous.status)]
+          : [];
+      const next = selected.filter((statusId) => activeProjectStatusIds.has(statusId));
+      if (next.length === selected.length && next.every((value, index) => value === selected[index])) return previous;
+      return { ...previous, status: next };
+    });
+  }, [activeProjectStatusIds]);
+
+  useEffect(() => {
+    setRunFilters((previous) => {
+      const selected = Array.isArray(previous.status) ? previous.status : [];
+      const next = selected.filter((statusName) => activeRunStatusNames.has(statusName));
+      if (next.length === selected.length && next.every((value, index) => value === selected[index])) return previous;
+      return { ...previous, status: next };
+    });
+  }, [activeRunStatusNames]);
   const [isLoadingRunDetails, setIsLoadingRunDetails] = useState(false);
   const [runReloadKey, setRunReloadKey] = useState(0);
   const runRequestIdRef = useRef(0);
@@ -155,7 +189,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
 
   // Find the default "New Dealer Order" status ID
   const defaultStatusId = useMemo(() => {
-    const status = statuses.find((s) => s.status_name === "New Dealer Order");
+    const status = statuses.find((s) => s.status_name === "New Dealer Order" && s.is_active !== false);
     return status ? String(status.status_id) : "";
   }, [statuses]);
 

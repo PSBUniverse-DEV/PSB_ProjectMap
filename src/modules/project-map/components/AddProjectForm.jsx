@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Button, Modal, toastError, toastSuccess } from "@/shared/components/ui";
 import { createProject, updateProject } from "../data/projectMap.actions";
 import { formatProjectDescription, parseProjectDescription } from "../data/projectMap.data";
@@ -47,6 +47,13 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
 
   // Separate query state for LocationSearch so it can be controlled independently
   const [locationQuery, setLocationQuery] = useState("");
+
+  // Setup tables remain fully loaded for administration, but project forms may
+  // only assign active lookup records.
+  const activeStatuses = useMemo(() => statuses.filter((item) => item?.is_active !== false), [statuses]);
+  const activeBuildingCategories = useMemo(() => buildingCategories.filter((item) => item?.is_active !== false), [buildingCategories]);
+  const activePermitStatuses = useMemo(() => permitStatuses.filter((item) => item?.is_active !== false), [permitStatuses]);
+  const activeWelcomeCallStatuses = useMemo(() => welcomeCallStatuses.filter((item) => item?.is_active !== false), [welcomeCallStatuses]);
 
   // Populate form when editing or when initialLocation is provided
   useEffect(() => {
@@ -284,7 +291,7 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
                 style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px", background: "#fff" }}
               >
                 <option value="">Select category...</option>
-                {buildingCategories.map((cat) => (
+                {activeBuildingCategories.map((cat) => (
                   <option key={cat.id} value={String(cat.id)}>{cat.building_category_name}</option>
                 ))}
               </select>
@@ -418,7 +425,7 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
                 style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px", background: "#fff" }}
               >
                 <option value="">Select status...</option>
-                {statuses.map((s) => (
+                {activeStatuses.map((s) => (
                   <option key={s.status_id} value={String(s.status_id)}>{s.status_name}</option>
                 ))}
               </select>
@@ -431,7 +438,7 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
                 style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px", background: "#fff" }}
               >
                 <option value="">Select...</option>
-                {welcomeCallStatuses.map((s) => (
+                {activeWelcomeCallStatuses.map((s) => (
                   <option key={s.id} value={String(s.id)}>{s.status_name}</option>
                 ))}
               </select>
@@ -444,7 +451,7 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
                 style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px", background: "#fff" }}
               >
                 <option value="">Select...</option>
-                {permitStatuses.map((s) => (
+                {activePermitStatuses.map((s) => (
                   <option key={s.id} value={String(s.id)}>{s.status_name}</option>
                 ))}
               </select>

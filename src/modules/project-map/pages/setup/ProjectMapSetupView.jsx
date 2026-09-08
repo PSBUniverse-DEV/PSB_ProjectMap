@@ -3,14 +3,12 @@
 import { useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Modal, TableZ, toastError, toastSuccess } from "@/shared/components/ui";
-import { createSetupRow, updateSetupRow, deleteSetupRow, createLookupRow, updateLookupRow, toggleLookupRowActive, reorderLookupRows, softDeleteLookupRow } from "../../data/projectMap.actions";
+import { createSetupRow, updateSetupRow, deleteSetupRow, createLookupRow, updateLookupRow, toggleLookupRowActive, reorderLookupRows, softDeleteLookupRow, createProjectStatus, updateProjectStatus, toggleProjectStatusActive, reorderProjectStatuses, softDeleteProjectStatus, createState, updateState, toggleStateActive, reorderStates, softDeleteState } from "../../data/projectMap.actions";
 import SetupWorkspaceLayout from "./SetupWorkspaceLayout";
 import SetupSidebar from "./SetupSidebar";
 import SetupToolbar from "./SetupToolbar";
 import SetupFormModal from "./SetupFormModal";
-import ProjectStatusesGrid from "../../components/ProjectStatusesGrid";
 import OriginAddressesGrid from "../../components/OriginAddressesGrid";
-import StatesGrid from "../../components/StatesGrid";
 import LookupTableGrid from "../../components/LookupTableGrid";
 
 // ─── Table Definitions ─────────────────────────────────────────────
@@ -385,6 +383,37 @@ export default function ProjectMapSetupView({ setup = {} }) {
       searchFields: "status_name,description",
       hasColor: false,
     },
+    projectStatuses: {
+      title: "Project Statuses",
+      singularName: "Project Status",
+      nameField: "status_name",
+      nameLabel: "Status Name",
+      descField: "status_description",
+      descLabel: "Description",
+      searchFields: "status_name,status_description,display_color",
+      hasColor: true,
+      idField: "status_id",
+    },
+    states: {
+      title: "States",
+      singularName: "State",
+      nameField: "state_name",
+      nameLabel: "State Name",
+      searchFields: "state_name,state_code,display_color",
+      hasColor: true,
+      extraFields: [
+        { key: "state_code", label: "State Code", required: true, maxLength: 10 },
+      ],
+      extraColumns: [
+        {
+          key: "state_code",
+          label: "State Code",
+          sortable: true,
+          width: 110,
+          render: (row) => <span className="ltg-name">{row.state_code || "--"}</span>,
+        },
+      ],
+    },
     runStatuses: {
       title: "Run Statuses",
       singularName: "Run Status",
@@ -411,7 +440,23 @@ export default function ProjectMapSetupView({ setup = {} }) {
     },
   };
 
-  const getLookupActions = (tableKey) => tableKey === "paymentMethods"
+  const getLookupActions = (tableKey) => tableKey === "projectStatuses"
+    ? {
+        onCreate: createProjectStatus,
+        onUpdate: updateProjectStatus,
+        onToggle: toggleProjectStatusActive,
+        onReorder: reorderProjectStatuses,
+        onDelete: softDeleteProjectStatus,
+      }
+    : tableKey === "states"
+    ? {
+        onCreate: createState,
+        onUpdate: updateState,
+        onToggle: toggleStateActive,
+        onReorder: reorderStates,
+        onDelete: softDeleteState,
+      }
+    : tableKey === "paymentMethods"
     ? {
         onCreate: (payload) => createSetupRow(tableKey, payload),
         onUpdate: (id, payload) => updateSetupRow(tableKey, id, payload),
@@ -448,13 +493,9 @@ export default function ProjectMapSetupView({ setup = {} }) {
           )
         }
       >
-        {activeTab === "projectStatuses" ? (
-          <ProjectStatusesGrid data={setup.projectStatuses || []} />
-        ) : activeTab === "originAddresses" ? (
+        {activeTab === "originAddresses" ? (
           <OriginAddressesGrid data={setup.originAddresses || []} />
-        ) : activeTab === "states" ? (
-          <StatesGrid data={setup.states || []} />
-        ) : ["buildingCategories", "permitStatuses", "welcomeCallStatuses", "runStatuses", "paymentMethods"].includes(activeTab) ? (
+        ) : ["projectStatuses", "states", "buildingCategories", "permitStatuses", "welcomeCallStatuses", "runStatuses", "paymentMethods"].includes(activeTab) ? (
           <LookupTableGrid
             tableKey={activeTab}
             data={setup[activeTab] || []}

@@ -55,6 +55,8 @@ export default function LookupTableGrid({
     hasOrder = true,
     hasActive = true,
     softDelete = true,
+    extraFields = [],
+    extraColumns = [],
   } = config;
 
   // ─── State ─────────────────────────────────────────────────
@@ -153,10 +155,11 @@ export default function LookupTableGrid({
       ...(descField && { [descField]: "" }),
       ...(hasColor && { display_color: "" }),
       ...(hasActive && { is_active: true }),
+      ...Object.fromEntries(extraFields.map((field) => [field.key, field.defaultValue ?? ""])),
     });
     setEditingRow(null);
     setModalMode("add");
-  }, [nameField, descField, hasColor, hasActive]);
+  }, [nameField, descField, hasColor, hasActive, extraFields]);
 
   const openEdit = useCallback((row) => {
     const draft = {
@@ -164,11 +167,12 @@ export default function LookupTableGrid({
       ...(descField && { [descField]: row[descField] || "" }),
       ...(hasColor && { display_color: row.display_color || "" }),
       ...(hasActive && { is_active: row.is_active === true }),
+      ...Object.fromEntries(extraFields.map((field) => [field.key, row[field.key] ?? field.defaultValue ?? ""])),
     };
     setModalDraft(draft);
     setEditingRow(row);
     setModalMode("edit");
-  }, [nameField, descField, hasColor, hasActive]);
+  }, [nameField, descField, hasColor, hasActive, extraFields]);
 
   const closeModal = useCallback(() => {
     setModalMode(null);
@@ -206,6 +210,12 @@ export default function LookupTableGrid({
         ...(hasColor && { display_color: color || null }),
         ...(hasActive && { is_active: modalDraft.is_active === true }),
       };
+      extraFields.forEach((field) => {
+        const value = modalDraft[field.key];
+        payload[field.key] = field.type === "number"
+          ? (value === "" || value == null ? null : Number(value))
+          : String(value ?? "").trim();
+      });
 
       if (modalMode === "add") {
         await onCreate(payload);
@@ -225,7 +235,7 @@ export default function LookupTableGrid({
     } finally {
       setBusy(false);
     }
-  }, [modalDraft, modalMode, editingRow, idField, nameField, nameLabel, descField, hasColor, hasActive, singularName, onCreate, onUpdate, closeModal, router, onRefresh]);
+  }, [modalDraft, modalMode, editingRow, idField, nameField, nameLabel, descField, hasColor, hasActive, extraFields, singularName, onCreate, onUpdate, closeModal, router, onRefresh]);
 
   // ─── Delete Handler ────────────────────────────────────────
 
@@ -288,6 +298,7 @@ export default function LookupTableGrid({
       width: 140,
       render: (row) => renderColorPreview(row.display_color),
     }] : []),
+    ...extraColumns,
     {
       key: nameField,
       label: nameLabel,
@@ -321,7 +332,7 @@ export default function LookupTableGrid({
         </div>
       ),
     }] : []),
-  ], [busy, descField, descLabel, handleToggleActive, hasActive, hasColor, hasOrder, idField, nameField, nameLabel, renderActiveBadge, renderColorPreview]);
+  ], [busy, descField, descLabel, extraColumns, handleToggleActive, hasActive, hasColor, hasOrder, idField, nameField, nameLabel, renderActiveBadge, renderColorPreview]);
 
   const tableActions = useMemo(() => [
     {
@@ -472,6 +483,23 @@ export default function LookupTableGrid({
               </div>
             </Form.Group>
           )}
+
+          {extraFields.map((field) => (
+            <Form.Group key={field.key} className="ltg-modal-field">
+              <Form.Label className="ltg-modal-label">
+                {field.label}{field.required ? <span className="ltg-modal-required">*</span> : ""}
+              </Form.Label>
+              <Form.Control
+                type={field.type || "text"}
+                size="sm"
+                value={modalDraft[field.key] ?? ""}
+                onChange={(e) => handleDraftChange(field.key, e.target.value)}
+                placeholder={field.label}
+                maxLength={field.maxLength}
+                className="ltg-modal-input"
+              />
+            </Form.Group>
+          ))}
 
           {/* Active Status */}
           {hasActive && <Form.Group className="ltg-modal-field">

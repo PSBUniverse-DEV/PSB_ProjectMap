@@ -181,7 +181,7 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
         return;
       }
       const paidSheet = await loadPaidSheet(run.id); // returns null if never saved — that's fine
-      generatePaidSheetPrint(detail.run, detail.projects || [], paidSheet);
+      generatePaidSheetPrint(detail.run, detail.projects || [], paidSheet, paymentMethods);
     } catch (err) {
       console.error("[RunMasterView] Paid sheet print failed:", err);
       toastError(err?.message || "Failed to print paid sheet.", "Print");
@@ -193,7 +193,7 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
   const canPrintPaidSheet = useCallback((run) => {
     const stops = run.proj_t_run_projects || [];
     if (!run.team_assigned || stops.length === 0) return false;
-    return stops.every((rp) => rp.proj_t_projects?.payment_method_type != null);
+    return true;
   }, []);
 
   const handlePrintManifest = useCallback(async (run) => {

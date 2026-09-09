@@ -179,6 +179,25 @@ export default function PaidSheetForm({
   };
 
   const handleSave = async () => {
+    if (!String(installer || "").trim()) {
+      toastError("Installer is required.", "Validation");
+      return;
+    }
+
+    if (headerFields.is_paid) {
+      const missingPaidDate = !String(headerFields.paid_date || "").trim();
+      const missingPaidReference = !String(headerFields.paid_reference || "").trim();
+
+      if (missingPaidDate || missingPaidReference) {
+        const missingFields = [
+          missingPaidDate ? "Paid Date" : null,
+          missingPaidReference ? "Paid Reference" : null,
+        ].filter(Boolean).join(" and ");
+        toastError(`${missingFields} ${missingFields.includes(" and ") ? "are" : "is"} required when the run is marked as paid.`, "Validation");
+        return;
+      }
+    }
+
     setBusy(true);
     try {
       // Installer lives on the run itself.
@@ -222,7 +241,7 @@ export default function PaidSheetForm({
         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
         {/* Section 1: Installer */}
         <div style={sectionStyle}>
-          <div style={sectionTitleStyle}>Installer</div>
+          <div style={sectionTitleStyle}>Installer <span style={{ color: "red" }}>*</span></div>
           <input
             type="text"
             value={installer}
@@ -301,11 +320,11 @@ export default function PaidSheetForm({
           {headerFields.is_paid && (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", padding: "10px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "4px", marginBottom: "10px" }}>
               <div>
-                <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Paid Date</label>
+                <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Paid Date <span style={{ color: "red" }}>*</span></label>
                 <input type="date" value={headerFields.paid_date} onChange={(e) => handleHeaderChange("paid_date", e.target.value)} style={inputStyle} />
               </div>
               <div>
-                <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Paid Reference</label>
+                <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Paid Reference <span style={{ color: "red" }}>*</span></label>
                 <input type="text" value={headerFields.paid_reference} onChange={(e) => handleHeaderChange("paid_reference", e.target.value)} style={inputStyle} placeholder="e.g. #2181" />
               </div>
             </div>

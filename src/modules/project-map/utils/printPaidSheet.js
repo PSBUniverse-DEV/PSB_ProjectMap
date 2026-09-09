@@ -15,7 +15,7 @@
  * was already saved.
  */
 import { formatProjectDescriptionForDisplay } from "../data/projectMap.data";
-export function generatePaidSheetPrint(run, runProjects, paidSheet = null) {
+export function generatePaidSheetPrint(run, runProjects, paidSheet = null, paymentMethods = []) {
   const now = new Date();
   const printDate = now.toLocaleString("en-US", { month: "long", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
 
@@ -33,6 +33,17 @@ export function generatePaidSheetPrint(run, runProjects, paidSheet = null) {
     return `$${Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
+  const formatStateRouteForPrint = (value) => {
+    if (!value) return "—";
+    const codes = String(value).match(/\{([^}]*)\}/g)?.map((entry) => entry.slice(1, -1)).filter(Boolean);
+    return codes?.length ? codes.join(", ") : String(value).replace(/[{}]/g, "");
+  };
+
+  const paymentChoices = (Array.isArray(paymentMethods) ? paymentMethods : []).map((method) => ({
+    id: String(method.id),
+    label: method.method_description || method.method_name || "Payment",
+  }));
+
   const totalAmount = runProjects.reduce((sum, rp) => sum + (Number(rp.proj_t_projects?.project_subtotal) || 0), 0);
 
   const isPaid = Boolean(paidSheet?.is_paid);
@@ -44,10 +55,13 @@ export function generatePaidSheetPrint(run, runProjects, paidSheet = null) {
     const orderNo = proj.invoice_number || "—";
     const description = proj.client_name || `Stop #${idx + 1}`;
     const dimensionDisplay = formatProjectDescriptionForDisplay(proj.dimension) || "—";
-    const paymentMethod = proj.proj_s_payment_method?.method_description
-      || proj.proj_s_payment_method?.method_name
-      || "—";
-    const refNo = proj.payment_method_number || "—";
+    const selectedPaymentMethodId = proj.payment_method_type != null ? String(proj.payment_method_type) : "";
+    const paymentMethod = paymentChoices.length > 0
+      ? `<div class="payment-choices">${paymentChoices.map((choice) => `
+          <span class="payment-choice"><span class="payment-box">${selectedPaymentMethodId === choice.id ? "&#10003;" : ""}</span>${choice.label}</span>`).join("")}
+        </div>`
+      : (proj.proj_s_payment_method?.method_description || proj.proj_s_payment_method?.method_name || "—");
+    const refNo = proj.payment_method_number || "";
     const notes = proj.paid_sheet_notes || "—";
 
     return `
@@ -58,7 +72,7 @@ export function generatePaidSheetPrint(run, runProjects, paidSheet = null) {
           <div class="addr">${dimensionDisplay}</div>
         </td>
         <td class="cell"><span class="pm">${paymentMethod}</span></td>
-        <td class="cell ref">${refNo}</td>
+        <td class="cell ref"><span class="ref-line">${refNo}</span></td>
         <td class="cell num">${formatCurrency(proj.project_subtotal)}</td>
         <td class="cell notes">${notes}</td>
       </tr>`;
@@ -69,7 +83,7 @@ export function generatePaidSheetPrint(run, runProjects, paidSheet = null) {
 
   const extraNotesHtml = paidSheet?.extra_notes
     ? `<div class="en-content">${paidSheet.extra_notes}</div>`
-    : `<div class="en-line"></div><div class="en-line"></div><div class="en-line"></div>`;
+    : `<div class="en-content"></div>`;
 
   const printWindow = window.open("", "_blank", "width=900,height=700");
   if (!printWindow) return;
@@ -170,9 +184,13 @@ export function generatePaidSheetPrint(run, runProjects, paidSheet = null) {
   td.cell .addr { font-size: 10px; color: var(--muted); margin-top: 2px; }
   td.cell .order-no { font-weight: 700; color: var(--ink); font-size: 12px; }
   td.cell .pm { font-size: 11px; font-weight: 600; color: var(--ink); }
+  .payment-choices { display: flex; flex-direction: column; gap: 3px; }
+  .payment-choice { display: flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 600; color: var(--ink); white-space: nowrap; }
+  .payment-box { width: 11px; height: 11px; border: 1px solid #64748b; display: inline-flex; align-items: center; justify-content: center; font-size: 9px; line-height: 1; flex: 0 0 11px; }
   td.num { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--money); font-size: 12px; white-space: nowrap; }
   td.notes { font-size: 10.5px; color: var(--body); white-space: pre-wrap; }
-  td.ref { font-size: 10.5px; color: var(--muted); }
+  td.ref { font-size: 10.5px; color: var(--muted); vertical-align: middle; }
+  .ref-line { display: block; min-height: 16px; width: 100%; border-bottom: 1px solid var(--line-strong); padding: 0 2px 2px; }
 
   .total-row td { border-top: 2px solid var(--ink); border-bottom: none; font-size: 12.5px; font-weight: 800; color: var(--ink); padding: 9px 8px; }
   .total-row .total-amount { color: var(--money); }
@@ -183,7 +201,7 @@ export function generatePaidSheetPrint(run, runProjects, paidSheet = null) {
     color: var(--faint); padding: 6px 10px; border-bottom: 1px solid var(--line);
     background: #f8fafc;
   }
-  .extra-notes .en-content { padding: 10px; font-size: 11px; color: var(--body); white-space: pre-wrap; min-height: 20px; }
+  .extra-notes .en-content { padding: 10px; font-size: 11px; color: var(--body); white-space: pre-wrap; min-height: 40px; }
   .extra-notes .en-line { height: 20px; border-bottom: 1px solid var(--line); }
   .extra-notes .en-line:last-child { border-bottom: none; }
 
@@ -234,7 +252,7 @@ export function generatePaidSheetPrint(run, runProjects, paidSheet = null) {
       </div>
     </div>
     <div>
-      <div class="status-badge ${isPaid ? "paid" : "unpaid"}">${isPaid ? "&#10003; Paid" : "Unpaid"}</div>
+      <div class="status-badge ${isPaid ? "paid" : ""}">${isPaid ? "&#10003; Paid" : ""}</div>
       ${isPaid ? `<div class="status-meta">Paid <span class="val">${paidDateDisplay || "—"}</span>${paidRefDisplay ? ` &middot; Ref <span class="val">${paidRefDisplay}</span>` : ""}</div>` : ""}
     </div>
   </div>
@@ -262,7 +280,7 @@ export function generatePaidSheetPrint(run, runProjects, paidSheet = null) {
     </div>
     <div class="info-cell">
       <div class="info-label">State</div>
-      <div class="info-value ${paidSheet?.state_route ? "" : "blank"}">${paidSheet?.state_route || "—"}</div>
+      <div class="info-value ${paidSheet?.state_route ? "" : "blank"}">${formatStateRouteForPrint(paidSheet?.state_route)}</div>
     </div>
   </div>
   <div class="printed-line">Printed ${printDate}</div>
@@ -273,7 +291,7 @@ export function generatePaidSheetPrint(run, runProjects, paidSheet = null) {
         <th style="width: 8%;">Order #</th>
         <th style="width: 25%;">Description</th>
         <th style="width: 16%;">Payment Method</th>
-        <th style="width: 12%;"></th>
+        <th style="width: 12%;">Reference #</th>
         <th style="width: 12%; text-align: right;">Amount</th>
         <th style="width: 27%;">Notes</th>
       </tr>

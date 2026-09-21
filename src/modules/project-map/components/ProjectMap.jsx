@@ -338,13 +338,46 @@ export default function ProjectMap({
     const newMarkersMap = {};
     const projectIds = new Set();
 
+    // Group projects sharing the exact same coordinate — e.g. several orders
+    // on the same lot — so their markers can be nudged apart below. Without
+    // this, coincident markers stack on the same pixel and only the topmost
+    // one can ever be clicked; the others become invisible and unreachable.
+    // Rounding to 6 decimals (~11cm) groups truly-identical coordinates
+    // without touching genuinely distinct nearby addresses.
+    const coordGroups = new Map();
+    filteredProjects.forEach((project) => {
+      const gLat = project.site_latitude ?? project.address_latitude;
+      const gLng = project.site_longitude ?? project.address_longitude;
+      if (gLat == null || gLng == null) return;
+      const key = `${Number(gLat).toFixed(6)},${Number(gLng).toFixed(6)}`;
+      if (!coordGroups.has(key)) coordGroups.set(key, []);
+      coordGroups.get(key).push(project.id);
+    });
+
     filteredProjects.forEach((project) => {
       const id = project.id;
       projectIds.add(id);
 
-      const lat = project.site_latitude ?? project.address_latitude;
-      const lng = project.site_longitude ?? project.address_longitude;
-      if (lat == null || lng == null) return;
+      const rawLat = project.site_latitude ?? project.address_latitude;
+      const rawLng = project.site_longitude ?? project.address_longitude;
+      if (rawLat == null || rawLng == null) return;
+
+      // Nudge apart markers that share the exact same coordinate so each
+      // gets its own clickable position instead of stacking invisibly.
+      // Projects with a unique coordinate are completely unaffected — lat/lng
+      // stay exactly as stored, this only changes visual marker placement,
+      // never the underlying project data.
+      const coordKey = `${rawLat.toFixed(6)},${rawLng.toFixed(6)}`;
+      const group = coordGroups.get(coordKey) || [id];
+      let lat = rawLat;
+      let lng = rawLng;
+      if (group.length > 1) {
+        const idx = group.indexOf(id);
+        const angle = (2 * Math.PI * idx) / group.length;
+        const OFFSET_DEG = 0.00006; // ~6-7m: separates pins once zoomed to lot level, negligible when zoomed out
+        lat = rawLat + OFFSET_DEG * Math.sin(angle);
+        lng = rawLng + OFFSET_DEG * Math.cos(angle);
+      }
 
       const statusName = project.proj_s_project_status?.status_name || "";
       const statusColor = getStatusColor(statusName, statuses);

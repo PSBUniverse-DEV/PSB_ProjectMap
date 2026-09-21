@@ -11,6 +11,108 @@ function getStatusColor(statusName, statuses = []) {
   return found?.display_color || "#6b7280";
 }
 
+// Great-circle distance between two coordinates in meters (Haversine formula).
+// Used to cluster projects that are physically close together (same lot),
+// since real-world geocoding rarely returns byte-identical coordinates for
+// what is nominally "the same address" — exact-decimal matching missed that.
+function distanceMeters(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+// Projects within this distance of each other are treated as "the same lot"
+// and rendered as one cluster marker. 30m (~100ft) catches same-parcel
+// geocoding variance without merging genuinely separate nearby properties.
+const CLUSTER_DISTANCE_METERS = 30;
+
+// Builds the full project detail card HTML — Customer Information, Project
+// Information (address + coordinates), Workflow Status, Schedule, Remarks.
+// Shared by both the individual marker's hover tooltip and the cluster
+// marker's row-hover detail pane, so the two stay visually identical
+// instead of maintaining two copies of the same large block.
+function buildProjectTooltipHTML(project, { statuses = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [], assignedRunLabel = null } = {}) {
+  const statusName = project.proj_s_project_status?.status_name || "";
+
+  const subtotalStr = project.project_subtotal != null
+    ? `$${Number(project.project_subtotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    : "";
+
+  let addressDisplay = "";
+  if (project.formatted_address) {
+    addressDisplay = stripTownshipLabel(project.formatted_address);
+  } else if (project.address_line_1 || project.city) {
+    const parts = [project.address_line_1, stripTownshipLabel(project.city), project.state].filter(Boolean);
+    addressDisplay = parts.join(", ");
+  } else {
+    addressDisplay = "No address";
+  }
+
+  const coordLat = project.site_latitude ?? project.address_latitude;
+  const coordLng = project.site_longitude ?? project.address_longitude;
+  const coordsLine = coordLat != null && coordLng != null
+    ? `<br/><span style="font-size: 8px; color: #94a3b8; font-weight: 400;">${Number(coordLat).toFixed(6)}, ${Number(coordLng).toFixed(6)}</span>`
+    : "";
+
+  const buildingCategoryName = buildingCategories.find((c) => c.id === project.building_category_id)?.building_category_name || "";
+  const permitStatusNameVal = permitStatuses.find((s) => s.id === project.permit_status_id)?.status_name || "";
+  const welcomeCallStatusNameVal = welcomeCallStatuses.find((s) => s.id === project.welcome_call_status_id)?.status_name || "";
+
+  const formatDate = (val) => {
+    if (!val) return "—";
+    try {
+      const d = new Date(val);
+      return d.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+    } catch { return val; }
+  };
+
+  const projectNotes = project.project_notes || "";
+  const truncatedNotes = projectNotes.length > 120 ? projectNotes.substring(0, 120) + "…" : projectNotes;
+
+  return `
+    <div style="font-weight: 700; font-size: 13px; color: #1e293b; margin-bottom: ${assignedRunLabel ? "4px" : "8px"}; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px;">${project.client_name || "Untitled"}</div>
+    ${assignedRunLabel ? `<div style="font-size: 10px; color: #6366f1; font-weight: 500; margin-bottom: 8px;">📦 Run: ${assignedRunLabel}</div>` : ""}
+
+    <div style="font-size: 9px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 3px; letter-spacing: 0.4px;">Customer Information</div>
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 8px;">
+      <tr><td style="font-size: 10px; color: #94a3b8; padding-bottom: 2px;">Dealer</td><td style="font-size: 10px; color: #1e293b; font-weight: 600; text-align: right; padding-bottom: 2px;">${project.dealer || "—"}</td></tr>
+      <tr><td style="font-size: 10px; color: #94a3b8; padding-bottom: 2px;">Building Category</td><td style="font-size: 10px; color: #1e293b; font-weight: 600; text-align: right; padding-bottom: 2px;">${buildingCategoryName || "—"}</td></tr>
+    </table>
+
+    <div style="font-size: 9px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 3px; letter-spacing: 0.4px;">Project Information</div>
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 8px;">
+      <tr><td style="font-size: 10px; color: #94a3b8; padding-bottom: 2px;">Address</td><td style="font-size: 10px; color: #1e293b; font-weight: 600; text-align: right; padding-bottom: 2px;">${addressDisplay || "—"}${coordsLine}</td></tr>
+      <tr><td style="font-size: 10px; color: #94a3b8; padding-bottom: 2px;">Dimensions</td><td style="font-size: 10px; color: #1e293b; font-weight: 600; text-align: right; padding-bottom: 2px;">${formatProjectDescriptionForDisplay(project.dimension) || "—"}</td></tr>
+      <tr><td style="font-size: 10px; color: #94a3b8; padding-bottom: 2px;">State</td><td style="font-size: 10px; color: #1e293b; font-weight: 600; text-align: right; padding-bottom: 2px;">${project.state || project.state_code ? `${project.state || ""}${project.state_code ? " (" + project.state_code + ")" : ""}` : "—"}</td></tr>
+      <tr><td style="font-size: 10px; color: #94a3b8; padding-bottom: 2px;">Project Subtotal</td><td style="font-size: 10px; color: #16a34a; font-weight: 700; text-align: right; padding-bottom: 2px;">${subtotalStr || "—"}</td></tr>
+      <tr><td style="font-size: 10px; color: #94a3b8; padding-bottom: 2px;">Invoice #</td><td style="font-size: 10px; color: #1e293b; font-weight: 600; text-align: right; padding-bottom: 2px;">${project.invoice_number || "—"}</td></tr>
+    </table>
+
+    <div style="font-size: 9px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 3px; letter-spacing: 0.4px;">Workflow Status</div>
+    <div style="display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 8px;">
+      <span style="font-size: 9px; padding: 1px 6px; border-radius: 8px; font-weight: 600; background: ${getStatusColor(statusName, statuses)}20; color: ${getStatusColor(statusName, statuses)}; border: 1px solid ${getStatusColor(statusName, statuses)}40;">${statusName || "—"}</span>
+      <span style="font-size: 9px; padding: 1px 6px; border-radius: 8px; font-weight: 600; background: ${permitStatusNameVal ? "#6366f120" : "#6b728020"}; color: ${permitStatusNameVal ? "#6366f1" : "#6b7280"}; border: 1px solid ${permitStatusNameVal ? "#6366f140" : "#6b728040"};">${permitStatusNameVal || "—"}</span>
+      <span style="font-size: 9px; padding: 1px 6px; border-radius: 8px; font-weight: 600; background: ${welcomeCallStatusNameVal ? "#0891b220" : "#6b728020"}; color: ${welcomeCallStatusNameVal ? "#0891b2" : "#6b7280"}; border: 1px solid ${welcomeCallStatusNameVal ? "#0891b240" : "#6b728040"};">${welcomeCallStatusNameVal || "—"}</span>
+    </div>
+
+    <div style="font-size: 9px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 3px; letter-spacing: 0.4px;">Schedule</div>
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: ${projectNotes ? "8px" : "0"};">
+      <tr><td style="font-size: 10px; color: #94a3b8; padding-bottom: 2px;">Order Received</td><td style="font-size: 10px; color: #1e293b; font-weight: 600; text-align: right; padding-bottom: 2px;">${formatDate(project.order_received_at)}</td></tr>
+      <tr><td style="font-size: 10px; color: #94a3b8; padding-bottom: 2px;">Arrival</td><td style="font-size: 10px; color: #1e293b; font-weight: 600; text-align: right; padding-bottom: 2px;">${formatDate(project.install_start)}${project.install_end ? " → " + formatDate(project.install_end) : ""}</td></tr>
+    </table>
+
+    ${projectNotes ? `
+    <div style="font-size: 9px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 2px; letter-spacing: 0.4px;">Remarks</div>
+    <div style="font-size: 10px; color: #475569; background: #f8fafc; padding: 4px 6px; border-radius: 3px; border: 1px solid #e2e8f0; white-space: pre-wrap; line-height: 1.4;">${truncatedNotes}</div>
+    ` : ""}
+  `;
+}
+
 function getOrdinalStop(sequence) {
   if (sequence == null) return "";
   const n = Number(sequence) + 1; // 0-based to 1-based
@@ -50,6 +152,7 @@ export default function ProjectMap({
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
   const markersMapRef = useRef({}); // id -> { marker, persistentPopup, hoverPopup }
+  const clusterMarkersMapRef = useRef({}); // groupKey -> { marker, hoverPopup, persistentPopup } — one default-style marker per group of projects at the same physical location
   const originMarkerRef = useRef(null);
   const routeSourceRef = useRef("route-line");
   const initialFitDone = useRef(false);
@@ -315,6 +418,12 @@ export default function ProjectMap({
         try { bundle.marker?.remove(); } catch (e) {}
       });
       markersMapRef.current = {};
+      Object.values(clusterMarkersMapRef.current).forEach((bundle) => {
+        try { bundle.persistentPopup?.remove(); } catch (e) {}
+        try { bundle.hoverPopup?.remove(); } catch (e) {}
+        try { bundle.marker?.remove(); } catch (e) {}
+      });
+      clusterMarkersMapRef.current = {};
       originMarkerRef.current = null;
       try { tempMarkerRef.current?.remove(); } catch (e) {}
       tempMarkerRef.current = null;
@@ -338,21 +447,53 @@ export default function ProjectMap({
     const newMarkersMap = {};
     const projectIds = new Set();
 
-    // Group projects sharing the exact same coordinate — e.g. several orders
-    // on the same lot — so their markers can be nudged apart below. Without
-    // this, coincident markers stack on the same pixel and only the topmost
-    // one can ever be clicked; the others become invisible and unreachable.
-    // Rounding to 6 decimals (~11cm) groups truly-identical coordinates
-    // without touching genuinely distinct nearby addresses.
-    const coordGroups = new Map();
-    filteredProjects.forEach((project) => {
-      const gLat = project.site_latitude ?? project.address_latitude;
-      const gLng = project.site_longitude ?? project.address_longitude;
-      if (gLat == null || gLng == null) return;
-      const key = `${Number(gLat).toFixed(6)},${Number(gLng).toFixed(6)}`;
-      if (!coordGroups.has(key)) coordGroups.set(key, []);
-      coordGroups.get(key).push(project.id);
-    });
+    // Group projects that are physically close together (same lot) — e.g.
+    // several orders on one parcel — so they render as a single count-badge
+    // cluster marker below instead of stacking invisibly on top of each
+    // other. Grouped by real-world distance (CLUSTER_DISTANCE_METERS), not
+    // exact coordinate match, since the same physical address commonly
+    // geocodes to slightly different coordinates each time.
+    //
+    // Single-linkage clustering: starting from each ungrouped project, pull
+    // in every other ungrouped project within range of ANY member already
+    // in the growing group (a short BFS), so a chain of nearby points all
+    // end up in one group even if the two farthest-apart members in that
+    // chain aren't directly within range of each other.
+    const coordGroups = new Map(); // groupKey -> [project ids]
+    const projectIdToGroupKey = new Map(); // project id -> groupKey
+    {
+      const validProjects = filteredProjects.filter((p) => {
+        const lat = p.site_latitude ?? p.address_latitude;
+        const lng = p.site_longitude ?? p.address_longitude;
+        return lat != null && lng != null;
+      });
+      const assigned = new Set();
+      let groupCounter = 0;
+      validProjects.forEach((seed) => {
+        if (assigned.has(seed.id)) return;
+        const groupIds = [];
+        const queue = [seed];
+        assigned.add(seed.id);
+        while (queue.length > 0) {
+          const current = queue.shift();
+          groupIds.push(current.id);
+          const curLat = current.site_latitude ?? current.address_latitude;
+          const curLng = current.site_longitude ?? current.address_longitude;
+          validProjects.forEach((other) => {
+            if (assigned.has(other.id)) return;
+            const otherLat = other.site_latitude ?? other.address_latitude;
+            const otherLng = other.site_longitude ?? other.address_longitude;
+            if (distanceMeters(curLat, curLng, otherLat, otherLng) <= CLUSTER_DISTANCE_METERS) {
+              assigned.add(other.id);
+              queue.push(other);
+            }
+          });
+        }
+        const groupKey = `cluster-${groupCounter++}`;
+        coordGroups.set(groupKey, groupIds);
+        groupIds.forEach((pid) => projectIdToGroupKey.set(pid, groupKey));
+      });
+    }
 
     filteredProjects.forEach((project) => {
       const id = project.id;
@@ -362,22 +503,30 @@ export default function ProjectMap({
       const rawLng = project.site_longitude ?? project.address_longitude;
       if (rawLat == null || rawLng == null) return;
 
-      // Nudge apart markers that share the exact same coordinate so each
-      // gets its own clickable position instead of stacking invisibly.
-      // Projects with a unique coordinate are completely unaffected — lat/lng
-      // stay exactly as stored, this only changes visual marker placement,
-      // never the underlying project data.
-      const coordKey = `${rawLat.toFixed(6)},${rawLng.toFixed(6)}`;
-      const group = coordGroups.get(coordKey) || [id];
-      let lat = rawLat;
-      let lng = rawLng;
+      // Projects grouped into the same physical-proximity cluster (e.g.
+      // several orders on one lot) are NOT rendered as individual markers
+      // here — they're handled once, together, as a single default-style
+      // marker in the pass below. This branch only ever runs for a project
+      // whose group has exactly one member.
+      const projGroupKey = projectIdToGroupKey.get(id);
+      const group = (projGroupKey && coordGroups.get(projGroupKey)) || [id];
       if (group.length > 1) {
-        const idx = group.indexOf(id);
-        const angle = (2 * Math.PI * idx) / group.length;
-        const OFFSET_DEG = 0.00006; // ~6-7m: separates pins once zoomed to lot level, negligible when zoomed out
-        lat = rawLat + OFFSET_DEG * Math.sin(angle);
-        lng = rawLng + OFFSET_DEG * Math.cos(angle);
+        // This project just transitioned from having its own marker to being
+        // part of a cluster (e.g. a second order arrived at the same address
+        // via polling/realtime). Remove the now-obsolete individual marker
+        // here — the stale cleanup below skips it because the id is still in
+        // projectIds.
+        const obsoleteBundle = markersMapRef.current[id];
+        if (obsoleteBundle) {
+          try { obsoleteBundle.persistentPopup?.remove(); } catch (e) {}
+          try { obsoleteBundle.hoverPopup?.remove(); } catch (e) {}
+          try { obsoleteBundle.marker?.remove(); } catch (e) {}
+          delete markersMapRef.current[id];
+        }
+        return;
       }
+      const lat = rawLat;
+      const lng = rawLng;
 
       const statusName = project.proj_s_project_status?.status_name || "";
       const statusColor = getStatusColor(statusName, statuses);
@@ -486,43 +635,9 @@ export default function ProjectMap({
         line-height: 1.4;
       `;
 
-      tooltip.innerHTML = `
-        <div style="font-weight: 700; font-size: 13px; color: #1e293b; margin-bottom: ${assignedRunLabel ? "4px" : "8px"}; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px;">${project.client_name || "Untitled"}</div>
-        ${assignedRunLabel ? `<div style="font-size: 10px; color: #6366f1; font-weight: 500; margin-bottom: 8px;">📦 Run: ${assignedRunLabel}</div>` : ""}
-
-        <div style="font-size: 9px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 3px; letter-spacing: 0.4px;">Customer Information</div>
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 8px;">
-          <tr><td style="font-size: 10px; color: #94a3b8; padding-bottom: 2px;">Dealer</td><td style="font-size: 10px; color: #1e293b; font-weight: 600; text-align: right; padding-bottom: 2px;">${project.dealer || "—"}</td></tr>
-          <tr><td style="font-size: 10px; color: #94a3b8; padding-bottom: 2px;">Building Category</td><td style="font-size: 10px; color: #1e293b; font-weight: 600; text-align: right; padding-bottom: 2px;">${buildingCategoryName || "—"}</td></tr>
-        </table>
-
-        <div style="font-size: 9px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 3px; letter-spacing: 0.4px;">Project Information</div>
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 8px;">
-          <tr><td style="font-size: 10px; color: #94a3b8; padding-bottom: 2px;">Address</td><td style="font-size: 10px; color: #1e293b; font-weight: 600; text-align: right; padding-bottom: 2px;">${addressDisplay || "—"}</td></tr>
-          <tr><td style="font-size: 10px; color: #94a3b8; padding-bottom: 2px;">Dimensions</td><td style="font-size: 10px; color: #1e293b; font-weight: 600; text-align: right; padding-bottom: 2px;">${formatProjectDescriptionForDisplay(project.dimension) || "—"}</td></tr>
-          <tr><td style="font-size: 10px; color: #94a3b8; padding-bottom: 2px;">State</td><td style="font-size: 10px; color: #1e293b; font-weight: 600; text-align: right; padding-bottom: 2px;">${project.state || project.state_code ? `${project.state || ""}${project.state_code ? " (" + project.state_code + ")" : ""}` : "—"}</td></tr>
-          <tr><td style="font-size: 10px; color: #94a3b8; padding-bottom: 2px;">Project Subtotal</td><td style="font-size: 10px; color: #16a34a; font-weight: 700; text-align: right; padding-bottom: 2px;">${subtotalStr || "—"}</td></tr>
-          <tr><td style="font-size: 10px; color: #94a3b8; padding-bottom: 2px;">Invoice #</td><td style="font-size: 10px; color: #1e293b; font-weight: 600; text-align: right; padding-bottom: 2px;">${project.invoice_number || "—"}</td></tr>
-        </table>
-
-        <div style="font-size: 9px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 3px; letter-spacing: 0.4px;">Workflow Status</div>
-        <div style="display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 8px;">
-          <span style="font-size: 9px; padding: 1px 6px; border-radius: 8px; font-weight: 600; background: ${getStatusColor(statusName, statuses)}20; color: ${getStatusColor(statusName, statuses)}; border: 1px solid ${getStatusColor(statusName, statuses)}40;">${statusName || "—"}</span>
-          <span style="font-size: 9px; padding: 1px 6px; border-radius: 8px; font-weight: 600; background: ${permitStatusNameVal ? "#6366f120" : "#6b728020"}; color: ${permitStatusNameVal ? "#6366f1" : "#6b7280"}; border: 1px solid ${permitStatusNameVal ? "#6366f140" : "#6b728040"};">${permitStatusNameVal || "—"}</span>
-          <span style="font-size: 9px; padding: 1px 6px; border-radius: 8px; font-weight: 600; background: ${welcomeCallStatusNameVal ? "#0891b220" : "#6b728020"}; color: ${welcomeCallStatusNameVal ? "#0891b2" : "#6b7280"}; border: 1px solid ${welcomeCallStatusNameVal ? "#0891b240" : "#6b728040"};">${welcomeCallStatusNameVal || "—"}</span>
-        </div>
-
-        <div style="font-size: 9px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 3px; letter-spacing: 0.4px;">Schedule</div>
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: ${projectNotes ? "8px" : "0"};">
-          <tr><td style="font-size: 10px; color: #94a3b8; padding-bottom: 2px;">Order Received</td><td style="font-size: 10px; color: #1e293b; font-weight: 600; text-align: right; padding-bottom: 2px;">${formatDate(project.order_received_at)}</td></tr>
-          <tr><td style="font-size: 10px; color: #94a3b8; padding-bottom: 2px;">Arrival</td><td style="font-size: 10px; color: #1e293b; font-weight: 600; text-align: right; padding-bottom: 2px;">${formatDate(project.install_start)}${project.install_end ? " → " + formatDate(project.install_end) : ""}</td></tr>
-        </table>
-
-        ${projectNotes ? `
-        <div style="font-size: 9px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 2px; letter-spacing: 0.4px;">Remarks</div>
-        <div style="font-size: 10px; color: #475569; background: #f8fafc; padding: 4px 6px; border-radius: 3px; border: 1px solid #e2e8f0; white-space: pre-wrap; line-height: 1.4;">${truncatedNotes}</div>
-        ` : ""}
-      `;
+      tooltip.innerHTML = buildProjectTooltipHTML(project, {
+        statuses, buildingCategories, permitStatuses, welcomeCallStatuses, assignedRunLabel,
+      });
 
       const hoverPopup = new MapLibreGL.Popup({ 
         anchor: "right",
@@ -552,79 +667,263 @@ export default function ProjectMap({
       markerEl.addEventListener("contextmenu", (e) => {
         e.preventDefault();
         e.stopPropagation();
-        
-        const currentMode = modeRef.current;
-        const currentSelectedRunId = selectedRunIdRef.current;
-        
-        // Only show in Runs mode with a selected run
-        if (currentMode !== "runs" || !currentSelectedRunId) return;
-        
-        // Close any existing context menu popup
-        if (contextMenuPopupRef.current) {
-          try { contextMenuPopupRef.current.remove(); } catch (ex) {}
-          contextMenuPopupRef.current = null;
-        }
-        
-        const assignment = projectRunLookupRef.current.get(id) || null;
-        const assignedRun = assignment?.run || null;
-        const isInCurrentRun = assignedRun && assignedRun.id === currentSelectedRunId;
-        const isInOtherRun = assignedRun && assignedRun.id !== currentSelectedRunId;
-        
-        const menuContent = document.createElement("div");
-        menuContent.style.cssText = `
-          background: rgba(255, 255, 255, 0.98);
-          border: 1px solid #e2e8f0;
-          border-radius: 6px;
-          padding: 4px 0;
-          font-size: 12px;
-          color: #1e293b;
-          box-shadow: 0 3px 14px rgba(0,0,0,0.18);
-          min-width: 180px;
-        `;
-        
-        if (isInCurrentRun) {
-          menuContent.innerHTML = `
-            <div style="padding: 6px 12px; cursor: pointer; color: #dc2626; font-weight: 500;" class="ctx-remove-run">❌ Remove from Run</div>
-          `;
-          menuContent.querySelector(".ctx-remove-run").addEventListener("click", () => {
-            const rp = runProjectsRef.current.find(rp => rp.project_id === id);
-            if (rp) onRemoveFromRunRef.current?.(rp.id);
-            try { contextMenuPopupRef.current?.remove(); } catch (ex) {}
-            contextMenuPopupRef.current = null;
-          });
-        } else if (isInOtherRun) {
-          menuContent.innerHTML = `
-            <div style="padding: 0 12px 6px; color: #64748b; font-size: 11px;">📦 Already assigned to:</div>
-            <div style="padding: 0 12px 6px; color: #6366f1; font-weight: 600; font-size: 12px;">${assignedRun.run_name || `Run #${assignedRun.run_number || assignedRun.id}`}</div>
-          `;
-        } else {
-          menuContent.innerHTML = `
-            <div style="padding: 6px 12px; cursor: pointer; color: #1e293b; font-weight: 500;" class="ctx-add-run">📦 Add to Run</div>
-          `;
-          menuContent.querySelector(".ctx-add-run").addEventListener("click", () => {
-            onAddToRunRef.current?.(id);
-            try { contextMenuPopupRef.current?.remove(); } catch (ex) {}
-            contextMenuPopupRef.current = null;
-          });
-        }
-        
-        const popup = new MapLibreGL.Popup({
-          anchor: "left",
-          offset: [12, 0],
-          closeButton: false,
-          closeOnClick: true,
-          className: "project-context-menu"
-        })
-          .setLngLat(marker.getLngLat())
-          .setDOMContent(menuContent)
-          .addTo(map);
-        
-        contextMenuPopupRef.current = popup;
+        openAddRemoveRunContextMenu(id, marker.getLngLat());
       });
 
       // Store bundle with all associated popups
       newMarkersMap[id] = { marker, persistentPopup, hoverPopup };
     });
+
+    // Shared Add/Remove-from-Run context menu builder — used by both the
+    // individual marker right-click above AND the cluster row right-click
+    // below, so a project reachable only through a cluster (because it
+    // shares its address with another order) still has the same "assign to
+    // this run" action available as any other pin. Defined once here so
+    // both call sites stay in sync with a single implementation.
+    const openAddRemoveRunContextMenu = (targetProjectId, lngLat) => {
+      const currentMode = modeRef.current;
+      const currentSelectedRunId = selectedRunIdRef.current;
+
+      // Only available in Runs mode with a selected run
+      if (currentMode !== "runs" || !currentSelectedRunId) return;
+
+      if (contextMenuPopupRef.current) {
+        try { contextMenuPopupRef.current.remove(); } catch (ex) {}
+        contextMenuPopupRef.current = null;
+      }
+
+      const assignment = projectRunLookupRef.current.get(targetProjectId) || null;
+      const assignedRun = assignment?.run || null;
+      const isInCurrentRun = assignedRun && assignedRun.id === currentSelectedRunId;
+      const isInOtherRun = assignedRun && assignedRun.id !== currentSelectedRunId;
+
+      const menuContent = document.createElement("div");
+      menuContent.style.cssText = `
+        background: rgba(255, 255, 255, 0.98);
+        border: 1px solid #e2e8f0;
+        border-radius: 6px;
+        padding: 4px 0;
+        font-size: 12px;
+        color: #1e293b;
+        box-shadow: 0 3px 14px rgba(0,0,0,0.18);
+        min-width: 180px;
+      `;
+
+      if (isInCurrentRun) {
+        menuContent.innerHTML = `
+          <div style="padding: 6px 12px; cursor: pointer; color: #dc2626; font-weight: 500;" class="ctx-remove-run">❌ Remove from Run</div>
+        `;
+        menuContent.querySelector(".ctx-remove-run").addEventListener("click", () => {
+          const rp = runProjectsRef.current.find(rp => rp.project_id === targetProjectId);
+          if (rp) onRemoveFromRunRef.current?.(rp.id);
+          try { contextMenuPopupRef.current?.remove(); } catch (ex) {}
+          contextMenuPopupRef.current = null;
+        });
+      } else if (isInOtherRun) {
+        menuContent.innerHTML = `
+          <div style="padding: 0 12px 6px; color: #64748b; font-size: 11px;">📦 Already assigned to:</div>
+          <div style="padding: 0 12px 6px; color: #6366f1; font-weight: 600; font-size: 12px;">${assignedRun.run_name || `Run #${assignedRun.run_number || assignedRun.id}`}</div>
+        `;
+      } else {
+        menuContent.innerHTML = `
+          <div style="padding: 6px 12px; cursor: pointer; color: #1e293b; font-weight: 500;" class="ctx-add-run">📦 Add to Run</div>
+        `;
+        menuContent.querySelector(".ctx-add-run").addEventListener("click", () => {
+          onAddToRunRef.current?.(targetProjectId);
+          try { contextMenuPopupRef.current?.remove(); } catch (ex) {}
+          contextMenuPopupRef.current = null;
+        });
+      }
+
+      const popup = new MapLibreGL.Popup({
+        anchor: "left",
+        offset: [12, 0],
+        closeButton: false,
+        closeOnClick: true,
+        className: "project-context-menu"
+      })
+        .setLngLat(lngLat)
+        .setDOMContent(menuContent)
+        .addTo(map);
+
+      contextMenuPopupRef.current = popup;
+    };
+
+    // Multi-order locations: every group of 2+ projects at the same physical
+    // spot gets ONE normal MapLibre marker — same pin style as everywhere
+    // else, positioned and managed entirely by MapLibre itself (so it tracks
+    // zoom/pan correctly, unlike a manually-positioned custom element).
+    // Hovering it reveals the list of orders at that address; clicking a row
+    // in that list selects that specific project, same as clicking any
+    // normal pin does.
+    const newClusterMarkersMap = {};
+    coordGroups.forEach((projectIdsInGroup, groupKey) => {
+      if (projectIdsInGroup.length < 2) return;
+
+      const groupProjects = projectIdsInGroup
+        .map((pid) => filteredProjects.find((p) => p.id === pid))
+        .filter(Boolean);
+      if (groupProjects.length < 2) return;
+
+      // Anchor the marker at the group's average position rather than the
+      // first project's coordinate — with proximity clustering, members can
+      // differ slightly, so the average sits more centrally over the lot.
+      const validCoords = groupProjects
+        .map((p) => ({ lat: p.site_latitude ?? p.address_latitude, lng: p.site_longitude ?? p.address_longitude }))
+        .filter((c) => c.lat != null && c.lng != null);
+      if (validCoords.length === 0) return;
+      const clusterLat = validCoords.reduce((sum, c) => sum + c.lat, 0) / validCoords.length;
+      const clusterLng = validCoords.reduce((sum, c) => sum + c.lng, 0) / validCoords.length;
+
+      const existingCluster = clusterMarkersMapRef.current[groupKey];
+      if (existingCluster) {
+        try { existingCluster.persistentPopup?.remove(); } catch (e) {}
+        try { existingCluster.hoverPopup?.remove(); } catch (e) {}
+        try { existingCluster.marker?.remove(); } catch (e) {}
+      }
+
+      const firstStatusName = groupProjects[0].proj_s_project_status?.status_name || "";
+      const markerColor = stateColorLookup[groupProjects[0].state_code] || getStatusColor(firstStatusName, statuses);
+
+      // Standard MapLibre marker — identical construction to every other
+      // pin on this map, just no per-project popups wired to it directly.
+      const clusterMarker = new MapLibreGL.Marker({ color: markerColor, scale: 0.9 })
+        .setLngLat([clusterLng, clusterLat])
+        .addTo(map);
+
+      // Always-visible small label (respects the same Show Labels toggle as
+      // individual markers), summarizing the group instead of one name.
+      const labelContent = document.createElement("div");
+      labelContent.style.cssText = "font-size: 9px; color: #1e293b; line-height: 1.4;";
+      labelContent.innerHTML = `<div style="font-weight: 600;">${groupProjects.length} orders here</div>`;
+      const persistentPopup = new MapLibreGL.Popup({
+        closeButton: false,
+        closeOnClick: false,
+        closeOnMove: false,
+        anchor: "right",
+        offset: 10,
+        className: "project-persistent-label",
+      })
+        .setLngLat([clusterLng, clusterLat])
+        .setDOMContent(labelContent);
+      if (showLabelsRef.current) {
+        persistentPopup.addTo(map);
+      }
+
+      // Two-pane hover popup: the row list on the left, and a detail pane
+      // on the right that fills in with the same full detail card an
+      // individual pin shows, whenever a specific row is hovered.
+      const listContent = document.createElement("div");
+      listContent.style.cssText = "display: flex;";
+
+      const listColumn = document.createElement("div");
+      listColumn.style.cssText = "min-width: 200px; max-width: 220px; border-right: 1px solid #e2e8f0;";
+      const header = document.createElement("div");
+      header.style.cssText = "padding: 8px 10px 6px; font-size: 11px; font-weight: 700; color: #1e293b; border-bottom: 1px solid #e2e8f0;";
+      header.textContent = `${groupProjects.length} orders at this address`;
+      listColumn.appendChild(header);
+
+      const detailPane = document.createElement("div");
+      // visibility (not display) so this pane's box size is reserved from
+      // the very first render, at a fixed min-height — toggling visibility
+      // only changes what's painted, never the layout size. Using display
+      // here caused the popup's total height to jump on hover, which made
+      // MapLibre reposition the whole popup and shift the row out from
+      // under the cursor — triggering mouseleave, collapsing the pane, and
+      // repeating in a fast open/close flicker loop.
+      detailPane.style.cssText = "visibility: hidden; min-width: 220px; max-width: 280px; min-height: 360px; padding: 10px 12px; pointer-events: none;";
+
+      groupProjects.forEach((p) => {
+        const row = document.createElement("div");
+        row.style.cssText = "padding: 8px 10px; cursor: pointer; border-bottom: 1px solid #f1f5f9;";
+        const subtotalStr = p.project_subtotal != null
+          ? `$${Number(p.project_subtotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+          : "—";
+        row.innerHTML = `
+          <div style="font-weight: 600; font-size: 12px; color: #1e293b;">${p.client_name || "Untitled"}</div>
+          <div style="font-size: 10px; color: #16a34a; font-weight: 600;">${subtotalStr}</div>
+        `;
+        row.addEventListener("mouseenter", () => {
+          row.style.background = "#f8fafc";
+          const rowAssignment = projectRunLookupRef.current.get(p.id) || null;
+          const rowAssignedRun = rowAssignment?.run || null;
+          const rowStopSequence = rowAssignment?.stopSequence;
+          const rowAssignedRunBase = rowAssignedRun ? rowAssignedRun.run_name || `Run #${rowAssignedRun.run_number || rowAssignedRun.id}` : null;
+          const rowAssignedRunLabel = rowAssignedRunBase && rowStopSequence != null ? `${rowAssignedRunBase} (${getOrdinalStop(rowStopSequence)})` : rowAssignedRunBase;
+          detailPane.innerHTML = buildProjectTooltipHTML(p, {
+            statuses, buildingCategories, permitStatuses, welcomeCallStatuses, assignedRunLabel: rowAssignedRunLabel,
+          });
+          detailPane.style.visibility = "visible";
+        });
+        row.addEventListener("mouseleave", () => {
+          row.style.background = "";
+          detailPane.style.visibility = "hidden";
+        });
+        row.addEventListener("contextmenu", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          openAddRemoveRunContextMenu(p.id, clusterMarker.getLngLat());
+        });
+        row.addEventListener("click", () => {
+          try { hoverPopup.remove(); } catch (e) {}
+          onSelectProject?.(p.id);
+        });
+        listColumn.appendChild(row);
+      });
+
+      listContent.appendChild(listColumn);
+      listContent.appendChild(detailPane);
+
+      const hoverPopup = new MapLibreGL.Popup({
+        anchor: "right",
+        offset: 10,
+        closeButton: false,
+        closeOnClick: false,
+        className: "project-map-tooltip",
+      }).setDOMContent(listContent);
+
+      // A hover popup with clickable rows needs to stay open while the
+      // cursor travels from the marker onto the popup itself — otherwise
+      // leaving the marker's tiny hit area closes it before a row can be
+      // clicked. Closing is delayed slightly and cancelled if the cursor
+      // enters either the marker or the popup.
+      let hoverCloseTimer = null;
+      const cancelHoverClose = () => {
+        if (hoverCloseTimer) { clearTimeout(hoverCloseTimer); hoverCloseTimer = null; }
+      };
+      const scheduleHoverClose = () => {
+        cancelHoverClose();
+        hoverCloseTimer = setTimeout(() => { try { hoverPopup.remove(); } catch (e) {} }, 150);
+      };
+
+      const markerEl = clusterMarker.getElement();
+      markerEl.addEventListener("mouseenter", () => {
+        cancelHoverClose();
+        try { persistentPopup.getElement().style.display = "none"; } catch (e) {}
+        try {
+          hoverPopup.setLngLat(clusterMarker.getLngLat()).addTo(map);
+          const popupEl = hoverPopup.getElement();
+          popupEl.addEventListener("mouseenter", cancelHoverClose);
+          popupEl.addEventListener("mouseleave", scheduleHoverClose);
+        } catch (e) {}
+      });
+      markerEl.addEventListener("mouseleave", () => {
+        scheduleHoverClose();
+        try { persistentPopup.getElement().style.display = ""; } catch (e) {}
+      });
+
+      newClusterMarkersMap[groupKey] = { marker: clusterMarker, hoverPopup, persistentPopup };
+    });
+
+    Object.keys(clusterMarkersMapRef.current).forEach((key) => {
+      if (!newClusterMarkersMap[key]) {
+        const bundle = clusterMarkersMapRef.current[key];
+        try { bundle.persistentPopup?.remove(); } catch (e) {}
+        try { bundle.hoverPopup?.remove(); } catch (e) {}
+        try { bundle.marker?.remove(); } catch (e) {}
+      }
+    });
+    clusterMarkersMapRef.current = newClusterMarkersMap;
 
     Object.keys(markersMapRef.current).forEach((id) => {
       if (!projectIds.has(Number(id))) {
@@ -909,6 +1208,16 @@ export default function ProjectMap({
     const map = mapRef.current;
     if (!map) return;
     Object.values(markersMapRef.current).forEach((bundle) => {
+      if (!bundle.persistentPopup) return;
+      try {
+        if (showLabels) {
+          bundle.persistentPopup.addTo(map);
+        } else {
+          bundle.persistentPopup.remove();
+        }
+      } catch (e) {}
+    });
+    Object.values(clusterMarkersMapRef.current).forEach((bundle) => {
       if (!bundle.persistentPopup) return;
       try {
         if (showLabels) {

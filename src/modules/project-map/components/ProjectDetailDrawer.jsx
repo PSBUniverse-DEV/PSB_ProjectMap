@@ -163,6 +163,16 @@ export default function ProjectDetailDrawer({ project, statuses = [], buildingCa
                       {[stripTownshipLabel(project.city), project.state, project.postal_code].filter(Boolean).join(", ")}
                     </>
                   ) || "—"}
+                  {(() => {
+                    const lat = project.site_latitude ?? project.address_latitude;
+                    const lng = project.site_longitude ?? project.address_longitude;
+                    if (lat == null || lng == null) return null;
+                    return (
+                      <div style={{ fontSize: "9px", color: "#94a3b8", marginTop: "2px" }}>
+                        {Number(lat).toFixed(6)}, {Number(lng).toFixed(6)}
+                      </div>
+                    );
+                  })()}
                 </td>
               </tr>
               <tr style={{ borderBottom: "1px solid #f2f2f2" }}>

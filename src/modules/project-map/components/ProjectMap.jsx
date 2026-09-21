@@ -831,7 +831,13 @@ export default function ProjectMap({
       // MapLibre reposition the whole popup and shift the row out from
       // under the cursor — triggering mouseleave, collapsing the pane, and
       // repeating in a fast open/close flicker loop.
-      detailPane.style.cssText = "visibility: hidden; min-width: 220px; max-width: 280px; min-height: 360px; padding: 10px 12px; pointer-events: none;";
+      // Fixed height + overflow-y: auto (not min-height) — a min-height only
+      // sets a floor, so a taller project's card (more workflow badges,
+      // longer remarks) still grew the box past it, bringing back the same
+      // popup-repositioning flicker the reserved-space fix was meant to
+      // solve. A genuinely fixed height guarantees the box never resizes
+      // no matter what content goes in; anything taller just scrolls.
+      detailPane.style.cssText = "visibility: hidden; width: 250px; height: 380px; overflow-y: auto; padding: 10px 12px; pointer-events: auto;";
 
       groupProjects.forEach((p) => {
         const row = document.createElement("div");

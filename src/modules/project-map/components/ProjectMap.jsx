@@ -839,6 +839,24 @@ export default function ProjectMap({
       // no matter what content goes in; anything taller just scrolls.
       detailPane.style.cssText = "visibility: hidden; width: 250px; height: 380px; overflow-y: auto; padding: 10px 12px; pointer-events: auto;";
 
+      // A hover-revealed pane that's itself scrollable needs to stay open
+      // while the cursor travels from the row onto the pane — otherwise
+      // leaving the row's tiny hit area (to reach the pane and scroll it)
+      // closes the pane before it can be used. Closing is delayed slightly
+      // and cancelled if the cursor enters either the row or the pane.
+      let detailCloseTimer = null;
+      const cancelDetailClose = () => {
+        if (detailCloseTimer) { clearTimeout(detailCloseTimer); detailCloseTimer = null; }
+      };
+      const scheduleDetailClose = () => {
+        cancelDetailClose();
+        detailCloseTimer = setTimeout(() => {
+          detailPane.style.visibility = "hidden";
+        }, 150);
+      };
+      detailPane.addEventListener("mouseenter", cancelDetailClose);
+      detailPane.addEventListener("mouseleave", scheduleDetailClose);
+
       groupProjects.forEach((p) => {
         const row = document.createElement("div");
         row.style.cssText = "padding: 8px 10px; cursor: pointer; border-bottom: 1px solid #f1f5f9;";
@@ -850,6 +868,7 @@ export default function ProjectMap({
           <div style="font-size: 10px; color: #16a34a; font-weight: 600;">${subtotalStr}</div>
         `;
         row.addEventListener("mouseenter", () => {
+          cancelDetailClose();
           row.style.background = "#f8fafc";
           const rowAssignment = projectRunLookupRef.current.get(p.id) || null;
           const rowAssignedRun = rowAssignment?.run || null;
@@ -863,7 +882,7 @@ export default function ProjectMap({
         });
         row.addEventListener("mouseleave", () => {
           row.style.background = "";
-          detailPane.style.visibility = "hidden";
+          scheduleDetailClose();
         });
         row.addEventListener("contextmenu", (e) => {
           e.preventDefault();

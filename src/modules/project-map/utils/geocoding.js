@@ -3,6 +3,7 @@
  * Converts latitude/longitude coordinates to address information.
  */
 import zipcodes from "zipcodes-us";
+import { stripTownshipLabel } from "../data/projectMap.data";
 
 const GEOAPIFY_API_KEY = process.env.NEXT_PUBLIC_GEOAPIFY_API_KEY || "";
 
@@ -11,19 +12,47 @@ const GEOAPIFY_API_KEY = process.env.NEXT_PUBLIC_GEOAPIFY_API_KEY || "";
  * Geoapify's OSM-derived city value (which is often an administrative
  * township/district name rather than the mail-recognized city, e.g.
  * "Marlboro Township" instead of "Louisville" for ZIP 44641).
- * Falls back to Geoapify's original city if no ZIP match is found.
+ * Falls back to Geoapify's original city, without the word "Township",
+ * if no ZIP match is found.
  *
  * @param {string} geoapifyCity - city value from Geoapify's response
  * @param {string} postcode - ZIP code from Geoapify's response
  * @returns {string}
  */
 function resolveCity(geoapifyCity, postcode) {
-  if (!postcode) return geoapifyCity;
+  if (!postcode) return stripTownshipLabel(geoapifyCity);
   const match = zipcodes.find(postcode);
   if (match && match.isValid && match.city) {
     return match.city;
   }
-  return geoapifyCity;
+  return stripTownshipLabel(geoapifyCity);
+}
+
+/**
+ * Rewrites Geoapify's formatted address so it never shows a township:
+ *  - the city segment is replaced with resolveCity()'s value, e.g.
+ *    "2345 Wood Road Northeast, Rapid River Township, MI 49646, ..." ->
+ *    "2345 Wood Road Northeast, Kalkaska, MI 49646, ..."
+ *  - any other "... Township" segment is removed when a city segment
+ *    exists ("Kalkaska Township, Kalkaska, MI" -> "Kalkaska, MI"),
+ *    otherwise it only loses the word "Township".
+ *
+ * @param {string} formatted - formatted value from Geoapify's response
+ * @param {string} geoapifyCity - city value from Geoapify's response
+ * @param {string} postcode - ZIP code from Geoapify's response
+ * @returns {string}
+ */
+function resolveFormattedAddress(formatted, geoapifyCity, postcode) {
+  if (!formatted) return formatted;
+  const parts = formatted.split(", ");
+  const cityIdx = geoapifyCity ? parts.lastIndexOf(geoapifyCity) : -1;
+  const result = [];
+  parts.forEach((part, idx) => {
+    if (idx === cityIdx) result.push(resolveCity(geoapifyCity, postcode));
+    else if (!/\sTownship$/i.test(part)) result.push(part);
+    else if (cityIdx === -1) result.push(stripTownshipLabel(part));
+  });
+  return result.join(", ");
 }
 
 /**
@@ -77,13 +106,6 @@ export function parseCoordinateString(input) {
  * @param {number} lng - Longitude
  * @returns {Promise<Object|null>} Address object with properties or null if failed
  */
-/**
- * Reverse geocodes coordinates to address information.
- * 
- * @param {number} lat - Latitude
- * @param {number} lng - Longitude
- * @returns {Promise<Object|null>} Address object with properties or null if failed
- */
 export async function reverseGeocode(lat, lng) {
   if (!GEOAPIFY_API_KEY) {
     console.warn("[Geocoding] No Geoapify API key configured");
@@ -114,7 +136,7 @@ export async function reverseGeocode(lat, lng) {
     const props = feature.properties;
     
     return {
-      formatted_address: props.formatted || "",
+      formatted_address: resolveFormattedAddress(props.formatted || "", props.city || "", props.postcode),
       address_line_1: props.address_line1 || "",
       city: resolveCity(props.city || "", props.postcode),
       state: props.state || "",
@@ -174,7 +196,7 @@ export async function forwardGeocode(query, limit = 50, options = {}) {
     return features.map((f) => {
       const props = f.properties;
       return {
-        formatted_address: props.formatted || "",
+        formatted_address: resolveFormattedAddress(props.formatted || "", props.city || "", props.postcode),
         address_line_1: props.address_line1 || "",
         city: resolveCity(props.city || "", props.postcode),
         state: props.state || "",

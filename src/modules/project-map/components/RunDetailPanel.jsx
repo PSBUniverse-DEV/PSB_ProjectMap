@@ -3,7 +3,7 @@
 
 import { useMemo, useState, useEffect } from "react";
 import { StatusBadge, FileAttachments } from "@/shared/components/ui";
-import { formatProjectDescriptionForDisplay, getRunStatusColor, resolveRunStatusOptions, stripTownshipLabel, PROJECT_FILE_MAX_BYTES } from "../data/projectMap.data";
+import { formatProjectDescriptionForDisplay, getRunStatusColor, resolveRunStatusOptions, stripTownshipLabel, PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES } from "../data/projectMap.data";
 import { generateRunManifestPrint } from "../utils/printRunManifest";
 import { loadFiles, createFileUpload, saveUploadedFile, getFileUrl, deleteFile } from "../data/projectMap.actions";
 
@@ -332,6 +332,7 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
               getFileUrl={(file) => getFileUrl(file.id)}
               deleteFile={(file) => deleteFile(file.id)}
               maxBytes={PROJECT_FILE_MAX_BYTES}
+              accept={PROJECT_FILE_TYPES.join(",")}
             />
           </>
         )}

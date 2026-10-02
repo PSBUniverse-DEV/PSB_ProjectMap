@@ -171,6 +171,13 @@ export function formatProjectDescriptionForDisplay(stored) {
 export const PROJECT_FILE_MAX_BYTES = 30 * 1024 * 1024;
 
 /**
+ * MIME types that can be attached to a project or run: PDF only. Used by the
+ * server actions (core file service check) and by the attachments UI (file
+ * picker filter), so both sides always agree.
+ */
+export const PROJECT_FILE_TYPES = ["application/pdf"];
+
+/**
  * Strips "Township" from a place name or address string for display,
  * keeping the city/place name itself intact. Purely a display transform —
  * never mutates the stored value.

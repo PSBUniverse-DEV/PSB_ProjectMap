@@ -3,7 +3,7 @@
 
 import { useMemo, useState, useEffect } from "react";
 import { StatusBadge, FileAttachments } from "@/shared/components/ui";
-import { formatProjectDescriptionForDisplay, getRunStatusColor, resolveRunStatusOptions, stripTownshipLabel, PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES } from "../data/projectMap.data";
+import { formatProjectDescriptionForDisplay, getRunStatusColor, resolveRunStatusOptions, stripTownshipLabel, PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, getProjectAmountDisplay, splitRunAmounts } from "../data/projectMap.data";
 import { generateRunManifestPrint } from "../utils/printRunManifest";
 import { loadFiles, createFileUpload, saveUploadedFile, getFileUrl, deleteFile } from "../data/projectMap.actions";
 
@@ -48,8 +48,11 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
   const totalDistance = hasStops ? formatDistance(run?.estimated_distance) : "—";
   const totalMileage = hasStops ? formatMileage(run?.estimated_mileage) : "—";
   const totalDuration = hasStops ? formatDuration(run?.estimated_duration) : "—";
-  const totalSubtotal = hasStops ? formatCurrency(run?.estimated_subtotal) : "$0.00";
-
+  // Revenue excludes repairs; repairs are totalled on their own (never revenue).
+  // Computed from the stops so it is right even before the saved estimate refreshes.
+  const runAmounts = useMemo(() => splitRunAmounts(runProjects), [runProjects]);
+  const totalSubtotal = hasStops ? formatCurrency(runAmounts.revenue) : "$0.00";
+  const totalRepairs = runAmounts.repairs > 0 ? formatCurrency(runAmounts.repairs) : null;
   const stopSubtotals = useMemo(() => {
     return runProjects.map((rp) => {
       const proj = rp.proj_t_projects || {};
@@ -201,6 +204,10 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
                 <div><div style={{ fontSize: "9px", color: "#94a3b8" }}>Mileage</div><div style={{ fontSize: "16px", fontWeight: 700 }}>{totalMileage}</div></div>
                 <div><div style={{ fontSize: "9px", color: "#94a3b8" }}>Duration</div><div style={{ fontSize: "16px", fontWeight: 700 }}>{totalDuration}</div></div>
                 <div><div style={{ fontSize: "9px", color: "#94a3b8" }}>Revenue</div><div style={{ fontSize: "16px", fontWeight: 700 }}>{totalSubtotal}</div></div>
+                {/* Lighter red than the list/drawer red so it stays readable on the dark summary box. */}
+                {totalRepairs && (
+                  <div><div style={{ fontSize: "9px", color: "#fca5a5" }}>Repairs</div><div style={{ fontSize: "16px", fontWeight: 700, color: "#f87171" }}>{totalRepairs}</div></div>
+                )}
               </div>
             </div>
 
@@ -252,6 +259,7 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
                     const segDistance = hasError ? "Route unavailable" : formatDistance(segment?.distance);
                     const segDuration = hasError ? "" : formatDuration(segment?.duration);
                     const sub = formatCurrency(stopSubtotals[idx]);
+                    const amount = getProjectAmountDisplay(proj);
                     const isDragging = dragIndex === idx;
                     const isDragOver = dragOverIndex === idx;
 
@@ -272,7 +280,7 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
                                   <div style={{ fontWeight: 600, fontSize: "11px", color: "#1e293b", marginBottom: "1px" }}>{idx + 1}. {proj.client_name || "Untitled"}</div>
                                   <div style={{ fontSize: "9px", color: "#64748b" }}>{proj.city && proj.state ? `${stripTownshipLabel(proj.city)}, ${proj.state}` : stripTownshipLabel(proj.formatted_address) || "No address"}</div>
                                   <div style={{ fontSize: "9px", color: "#64748b", marginTop: "2px" }}>Status: {projectStatusLabel}</div>
-                                  <div style={{ fontSize: "10px", color: "#16a34a", fontWeight: 500, marginTop: "2px" }}>{sub}</div>
+                                  <div style={{ fontSize: "10px", color: amount.color, fontWeight: amount.isRepair ? 700 : 500, marginTop: "2px" }}>{amount.prefix}{sub}</div>
                                   <div style={{ marginTop: "3px", display: "flex", gap: "8px", alignItems: "center" }}>
                                     <button onClick={() => onEditStopNote?.(rp)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "10px", padding: "0", color: rp.notes ? "#6366f1" : "#94a3b8", fontWeight: rp.notes ? 600 : 400 }} title={rp.notes ? "Edit note" : "Add note"}>{rp.notes ? "📝 Note" : "📄 Note"}</button>
                                     <button

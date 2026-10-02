@@ -220,6 +220,24 @@ export function getProjectAmountDisplay(project, statuses = []) {
 }
 
 /**
+ * Splits a run's stops into revenue and repairs. Repairs are never revenue,
+ * so every run total must come from here instead of summing all stops.
+ * `runProjects` are proj_t_run_projects rows with a nested proj_t_projects.
+ */
+export function splitRunAmounts(runProjects = [], statuses = []) {
+  let revenue = 0;
+  let repairs = 0;
+  (runProjects || []).forEach((rp) => {
+    const proj = rp?.proj_t_projects;
+    if (!proj) return;
+    const amount = Number(proj.project_subtotal) || 0;
+    if (isRepairProject(proj, statuses)) repairs += amount;
+    else revenue += amount;
+  });
+  return { revenue, repairs };
+}
+
+/**
  * Strips "Township" from a place name or address string for display,
  * keeping the city/place name itself intact. Purely a display transform —
  * never mutates the stored value.

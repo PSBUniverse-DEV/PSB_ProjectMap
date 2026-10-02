@@ -19,6 +19,7 @@ import ProjectSelectorModal from "../components/ProjectSelectorModal";
 import FilterBar from "../components/FilterBar";
 import AddProjectForm from "../components/AddProjectForm";
 import MapSearch from "../components/MapSearch";
+import { splitRunAmounts } from "../data/projectMap.data";
 import FilterChips from "../components/FilterChips";
 import RunFilterPanel from "../components/RunFilterPanel";
 import RunFilterChips from "../components/RunFilterChips";
@@ -698,10 +699,8 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
           segmentData: data,
         });
       }
-      const subtotal = freshProjects.reduce((sum, rp) => {
-        const proj = rp.proj_t_projects || {};
-        return sum + (Number(proj.project_subtotal) || 0);
-      }, 0);
+      // Repairs are not revenue, so they are left out of the run's saved subtotal.
+      const subtotal = splitRunAmounts(freshProjects).revenue;
       const totalMileage = data.totalDistance / 1609.344;
       await updateRun(selectedRunId, { estimated_distance: data.totalDistance, estimated_duration: data.totalDuration, estimated_mileage: totalMileage, estimated_subtotal: subtotal });
 
@@ -1244,10 +1243,8 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
           if (!data.hasPartialFailure) {
             storeRouteCache(runRouteCacheRef.current, selectedRunId, { fingerprint, routeData, segmentData: data });
           }
-          const subtotal = runProjects.reduce((sum, rp) => {
-            const proj = rp.proj_t_projects || {};
-            return sum + (Number(proj.project_subtotal) || 0);
-          }, 0);
+          // Repairs are not revenue, so they are left out of the run's saved subtotal.
+          const subtotal = splitRunAmounts(runProjects).revenue;
           // Only write the estimates when they actually changed. updateRun
           // always bumps updated_at, so an unconditional write here would
           // change the data version on EVERY sync pass — making every client

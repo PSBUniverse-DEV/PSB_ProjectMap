@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { splitRunAmounts } from "../data/projectMap.data";
 
 function formatCurrency(value) {
   if (value == null) return "";
@@ -49,6 +50,11 @@ export default function RunList({ runs = [], selectedRunId, onSelectRun, isLoadi
             const originName = run.proj_s_origin_addresses?.origin_name || "No Origin";
             const projectCount = run.stops ?? 0;
             const hasData = run.estimated_distance != null || run.estimated_mileage != null || run.estimated_subtotal != null;
+            // Revenue excludes repairs. Computed from the run's own stops so it is
+            // right even before the saved estimate refreshes; falls back to the
+            // saved value if the stops were not loaded.
+            const runAmounts = Array.isArray(run.proj_t_run_projects) ? splitRunAmounts(run.proj_t_run_projects) : null;
+            const revenue = runAmounts ? runAmounts.revenue : run.estimated_subtotal;
 
             return (
               <div
@@ -87,7 +93,10 @@ export default function RunList({ runs = [], selectedRunId, onSelectRun, isLoadi
                           <span>🛣️ {formatMileage(run.estimated_mileage)}</span>
                         )}
                         {run.estimated_subtotal != null && (
-                          <span>💰 {formatCurrency(run.estimated_subtotal)}</span>
+                          <span>💰 {formatCurrency(revenue)}</span>
+                        )}
+                        {runAmounts && runAmounts.repairs > 0 && (
+                          <span style={{ color: "#dc2626", fontWeight: 600 }}>🔧 Repairs {formatCurrency(runAmounts.repairs)}</span>
                         )}
                       </>
                     )}

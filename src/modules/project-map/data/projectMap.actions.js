@@ -1359,7 +1359,7 @@ export async function loadRuns() {
 
   const { data, error } = await supabase
     .from("proj_t_runs")
-    .select("*, proj_s_origin_addresses(*), proj_t_run_projects(id, proj_t_projects(payment_method_type, project_subtotal))")
+    .select("*, proj_s_origin_addresses(*), proj_t_run_projects(id, proj_t_projects(payment_method_type, project_subtotal, proj_s_project_status!proj_t_projects_status_id_fkey(status_name)))")
     .order("run_date", { ascending: false });
 
   if (error) throw new Error(error.message);

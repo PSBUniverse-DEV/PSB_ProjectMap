@@ -745,37 +745,31 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
     try {
       const updatedRun = await updateRun(selectedRunId, { status: newStatus });
 
-      // When the run cascade fires, updateRun reports which projects it moved
-      // to the mapped project status. Patch local projects and run details so
-      // the UI updates immediately without locking future project edits.
-      if (updatedRun?._cascadedProjectIds?.length) {
+      // When the run cascade fires, updateRun reports the status each project
+      // was moved to (repairs and non-repairs land on different statuses).
+      // Patch local projects and run details so the UI updates immediately
+      // without locking future project edits.
+      const cascaded = updatedRun?._cascadedStatusByProjectId;
+      if (cascaded && Object.keys(cascaded).length > 0) {
         // The list/map/drawer read the label from the nested relation first,
         // so patch both the status FK and the joined status object.
-        const cascadedStatus =
-          statuses.find((s) => s.status_id === updatedRun._cascadedStatusId) || null;
-        setProjects((prev) =>
-          prev.map((p) =>
-            updatedRun._cascadedProjectIds.includes(p.id)
-              ? {
-                  ...p,
-                  status_id: updatedRun._cascadedStatusId,
-                  proj_s_project_status: cascadedStatus ?? p.proj_s_project_status,
-                }
-              : p
-          )
-        );
+        const patchProject = (p) => {
+          const statusId = cascaded[p.id];
+          if (statusId == null) return p;
+          const cascadedStatus = statuses.find((s) => s.status_id === statusId) || null;
+          return {
+            ...p,
+            status_id: statusId,
+            proj_s_project_status: cascadedStatus ?? p.proj_s_project_status,
+          };
+        };
+        setProjects((prev) => prev.map(patchProject));
         setRunProjects((prev) =>
-          prev.map((mapping) => {
-            if (!updatedRun._cascadedProjectIds.includes(mapping.proj_t_projects?.id)) return mapping;
-            return {
-              ...mapping,
-              proj_t_projects: {
-                ...mapping.proj_t_projects,
-                status_id: updatedRun._cascadedStatusId,
-                proj_s_project_status: cascadedStatus ?? mapping.proj_t_projects.proj_s_project_status,
-              },
-            };
-          })
+          prev.map((mapping) =>
+            mapping.proj_t_projects
+              ? { ...mapping, proj_t_projects: patchProject(mapping.proj_t_projects) }
+              : mapping
+          )
         );
       }
 

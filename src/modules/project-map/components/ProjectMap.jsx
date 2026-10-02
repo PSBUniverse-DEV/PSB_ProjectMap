@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import MapLibreGL from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { formatProjectDescriptionForDisplay, stripTownshipLabel } from "../data/projectMap.data";
+import { formatProjectDescriptionForDisplay, stripTownshipLabel, getProjectAmountDisplay } from "../data/projectMap.data";
 
 function getStatusColor(statusName, statuses = []) {
   if (!statusName) return "#6b7280";
@@ -38,6 +38,7 @@ const CLUSTER_DISTANCE_METERS = 30;
 // instead of maintaining two copies of the same large block.
 function buildProjectTooltipHTML(project, { statuses = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [], assignedRunLabel = null } = {}) {
   const statusName = project.proj_s_project_status?.status_name || "";
+  const amount = getProjectAmountDisplay(project, statuses);
 
   const subtotalStr = project.project_subtotal != null
     ? `$${Number(project.project_subtotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -89,7 +90,7 @@ function buildProjectTooltipHTML(project, { statuses = [], buildingCategories = 
       <tr><td style="font-size: 10px; color: #94a3b8; padding-bottom: 2px;">Address</td><td style="font-size: 10px; color: #1e293b; font-weight: 600; text-align: right; padding-bottom: 2px;">${addressDisplay || "—"}${coordsLine}</td></tr>
       <tr><td style="font-size: 10px; color: #94a3b8; padding-bottom: 2px;">Dimensions</td><td style="font-size: 10px; color: #1e293b; font-weight: 600; text-align: right; padding-bottom: 2px;">${formatProjectDescriptionForDisplay(project.dimension) || "—"}</td></tr>
       <tr><td style="font-size: 10px; color: #94a3b8; padding-bottom: 2px;">State</td><td style="font-size: 10px; color: #1e293b; font-weight: 600; text-align: right; padding-bottom: 2px;">${project.state || project.state_code ? `${project.state || ""}${project.state_code ? " (" + project.state_code + ")" : ""}` : "—"}</td></tr>
-      <tr><td style="font-size: 10px; color: #94a3b8; padding-bottom: 2px;">Project Subtotal</td><td style="font-size: 10px; color: #16a34a; font-weight: 700; text-align: right; padding-bottom: 2px;">${subtotalStr || "—"}</td></tr>
+      <tr><td style="font-size: 10px; color: ${amount.isRepair ? amount.color : "#94a3b8"}; padding-bottom: 2px;">${amount.label}</td><td style="font-size: 10px; color: ${amount.color}; font-weight: 700; text-align: right; padding-bottom: 2px;">${subtotalStr || "—"}</td></tr>
       <tr><td style="font-size: 10px; color: #94a3b8; padding-bottom: 2px;">Invoice #</td><td style="font-size: 10px; color: #1e293b; font-weight: 600; text-align: right; padding-bottom: 2px;">${project.invoice_number || "—"}</td></tr>
     </table>
 
@@ -551,6 +552,7 @@ export default function ProjectMap({
       const assignedRunBase = assignedRun ? assignedRun.run_name || `Run #${assignedRun.run_number || assignedRun.id}` : null;
       const assignedRunLabel = assignedRunBase && stopSequence != null ? `${assignedRunBase} (${getOrdinalStop(stopSequence)})` : assignedRunBase;
 
+      const amount = getProjectAmountDisplay(project, statuses);
       const subtotalStr = project.project_subtotal != null
         ? `$${Number(project.project_subtotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
         : "";
@@ -598,7 +600,7 @@ export default function ProjectMap({
       `;
       labelContent.innerHTML = `
         <div style="font-weight: 600; line-height: 1.2;">${project.client_name || "Untitled"}</div>
-        <div style="color: #16a34a; font-weight: 600; line-height: 1.2;">${subtotalStr || "—"}</div>
+        <div style="color: ${amount.color}; font-weight: 600; line-height: 1.2;">${amount.prefix}${subtotalStr || "—"}</div>
         ${assignedRunLabel ? `<div style="color: #6366f1; line-height: 1.2;">📦 ${assignedRunLabel}</div>` : ""}
         ${formatProjectDescriptionForDisplay(project.dimension) ? `<div style="line-height: 1.2;">${formatProjectDescriptionForDisplay(project.dimension)}</div>` : ""}
       `;
@@ -860,12 +862,13 @@ export default function ProjectMap({
       groupProjects.forEach((p) => {
         const row = document.createElement("div");
         row.style.cssText = "padding: 8px 10px; cursor: pointer; border-bottom: 1px solid #f1f5f9;";
+        const amount = getProjectAmountDisplay(p, statuses);
         const subtotalStr = p.project_subtotal != null
           ? `$${Number(p.project_subtotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
           : "—";
         row.innerHTML = `
           <div style="font-weight: 600; font-size: 12px; color: #1e293b;">${p.client_name || "Untitled"}</div>
-          <div style="font-size: 10px; color: #16a34a; font-weight: 600;">${subtotalStr}</div>
+          <div style="font-size: 10px; color: ${amount.color}; font-weight: 600;">${amount.prefix}${subtotalStr}</div>
         `;
         row.addEventListener("mouseenter", () => {
           cancelDetailClose();

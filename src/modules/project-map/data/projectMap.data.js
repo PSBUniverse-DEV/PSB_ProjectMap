@@ -178,6 +178,48 @@ export const PROJECT_FILE_MAX_BYTES = 30 * 1024 * 1024;
 export const PROJECT_FILE_TYPES = ["application/pdf"];
 
 /**
+ * Project statuses that mark a project as a repair. "Repairs" is set by
+ * staff; the other three are set by the run-status cascade (updateRun) so a
+ * repair keeps a repair status while its run is Planned / In Progress /
+ * Completed. A repair's amount is never revenue: it is labelled "Repairs",
+ * shown in red, and kept out of subtotal sums.
+ */
+export const REPAIR_STATUS_NAMES = [
+  "Repairs",
+  "For Repair",
+  "Currently Being Repaired",
+  "Repaired",
+];
+
+/**
+ * True when the project is a repair. The status name is resolved from the
+ * statuses list first (always current), then from the joined status object.
+ */
+export function isRepairProject(project, statuses = []) {
+  if (!project) return false;
+  const statusName =
+    statuses.find((s) => s.status_id === project.status_id)?.status_name ||
+    project.proj_s_project_status?.status_name ||
+    "";
+  return REPAIR_STATUS_NAMES.includes(statusName);
+}
+
+/**
+ * How a project's amount is presented: repairs are red and labelled
+ * "Repairs", everything else is green and labelled "Project Subtotal".
+ * `prefix` is for compact spots that show the amount without a label cell.
+ */
+export function getProjectAmountDisplay(project, statuses = []) {
+  const isRepair = isRepairProject(project, statuses);
+  return {
+    isRepair,
+    label: isRepair ? "Repairs" : "Project Subtotal",
+    prefix: isRepair ? "Repairs: " : "",
+    color: isRepair ? "#dc2626" : "#16a34a",
+  };
+}
+
+/**
  * Strips "Township" from a place name or address string for display,
  * keeping the city/place name itself intact. Purely a display transform —
  * never mutates the stored value.

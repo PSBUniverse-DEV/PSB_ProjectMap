@@ -7,7 +7,7 @@ import {
   getSignedFileUrl,
   removeStoredFiles as removeStorageObjects,
 } from "@/core/storage/files.service";
-import { PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES } from "./projectMap.data";
+import { PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, REPAIR_STATUS_NAMES } from "./projectMap.data";
 
 function getSupabaseAdmin() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -1068,6 +1068,9 @@ export async function createRun(runData) {
  * - Planned → Ready for Install
  * - In Progress → Currently Being Installed
  * - Completed → Fully Installed
+ * - Repair projects (status in REPAIR_STATUS_NAMES) follow their own flow so
+ *   they stay recognisable as repairs: Planned → For Repair,
+ *   In Progress → Currently Being Repaired, Completed → Repaired.
  * - The cascade fires only when the run enters a mapped status, not on every
  *   save of a run that is already in that status.
  * - Project statuses remain independently editable after the cascade. There is
@@ -1076,9 +1079,11 @@ export async function createRun(runData) {
  *   only passes the new update values, and we need the old value to compare.
  * - Cascade failures are logged but never thrown: the run itself saved fine,
  *   so a failed project-status sync must not surface as a failed run save.
- * - Return value: the updated run row, plus `_cascadedProjectIds` and
- *   `_cascadedStatusId` when a mapped transition updated projects. Those
- *   underscore-prefixed keys are client metadata, never database columns.
+ * - Return value: the updated run row, plus `_cascadedStatusByProjectId`
+ *   ({ [projectId]: statusId }) when a mapped transition updated projects.
+ *   It is per project because repairs and non-repairs on the same run land
+ *   on different statuses. That underscore-prefixed key is client metadata,
+ *   never a database column.
  */
 export async function updateRun(runId, updates) {
   const supabase = getSupabaseAdmin();
@@ -1118,22 +1123,38 @@ export async function updateRun(runId, updates) {
     "In Progress": "Currently Being Installed",
     Completed: "Fully Installed",
   };
+  // Repairs follow their own flow so a repair never turns into an install.
+  const repairStatusByRunStatus = {
+    Planned: "For Repair",
+    "In Progress": "Currently Being Repaired",
+    Completed: "Repaired",
+  };
   const targetProjectStatusName = previousStatus !== newStatus
     ? projectStatusByRunStatus[newStatus]
+    : null;
+  const targetRepairStatusName = targetProjectStatusName
+    ? repairStatusByRunStatus[newStatus]
     : null;
 
   if (targetProjectStatusName) {
     try {
       // Resolve by name because setup rows are user-editable and IDs must not be hardcoded.
-      const { data: targetStatus, error: statusError } = await supabase
+      // One query fetches both targets plus every repair status (to recognise repairs).
+      const { data: statusRows, error: statusError } = await supabase
         .from("proj_s_project_status")
-        .select("status_id")
-        .eq("status_name", targetProjectStatusName)
-        .maybeSingle();
+        .select("status_id, status_name")
+        .in("status_name", [targetProjectStatusName, targetRepairStatusName, ...REPAIR_STATUS_NAMES]);
 
       if (statusError) throw statusError;
 
-      if (!targetStatus) {
+      const statusIdByName = new Map((statusRows || []).map((row) => [row.status_name, row.status_id]));
+      const repairStatusIds = new Set(
+        REPAIR_STATUS_NAMES.map((name) => statusIdByName.get(name)).filter((id) => id != null)
+      );
+      const targetStatusId = statusIdByName.get(targetProjectStatusName) ?? null;
+      const targetRepairStatusId = statusIdByName.get(targetRepairStatusName) ?? null;
+
+      if (targetStatusId == null) {
         // A missing lookup row is not a run-save failure; log and skip the cascade.
         console.error(
           `[updateRun] '${targetProjectStatusName}' status row not found in proj_s_project_status; skipping project status cascade for run #${runId}`
@@ -1147,26 +1168,41 @@ export async function updateRun(runId, updates) {
 
         if (mappingsError) throw mappingsError;
 
-        const projectIds = (mappings || []).map((m) => m.project_id);
+        const statusByProjectId = {};
 
         // Zero stops → nothing to update; not an error.
-        if (projectIds.length > 0) {
-          for (const mapping of mappings || []) {
-            const project = mapping.proj_t_projects;
-            if (!project || project.status_id === targetStatus.status_id) continue;
+        for (const mapping of mappings || []) {
+          const project = mapping.proj_t_projects;
+          if (!project) continue;
 
-            const { error: cascadeError } = await supabase
-              .from("proj_t_projects")
-              .update({
-                status_id: targetStatus.status_id,
-                updated_at: now,
-              })
-              .eq("id", mapping.project_id);
+          const isRepair = repairStatusIds.has(project.status_id);
+          const nextStatusId = isRepair ? targetRepairStatusId : targetStatusId;
 
-            if (cascadeError) throw cascadeError;
+          if (nextStatusId == null) {
+            // Repair-flow row missing (migration 006 not run): leave the repair
+            // as it is rather than turn it into a normal install.
+            console.error(
+              `[updateRun] '${targetRepairStatusName}' status row not found in proj_s_project_status; leaving repair project #${mapping.project_id} unchanged for run #${runId}`
+            );
+            continue;
           }
 
-          cascadeResult = { projectIds, statusId: targetStatus.status_id };
+          statusByProjectId[mapping.project_id] = nextStatusId;
+          if (project.status_id === nextStatusId) continue;
+
+          const { error: cascadeError } = await supabase
+            .from("proj_t_projects")
+            .update({
+              status_id: nextStatusId,
+              updated_at: now,
+            })
+            .eq("id", mapping.project_id);
+
+          if (cascadeError) throw cascadeError;
+        }
+
+        if (Object.keys(statusByProjectId).length > 0) {
+          cascadeResult = { statusByProjectId };
         }
       }
     } catch (cascadeErr) {
@@ -1184,7 +1220,7 @@ export async function updateRun(runId, updates) {
   // exactly as before and nothing can be mistaken for a real column.
   return {
     ...data,
-    ...(cascadeResult ? { _cascadedProjectIds: cascadeResult.projectIds, _cascadedStatusId: cascadeResult.statusId } : {}),
+    ...(cascadeResult ? { _cascadedStatusByProjectId: cascadeResult.statusByProjectId } : {}),
   };
 }
 

@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faLocationDot, faCalendarDays, faBuilding, faDollarSign, faTag } from "@fortawesome/free-solid-svg-icons";
-import { formatProjectDescriptionForDisplay, stripTownshipLabel, PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES } from "../data/projectMap.data";
+import { formatProjectDescriptionForDisplay, stripTownshipLabel, PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, getProjectAmountDisplay } from "../data/projectMap.data";
 import { FileAttachments } from "@/shared/components/ui";
 import { loadFiles, createFileUpload, saveUploadedFile, getFileUrl, deleteFile } from "../data/projectMap.actions";
 
@@ -106,6 +106,7 @@ export default function ProjectDetailDrawer({ project, statuses = [], buildingCa
 
   if (!project) return null;
 
+  const amount = getProjectAmountDisplay(project, statuses);
   const subtotal = project.project_subtotal != null
     ? `$${Number(project.project_subtotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
     : null;
@@ -184,8 +185,8 @@ export default function ProjectDetailDrawer({ project, statuses = [], buildingCa
                 </td>
               </tr>
               <tr style={{ borderBottom: "1px solid #f2f2f2" }}>
-                <td style={{ padding: "4px 0", fontSize: "11px", color: "#64748b", fontWeight: 500 }}>Project Subtotal</td>
-                <td style={{ padding: "4px 0", fontSize: "12px", color: "#16a34a", fontWeight: 700, textAlign: "right" }}>{subtotal || "—"}</td>
+                <td style={{ padding: "4px 0", fontSize: "11px", color: amount.isRepair ? amount.color : "#64748b", fontWeight: amount.isRepair ? 700 : 500 }}>{amount.label}</td>
+                <td style={{ padding: "4px 0", fontSize: "12px", color: amount.color, fontWeight: 700, textAlign: "right" }}>{subtotal || "—"}</td>
               </tr>
               <tr>
                 <td style={{ padding: "4px 0", fontSize: "11px", color: "#64748b", fontWeight: 500 }}>Invoice #</td>

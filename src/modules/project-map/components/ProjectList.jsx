@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { StatusBadge } from "@/shared/components/ui";
-import { stripTownshipLabel } from "../data/projectMap.data";
+import { stripTownshipLabel, getProjectAmountDisplay } from "../data/projectMap.data";
 
 function getStatusTone(statusName) {
   if (!statusName) return "secondary";
@@ -97,6 +97,7 @@ export default function ProjectList({ projects = [], selectedProjectId, onSelect
           filteredProjects.map((project) => {
             const statusName = project.proj_s_project_status?.status_name || "";
             const isSelected = project.id === selectedProjectId;
+            const amount = getProjectAmountDisplay(project, statuses);
 
             return (
               <div
@@ -133,8 +134,8 @@ export default function ProjectList({ projects = [], selectedProjectId, onSelect
                   </div>
                 )}
                 {project.project_subtotal != null && (
-                  <div style={{ fontSize: "10px", color: "#16a34a", fontWeight: 600, marginTop: "2px" }}>
-                    ${Number(project.project_subtotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  <div style={{ fontSize: "10px", color: amount.color, fontWeight: 600, marginTop: "2px" }}>
+                    {amount.prefix}${Number(project.project_subtotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
                 )}
               </div>

@@ -5,6 +5,7 @@ import { useMemo, useState, useEffect } from "react";
 import { StatusBadge } from "@/shared/components/ui";
 import { formatProjectDescriptionForDisplay, getRunStatusColor, resolveRunStatusOptions, stripTownshipLabel } from "../data/projectMap.data";
 import { generateRunManifestPrint } from "../utils/printRunManifest";
+import FileAttachments from "./FileAttachments";
 
 function formatDistance(meters) {
   if (meters == null) return "—";
@@ -323,6 +324,7 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
                 <div style={{ fontSize: "11px", color: "#475569", background: "#f8fafc", padding: "6px 8px", borderRadius: "3px", border: "1px solid #e2e8f0" }}>{run.notes}</div>
               </div>
             )}
+            <FileAttachments key={run.id} ownerType="run" ownerId={run.id} />
           </>
         )}
       </div>

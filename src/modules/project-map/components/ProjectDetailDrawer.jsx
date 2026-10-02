@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faLocationDot, faCalendarDays, faBuilding, faDollarSign, faTag } from "@fortawesome/free-solid-svg-icons";
 import { formatProjectDescriptionForDisplay, stripTownshipLabel } from "../data/projectMap.data";
+import FileAttachments from "./FileAttachments";
 
 /**
  * ProjectDetailDrawer — the side panel shown when a project pin is selected on
@@ -260,6 +261,9 @@ export default function ProjectDetailDrawer({ project, statuses = [], buildingCa
           <div style={{ fontSize: "10px", fontWeight: 700, color: "#27374f", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}><u>Remarks</u></div>
           <div style={{ fontSize: "12px", color: "#1e293b", lineHeight: 1.5, whiteSpace: "pre-wrap", background: "#f8fafc", padding: "8px", borderRadius: "4px", border: "1px solid #e2e8f0" }}>{project.project_notes || "—"}</div>
         </div>
+
+        {/* Attachments */}
+        <FileAttachments key={project.id} ownerType="project" ownerId={project.id} />
 
         {routeInfo && (
           <div style={{ marginBottom: "10px", padding: "8px", background: "#f8fafc", borderRadius: "4px", border: "1px solid #e2e8f0" }}>

@@ -982,6 +982,9 @@ export async function deleteProject(projectId) {
 
   const supabase = getSupabaseAdmin();
 
+  // Remove the project's stored attachments (their rows cascade with the project)
+  await removeStoredFiles(supabase, "project", id);
+
   // First, remove all run-project mappings (unassign the project from every run)
   const { error: mappingError } = await supabase.from("proj_t_run_projects").delete().eq("project_id", id);
   if (mappingError) throw new Error(mappingError.message);
@@ -1181,6 +1184,9 @@ export async function updateRun(runId, updates) {
 export async function deleteRun(runId) {
   const supabase = getSupabaseAdmin();
   
+  // Remove the run's stored attachments (their rows cascade with the run)
+  await removeStoredFiles(supabase, "run", runId);
+
   // First, remove all run-project mappings (unassign projects)
   const { error: mappingError } = await supabase.from("proj_t_run_projects").delete().eq("run_id", runId);
   if (mappingError) throw new Error(mappingError.message);
@@ -1623,3 +1629,150 @@ export async function calculateSegmentRoutes(coordinates) {
     hasPartialFailure: segments.some((s) => s.error),
   };
 }
+
+// ─── File Attachments ───────────────────────────────────────
+//
+// Files live in the private Supabase Storage bucket below; proj_t_files keeps
+// one row per file (owner, storage path, original name). The browser never
+// sends file bytes through a server action — it asks for a one-time signed
+// upload URL, uploads straight to Storage, then saves the row.
+
+const FILES_BUCKET = "file_bucket_uploading";
+const FILES_MAX_BYTES = 10 * 1024 * 1024;
+const FILES_URL_TTL_SECONDS = 300;
+
+/**
+ * Maps an owner type to its proj_t_files column and storage folder.
+ * A file belongs to exactly one project or one run.
+ */
+function resolveFileOwner(ownerType, ownerId) {
+  const id = toIntOrNull(ownerId);
+  if (id === null) throw new Error("ownerId is required.");
+  if (ownerType === "project") return { column: "project_id", folder: "projects", id };
+  if (ownerType === "run") return { column: "run_id", folder: "runs", id };
+  throw new Error(`Unknown file owner type: "${ownerType}"`);
+}
+
+function assertFileAllowed(file) {
+  if (!file || !hasValue(file.name)) throw new Error("File name is required.");
+  const type = String(file.type || "");
+  if (!type.startsWith("image/") && type !== "application/pdf") {
+    throw new Error("Only images and PDF files can be attached.");
+  }
+  if (!(Number(file.size) > 0) || Number(file.size) > FILES_MAX_BYTES) {
+    throw new Error("File must be 10 MB or smaller.");
+  }
+}
+
+/**
+ * Best-effort removal of every stored file for a project or run. Called
+ * before the owner row is deleted (the proj_t_files rows themselves go via
+ * ON DELETE CASCADE). Never throws: a storage hiccup must not block deleting
+ * the project/run, it only leaves an orphaned object in the bucket.
+ */
+async function removeStoredFiles(supabase, ownerType, ownerId) {
+  try {
+    const { column, id } = resolveFileOwner(ownerType, ownerId);
+    const { data, error } = await supabase.from("proj_t_files").select("storage_path").eq(column, id);
+    if (error) throw new Error(error.message);
+    const paths = (data || []).map((row) => row.storage_path);
+    if (paths.length === 0) return;
+    const { error: removeError } = await supabase.storage.from(FILES_BUCKET).remove(paths);
+    if (removeError) throw new Error(removeError.message);
+  } catch (err) {
+    console.error("[ProjectMap] Failed to remove stored files:", err?.message);
+  }
+}
+
+export async function loadFiles(ownerType, ownerId) {
+  const { column, id } = resolveFileOwner(ownerType, ownerId);
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("proj_t_files")
+    .select("id, file_name, mime_type, file_size, created_at")
+    .eq(column, id)
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+/**
+ * Step 1 of an upload: validates the file and returns a one-time signed
+ * upload target. `file` is plain metadata: { name, type, size }.
+ */
+export async function createFileUpload(ownerType, ownerId, file) {
+  const { folder, id } = resolveFileOwner(ownerType, ownerId);
+  assertFileAllowed(file);
+
+  const safeName = String(file.name).replace(/[^a-zA-Z0-9._-]/g, "_").slice(-100);
+  const storagePath = `${folder}/${id}/${Date.now()}_${safeName}`;
+
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase.storage.from(FILES_BUCKET).createSignedUploadUrl(storagePath);
+  if (error) throw new Error(error.message);
+  return { bucket: FILES_BUCKET, storagePath: data.path, token: data.token };
+}
+
+/**
+ * Step 2 of an upload: records the uploaded file. The path must be inside
+ * the owner's own folder so a row can never point at another owner's file.
+ */
+export async function saveUploadedFile(ownerType, ownerId, storagePath, file) {
+  const { column, folder, id } = resolveFileOwner(ownerType, ownerId);
+  assertFileAllowed(file);
+  if (!String(storagePath || "").startsWith(`${folder}/${id}/`)) {
+    throw new Error("Invalid storage path.");
+  }
+
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("proj_t_files")
+    .insert({
+      [column]: id,
+      storage_path: storagePath,
+      file_name: String(file.name),
+      mime_type: String(file.type || ""),
+      file_size: toIntOrNull(file.size),
+      created_by: null,
+    })
+    .select("id, file_name, mime_type, file_size, created_at")
+    .single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+/** Returns a short-lived link to open or download one file. */
+export async function getFileUrl(fileId) {
+  const id = toIntOrNull(fileId);
+  if (id === null) throw new Error("fileId is required.");
+
+  const supabase = getSupabaseAdmin();
+  const { data: row, error } = await supabase.from("proj_t_files").select("storage_path").eq("id", id).maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!row) throw new Error("File not found.");
+
+  const { data, error: urlError } = await supabase.storage
+    .from(FILES_BUCKET)
+    .createSignedUrl(row.storage_path, FILES_URL_TTL_SECONDS);
+  if (urlError) throw new Error(urlError.message);
+  return { url: data.signedUrl };
+}
+
+/** Permanently deletes one file: the stored object first, then its row. */
+export async function deleteFile(fileId) {
+  const id = toIntOrNull(fileId);
+  if (id === null) throw new Error("fileId is required.");
+
+  const supabase = getSupabaseAdmin();
+  const { data: row, error } = await supabase.from("proj_t_files").select("storage_path").eq("id", id).maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!row) return { success: true };
+
+  const { error: removeError } = await supabase.storage.from(FILES_BUCKET).remove([row.storage_path]);
+  if (removeError) throw new Error(removeError.message);
+
+  const { error: deleteError } = await supabase.from("proj_t_files").delete().eq("id", id);
+  if (deleteError) throw new Error(deleteError.message);
+  return { success: true };
+}
+

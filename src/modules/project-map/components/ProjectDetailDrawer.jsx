@@ -4,7 +4,8 @@ import { useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faLocationDot, faCalendarDays, faBuilding, faDollarSign, faTag } from "@fortawesome/free-solid-svg-icons";
 import { formatProjectDescriptionForDisplay, stripTownshipLabel } from "../data/projectMap.data";
-import FileAttachments from "./FileAttachments";
+import { FileAttachments } from "@/shared/components/ui";
+import { loadFiles, createFileUpload, saveUploadedFile, getFileUrl, deleteFile } from "../data/projectMap.actions";
 
 /**
  * ProjectDetailDrawer — the side panel shown when a project pin is selected on
@@ -263,7 +264,14 @@ export default function ProjectDetailDrawer({ project, statuses = [], buildingCa
         </div>
 
         {/* Attachments */}
-        <FileAttachments key={project.id} ownerType="project" ownerId={project.id} />
+        <FileAttachments
+          key={project.id}
+          loadFiles={() => loadFiles("project", project.id)}
+          createUpload={(meta) => createFileUpload("project", project.id, meta)}
+          saveFile={(storagePath, meta) => saveUploadedFile("project", project.id, storagePath, meta)}
+          getFileUrl={(file) => getFileUrl(file.id)}
+          deleteFile={(file) => deleteFile(file.id)}
+        />
 
         {routeInfo && (
           <div style={{ marginBottom: "10px", padding: "8px", background: "#f8fafc", borderRadius: "4px", border: "1px solid #e2e8f0" }}>

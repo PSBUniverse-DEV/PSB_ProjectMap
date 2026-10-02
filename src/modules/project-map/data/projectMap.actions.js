@@ -1,6 +1,12 @@
 "use server";
 
 import { createClient } from "@supabase/supabase-js";
+import {
+  assertFileAllowed,
+  createSignedFileUpload,
+  getSignedFileUrl,
+  removeStoredFiles as removeStorageObjects,
+} from "@/core/storage/files.service";
 
 function getSupabaseAdmin() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -1636,10 +1642,11 @@ export async function calculateSegmentRoutes(coordinates) {
 // one row per file (owner, storage path, original name). The browser never
 // sends file bytes through a server action — it asks for a one-time signed
 // upload URL, uploads straight to Storage, then saves the row.
+// All Storage calls and the type/size rules (images + PDF, 10 MB) come from
+// the core file service (@/core/storage/files.service); this module only
+// decides the bucket, the owner folder and its own proj_t_files rows.
 
 const FILES_BUCKET = "file_bucket_uploading";
-const FILES_MAX_BYTES = 10 * 1024 * 1024;
-const FILES_URL_TTL_SECONDS = 300;
 
 /**
  * Maps an owner type to its proj_t_files column and storage folder.
@@ -1651,17 +1658,6 @@ function resolveFileOwner(ownerType, ownerId) {
   if (ownerType === "project") return { column: "project_id", folder: "projects", id };
   if (ownerType === "run") return { column: "run_id", folder: "runs", id };
   throw new Error(`Unknown file owner type: "${ownerType}"`);
-}
-
-function assertFileAllowed(file) {
-  if (!file || !hasValue(file.name)) throw new Error("File name is required.");
-  const type = String(file.type || "");
-  if (!type.startsWith("image/") && type !== "application/pdf") {
-    throw new Error("Only images and PDF files can be attached.");
-  }
-  if (!(Number(file.size) > 0) || Number(file.size) > FILES_MAX_BYTES) {
-    throw new Error("File must be 10 MB or smaller.");
-  }
 }
 
 /**
@@ -1677,8 +1673,7 @@ async function removeStoredFiles(supabase, ownerType, ownerId) {
     if (error) throw new Error(error.message);
     const paths = (data || []).map((row) => row.storage_path);
     if (paths.length === 0) return;
-    const { error: removeError } = await supabase.storage.from(FILES_BUCKET).remove(paths);
-    if (removeError) throw new Error(removeError.message);
+    await removeStorageObjects({ bucket: FILES_BUCKET, storagePaths: paths });
   } catch (err) {
     console.error("[ProjectMap] Failed to remove stored files:", err?.message);
   }
@@ -1702,15 +1697,7 @@ export async function loadFiles(ownerType, ownerId) {
  */
 export async function createFileUpload(ownerType, ownerId, file) {
   const { folder, id } = resolveFileOwner(ownerType, ownerId);
-  assertFileAllowed(file);
-
-  const safeName = String(file.name).replace(/[^a-zA-Z0-9._-]/g, "_").slice(-100);
-  const storagePath = `${folder}/${id}/${Date.now()}_${safeName}`;
-
-  const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase.storage.from(FILES_BUCKET).createSignedUploadUrl(storagePath);
-  if (error) throw new Error(error.message);
-  return { bucket: FILES_BUCKET, storagePath: data.path, token: data.token };
+  return createSignedFileUpload({ bucket: FILES_BUCKET, folder: `${folder}/${id}`, file });
 }
 
 /**
@@ -1751,11 +1738,7 @@ export async function getFileUrl(fileId) {
   if (error) throw new Error(error.message);
   if (!row) throw new Error("File not found.");
 
-  const { data, error: urlError } = await supabase.storage
-    .from(FILES_BUCKET)
-    .createSignedUrl(row.storage_path, FILES_URL_TTL_SECONDS);
-  if (urlError) throw new Error(urlError.message);
-  return { url: data.signedUrl };
+  return getSignedFileUrl({ bucket: FILES_BUCKET, storagePath: row.storage_path });
 }
 
 /** Permanently deletes one file: the stored object first, then its row. */
@@ -1768,8 +1751,7 @@ export async function deleteFile(fileId) {
   if (error) throw new Error(error.message);
   if (!row) return { success: true };
 
-  const { error: removeError } = await supabase.storage.from(FILES_BUCKET).remove([row.storage_path]);
-  if (removeError) throw new Error(removeError.message);
+  await removeStorageObjects({ bucket: FILES_BUCKET, storagePaths: [row.storage_path] });
 
   const { error: deleteError } = await supabase.from("proj_t_files").delete().eq("id", id);
   if (deleteError) throw new Error(deleteError.message);

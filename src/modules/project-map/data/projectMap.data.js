@@ -163,6 +163,14 @@ export function formatProjectDescriptionForDisplay(stored) {
   return parts.length > 0 ? parts.join(" · ") : null;
 }
 /**
+ * Largest single file that can be attached to a project or run. Used by the
+ * server actions (core file service check) and by the attachments UI, so
+ * both sides always agree. The Supabase bucket's own file size limit must be
+ * at least this large.
+ */
+export const PROJECT_FILE_MAX_BYTES = 30 * 1024 * 1024;
+
+/**
  * Strips "Township" from a place name or address string for display,
  * keeping the city/place name itself intact. Purely a display transform —
  * never mutates the stored value.

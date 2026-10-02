@@ -7,6 +7,7 @@ import {
   getSignedFileUrl,
   removeStoredFiles as removeStorageObjects,
 } from "@/core/storage/files.service";
+import { PROJECT_FILE_MAX_BYTES } from "./projectMap.data";
 
 function getSupabaseAdmin() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -1642,7 +1643,8 @@ export async function calculateSegmentRoutes(coordinates) {
 // one row per file (owner, storage path, original name). The browser never
 // sends file bytes through a server action — it asks for a one-time signed
 // upload URL, uploads straight to Storage, then saves the row.
-// All Storage calls and the type/size rules (images + PDF, 10 MB) come from
+// The size limit is PROJECT_FILE_MAX_BYTES (projectMap.data.js). All Storage
+// calls and the type rule (images + PDF) come from
 // the core file service (@/core/storage/files.service); this module only
 // decides the bucket, the owner folder and its own proj_t_files rows.
 
@@ -1697,7 +1699,7 @@ export async function loadFiles(ownerType, ownerId) {
  */
 export async function createFileUpload(ownerType, ownerId, file) {
   const { folder, id } = resolveFileOwner(ownerType, ownerId);
-  return createSignedFileUpload({ bucket: FILES_BUCKET, folder: `${folder}/${id}`, file });
+  return createSignedFileUpload({ bucket: FILES_BUCKET, folder: `${folder}/${id}`, file, maxBytes: PROJECT_FILE_MAX_BYTES });
 }
 
 /**
@@ -1706,7 +1708,7 @@ export async function createFileUpload(ownerType, ownerId, file) {
  */
 export async function saveUploadedFile(ownerType, ownerId, storagePath, file) {
   const { column, folder, id } = resolveFileOwner(ownerType, ownerId);
-  assertFileAllowed(file);
+  assertFileAllowed(file, { maxBytes: PROJECT_FILE_MAX_BYTES });
   if (!String(storagePath || "").startsWith(`${folder}/${id}/`)) {
     throw new Error("Invalid storage path.");
   }

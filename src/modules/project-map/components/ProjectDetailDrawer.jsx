@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faLocationDot, faCalendarDays, faBuilding, faDollarSign, faTag } from "@fortawesome/free-solid-svg-icons";
-import { formatProjectDescriptionForDisplay, stripTownshipLabel } from "../data/projectMap.data";
+import { formatProjectDescriptionForDisplay, stripTownshipLabel, PROJECT_FILE_MAX_BYTES } from "../data/projectMap.data";
 import { FileAttachments } from "@/shared/components/ui";
 import { loadFiles, createFileUpload, saveUploadedFile, getFileUrl, deleteFile } from "../data/projectMap.actions";
 
@@ -271,6 +271,7 @@ export default function ProjectDetailDrawer({ project, statuses = [], buildingCa
           saveFile={(storagePath, meta) => saveUploadedFile("project", project.id, storagePath, meta)}
           getFileUrl={(file) => getFileUrl(file.id)}
           deleteFile={(file) => deleteFile(file.id)}
+          maxBytes={PROJECT_FILE_MAX_BYTES}
         />
 
         {routeInfo && (

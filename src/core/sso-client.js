@@ -30,6 +30,7 @@ const INTROSPECT_URL =
   (IS_MODULE ? INTROSPECT_CORE_URL : "") +
   "/api/auth/introspect" +
   (MODULE_KEY ? `?module=${encodeURIComponent(MODULE_KEY)}` : "");
+const RENEW_SESSION_URL = (IS_MODULE ? INTROSPECT_CORE_URL : "") + "/api/auth/refresh-token";
 
 // ── Local Cookie Helpers ────────────────────────────────────────────────────
 
@@ -124,8 +125,12 @@ async function fetchIntrospect() {
     const res = await fetch(INTROSPECT_URL, {
       credentials: "include",
       headers: { Accept: "application/json" },
+      cache: "no-store",
     });
     if (!res.ok) {
+      if (res.status !== 401) {
+        return introspectCache.data ?? undefined;
+      }
       introspectCache = { at: Date.now(), data: null };
       return null;
     }
@@ -136,20 +141,22 @@ async function fetchIntrospect() {
   } catch {
     // Core unreachable / transient network error: keep the last known result
     // rather than hard-logging-out mid-session.
-    return introspectCache.data;
+    return introspectCache.data ?? undefined;
   } finally {
     introspectInFlight = null;
   }
 }
 
 /**
- * Return the current VERIFIED session payload from core, or null.
+ * Return the current VERIFIED session payload from core, or null for an ended session.
+ * Returns undefined when core is unavailable and no verified result is cached.
  * Shape: { userId, email, fullName, modules, roles, authorizedForApp, moduleKnown, appId }
- * @returns {Promise<Object|null>}
+ * @param {{forceRefresh?: boolean}} [options] Bypass the short-lived result cache.
+ * @returns {Promise<Object|null|undefined>}
  */
-export async function validateSessionToken() {
+export async function validateSessionToken({ forceRefresh = false } = {}) {
   const now = Date.now();
-  if (introspectCache.data && now - introspectCache.at < INTROSPECT_TTL_MS) {
+  if (!forceRefresh && introspectCache.data && now - introspectCache.at < INTROSPECT_TTL_MS) {
     return introspectCache.data;
   }
   if (introspectInFlight) return introspectInFlight;
@@ -163,6 +170,28 @@ export async function validateSessionToken() {
 export function clearIntrospectCache() {
   introspectCache = { at: 0, data: null };
   introspectInFlight = null;
+}
+
+export async function extendSession() {
+  if (introspectInFlight) await introspectInFlight;
+  const response = await fetch(RENEW_SESSION_URL, {
+    method: "POST",
+    credentials: "include",
+    headers: { Accept: "application/json" },
+    cache: "no-store",
+    signal: AbortSignal.timeout(15_000),
+  });
+  const payload = await response.json();
+  if (!response.ok) {
+    const error = new Error(payload?.error || "Unable to extend session. Please try again.");
+    error.status = response.status;
+    throw error;
+  }
+  if (!payload?.success || !Number.isFinite(payload.expiresAt) || payload.expiresAt <= Date.now()) {
+    throw new Error("Unable to confirm the new session expiry. Please try again.");
+  }
+  clearIntrospectCache();
+  return payload;
 }
 
 /**

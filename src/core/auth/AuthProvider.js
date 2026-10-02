@@ -4,11 +4,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AuthContext, DEFAULT_AUTH_CONTEXT } from "@/core/auth/AuthContext";
 import { getSupabase, initSupabase } from "@/core/supabase/client";
 import { bootstrapAuthState } from "@/core/auth/bootstrap.actions";
+import SessionExpiryModal from "@/core/auth/SessionExpiryModal";
 import {
   validateSessionToken,
+  extendSession,
   buildUserFromSSOSession,
   buildDbUserFromSSOSession,
   buildRolesFromSSOSession,
+  clearIntrospectCache,
+  clearPSBUserPayloadCookie,
+  redirectToLogin,
 } from "@/core/sso-client";
 
 initSupabase(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
@@ -76,6 +81,11 @@ export default function AuthProvider({ children }) {
   const [dbUser, setDbUser] = useState(null);
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [sessionWarningExpiresAt, setSessionWarningExpiresAt] = useState(null);
+  const [renewalBusy, setRenewalBusy] = useState(false);
+  const [renewalError, setRenewalError] = useState("");
+  const dismissedSessionExpiryRef = useRef(null);
+  const renewSessionRef = useRef(null);
   const hasInitializedRef = useRef(false);
   const lastAuthUserIdRef = useRef(null);
   const lastBootstrapTsRef = useRef(0);
@@ -134,6 +144,13 @@ export default function AuthProvider({ children }) {
   useEffect(() => {
     const supabase = getSupabase();
     let active = true;
+    let sessionEnded = false;
+    let checkingSession = false;
+    let sessionExpiryTimer = null;
+    let sessionWarningTimer = null;
+    let verifiedSessionExpiresAt = null;
+    let renewingSession = false;
+    let sessionRevision = 0;
 
     /**
      * Build a stable fingerprint that uniquely identifies the current session.
@@ -159,6 +176,9 @@ export default function AuthProvider({ children }) {
       setAuthUser(null);
       setDbUser(null);
       setRoles([]);
+      setSessionWarningExpiresAt(null);
+      setRenewalError("");
+      dismissedSessionExpiryRef.current = null;
       lastAuthUserIdRef.current = null;
       lastSessionFingerprintRef.current = null;
       lastHydratedUserRef.current = null;
@@ -166,11 +186,97 @@ export default function AuthProvider({ children }) {
       setLoading(false);
     }
 
+    function endSession() {
+      if (!active || sessionEnded || !lastAuthUserIdRef.current) return;
+      sessionEnded = true;
+      clearAccessTokenCookie();
+      clearPSBUserPayloadCookie();
+      clearIntrospectCache();
+      resetAuthState();
+      window.setTimeout(async () => {
+        await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+        redirectToLogin(window.location.pathname + window.location.search);
+      }, 0);
+    }
+
+    function updateSessionExpiry(expiresAt) {
+      if (sessionExpiryTimer !== null) window.clearTimeout(sessionExpiryTimer);
+      if (sessionWarningTimer !== null) window.clearTimeout(sessionWarningTimer);
+      verifiedSessionExpiresAt = Number.isFinite(expiresAt) ? expiresAt : null;
+      if (verifiedSessionExpiresAt === null) {
+        setSessionWarningExpiresAt(null);
+        return;
+      }
+
+      const remaining = verifiedSessionExpiresAt - Date.now();
+      sessionExpiryTimer = window.setTimeout(checkSession, Math.max(0, Math.min(remaining, 2_147_483_647)));
+      const showWarning = () => {
+        if (!active || sessionEnded || dismissedSessionExpiryRef.current === verifiedSessionExpiresAt) return;
+        setSessionWarningExpiresAt(verifiedSessionExpiresAt);
+      };
+      if (remaining <= 10 * 60 * 1000) {
+        showWarning();
+      } else {
+        setSessionWarningExpiresAt(null);
+        sessionWarningTimer = window.setTimeout(showWarning, Math.min(remaining - 10 * 60 * 1000, 2_147_483_647));
+      }
+    }
+
+    async function checkSession() {
+      if (!active || sessionEnded || renewingSession || !hasInitializedRef.current ||
+          !lastAuthUserIdRef.current) return;
+      if (checkingSession) return;
+      checkingSession = true;
+      const revision = sessionRevision;
+      try {
+        const session = await validateSessionToken({ forceRefresh: true });
+        if (!active || sessionEnded || revision !== sessionRevision) return;
+        if (session === undefined) {
+          if (verifiedSessionExpiresAt !== null && verifiedSessionExpiresAt <= Date.now()) endSession();
+          return;
+        }
+        if (!session?.userId || (Number.isFinite(session.expiresAt) && session.expiresAt <= Date.now())) {
+          endSession();
+          return;
+        }
+        updateSessionExpiry(session.expiresAt);
+      } finally {
+        checkingSession = false;
+      }
+    }
+
+    async function renewCurrentSession() {
+      if (!active || sessionEnded || renewingSession) return;
+      renewingSession = true;
+      sessionRevision += 1;
+      setRenewalBusy(true);
+      setRenewalError("");
+      try {
+        const renewed = await extendSession();
+        if (!active || sessionEnded) return;
+        dismissedSessionExpiryRef.current = null;
+        updateSessionExpiry(renewed.expiresAt);
+      } catch (error) {
+        if (!active || sessionEnded) return;
+        if (error.status === 401) {
+          endSession();
+        } else {
+          setRenewalError("Unable to extend your session. Please try again before it expires.");
+        }
+      } finally {
+        renewingSession = false;
+        if (active) setRenewalBusy(false);
+        checkSession();
+      }
+    }
+
+    renewSessionRef.current = renewCurrentSession;
+
     async function hydrateAuthState(user, options = {}) {
       const background = Boolean(options.background);
       const syncBootstrap = options.syncBootstrap !== false;
 
-      if (!active) {
+      if (!active || sessionEnded) {
         return;
       }
 
@@ -229,7 +335,7 @@ export default function AuthProvider({ children }) {
         resolvedRoles = [];
       }
 
-      if (!active) {
+      if (!active || sessionEnded) {
         return;
       }
 
@@ -334,6 +440,7 @@ export default function AuthProvider({ children }) {
         await hydrateAuthState(data?.user ?? null);
       } finally {
         hasInitializedRef.current = true;
+        checkSession();
       }
     }
 
@@ -341,6 +448,11 @@ export default function AuthProvider({ children }) {
 
     const { data } = supabase.auth.onAuthStateChange((event, session) => {
       console.debug('[Auth] onAuthStateChange', event, { init: hasInitializedRef.current, userId: lastAuthUserIdRef.current });  // remove when bug confirmed fixed
+      if (!active || sessionEnded) return;
+      if (event === "SIGNED_OUT" && lastAuthUserIdRef.current) {
+        endSession();
+        return;
+      }
       if (session?.access_token) {
         setAccessTokenCookie(session);
       } else if (event === "SIGNED_OUT") {
@@ -397,7 +509,7 @@ export default function AuthProvider({ children }) {
       hydrateAuthState(sessionUser, {
         background: true,
         syncBootstrap: event !== "TOKEN_REFRESHED",
-      });
+      }).then(checkSession);
     });
 
     // ── Visibility Change Handler ───────────────────────────────────
@@ -414,6 +526,7 @@ export default function AuthProvider({ children }) {
       }
 
       if (document.visibilityState !== "visible") return;
+      checkSession();
       if (!hasInitializedRef.current || !lastAuthUserIdRef.current) return;
       if (hiddenAt == null) return;
       const hiddenDuration = Date.now() - hiddenAt;
@@ -459,9 +572,14 @@ export default function AuthProvider({ children }) {
     }
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
+    const sessionCheckInterval = window.setInterval(checkSession, 30_000);
 
     return () => {
       active = false;
+      window.clearInterval(sessionCheckInterval);
+      if (sessionExpiryTimer !== null) window.clearTimeout(sessionExpiryTimer);
+      if (sessionWarningTimer !== null) window.clearTimeout(sessionWarningTimer);
+      renewSessionRef.current = null;
       data.subscription.unsubscribe();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
@@ -477,5 +595,21 @@ export default function AuthProvider({ children }) {
     [authUser, dbUser, roles, loading],
   );
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+      {authUser && sessionWarningExpiresAt !== null ? (
+        <SessionExpiryModal
+          expiresAt={sessionWarningExpiresAt}
+          busy={renewalBusy}
+          error={renewalError}
+          onExtend={() => renewSessionRef.current?.()}
+          onDismiss={() => {
+            dismissedSessionExpiryRef.current = sessionWarningExpiresAt;
+            setSessionWarningExpiresAt(null);
+          }}
+        />
+      ) : null}
+    </AuthContext.Provider>
+  );
 }

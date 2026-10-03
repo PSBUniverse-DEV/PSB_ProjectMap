@@ -191,6 +191,33 @@ export const REPAIR_STATUS_NAMES = [
   "Repaired",
 ];
 
+// The whole repair flow is shown under this one tab.
+const REPAIRS_TAB_STATUS_NAME = "Repairs";
+
+/**
+ * True when this status has no tab of its own because it is shown under the
+ * "Repairs" tab (the repair-flow statuses other than "Repairs" itself). Only
+ * applies while an active "Repairs" status exists to hold them.
+ */
+export function isGroupedStatusTab(status, statuses = []) {
+  const name = status?.status_name;
+  if (name === REPAIRS_TAB_STATUS_NAME || !REPAIR_STATUS_NAMES.includes(name)) return false;
+  return statuses.some((s) => s.status_name === REPAIRS_TAB_STATUS_NAME && s.is_active !== false);
+}
+
+/**
+ * Status ids (as strings) that one tab stands for. Every tab stands for its
+ * own status only, except "Repairs", which also covers the grouped
+ * repair-flow statuses.
+ */
+export function getStatusTabGroupIds(statusId, statuses = []) {
+  const own = String(statusId);
+  const tabStatus = statuses.find((s) => String(s.status_id) === own);
+  if (tabStatus?.status_name !== REPAIRS_TAB_STATUS_NAME) return [own];
+  const grouped = statuses.filter((s) => s.is_active !== false && isGroupedStatusTab(s, statuses));
+  return [own, ...grouped.map((s) => String(s.status_id))];
+}
+
 /**
  * True when the project is a repair. The status name is resolved from the
  * statuses list first (always current), then from the joined status object.

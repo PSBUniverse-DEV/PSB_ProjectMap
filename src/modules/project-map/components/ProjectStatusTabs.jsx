@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState, useEffect } from "react";
+import { isGroupedStatusTab } from "../data/projectMap.data";
 
 function toRgba(hex, alpha) {
   if (!/^#[0-9a-fA-F]{6}$/.test(hex || "")) return undefined;
@@ -23,8 +24,11 @@ export default function ProjectStatusTabs({
   // ordering used in the Project Status setup grid. Rows that omit `is_active`
   // are treated as active so nothing is accidentally hidden.
   const activeStatuses = useMemo(() => {
+    // Repair-flow statuses ("For Repair", "Currently Being Repaired",
+    // "Repaired") get no tab of their own; the "Repairs" tab covers them
+    // (see handleProjectStatusSelect in ProjectMapView).
     return statuses
-      .filter((s) => s.is_active !== false)
+      .filter((s) => s.is_active !== false && !isGroupedStatusTab(s, statuses))
       .sort((a, b) => Number(a.display_order ?? 0) - Number(b.display_order ?? 0));
   }, [statuses]);
 

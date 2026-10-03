@@ -14,7 +14,7 @@ import { useRouter } from "next/navigation";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCircleInfo, faCheckCircle, faPrint, faMoneyCheckDollar, faPen } from "@fortawesome/free-solid-svg-icons";
 import { Button, Modal, toastError, TableZ } from "@/shared/components/ui";
-import { resolveRunStatusOptions, getRunStatusColor, formatProjectDescriptionForDisplay, stripTownshipLabel, parseStateRoute } from "../data/projectMap.data";
+import { resolveRunStatusOptions, getRunStatusColor, formatProjectDescriptionForDisplay, stripTownshipLabel, parseStateRoute, getProjectAmountDisplay, splitRunAmounts } from "../data/projectMap.data";
 import { loadRunDetails, loadRuns, loadPaidSheet } from "../data/projectMap.actions";
 import { generateRunManifestPrint } from "../utils/printRunManifest";
 import { generatePaidSheetPrint } from "../utils/printPaidSheet";
@@ -82,15 +82,14 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
     []
   );
 
-  const getRunRevenue = useCallback(
+  // Revenue excludes repairs; repairs are totalled on their own (never revenue).
+  // Falls back to the saved estimate when the run's stops were not loaded.
+  const getRunAmounts = useCallback(
     (run) => {
       if (Array.isArray(run.proj_t_run_projects)) {
-        return run.proj_t_run_projects.reduce((sum, rp) => {
-          const proj = rp.proj_t_projects || {};
-          return sum + (Number(proj.project_subtotal) || 0);
-        }, 0);
+        return splitRunAmounts(run.proj_t_run_projects);
       }
-      return run.estimated_subtotal || 0;
+      return { revenue: run.estimated_subtotal || 0, repairs: 0 };
     },
     []
   );
@@ -119,19 +118,23 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
   // getNestedValue — TableZ searches visible column keys, not render output.
   const tableData = useMemo(() => {
     return localRuns
-      .map((run) => ({
-        ...run,
-        _originDisplay: getOriginName(run),
-        _stopsCount: getRunStopsCount(run),
-        _revenue: getRunRevenue(run),
-      }))
+      .map((run) => {
+        const amounts = getRunAmounts(run);
+        return {
+          ...run,
+          _originDisplay: getOriginName(run),
+          _stopsCount: getRunStopsCount(run),
+          _revenue: amounts.revenue,
+          _repairs: amounts.repairs,
+        };
+      })
       .sort((a, b) => {
         const orderA = statusOrder.get(a.status) ?? Number.MAX_SAFE_INTEGER;
         const orderB = statusOrder.get(b.status) ?? Number.MAX_SAFE_INTEGER;
         if (orderA !== orderB) return orderA - orderB;
         return new Date(b.run_date || 0) - new Date(a.run_date || 0);
       });
-  }, [localRuns, getOriginName, getRunStopsCount, getRunRevenue, statusOrder]);
+  }, [localRuns, getOriginName, getRunStopsCount, getRunAmounts, statusOrder]);
 
   // ---- Actions ----
   const handleAddRun = useCallback(() => {
@@ -269,6 +272,8 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
 
     const detailRun = expandedDetail?.run || row;
     const detailProjects = expandedDetail?.projects || [];
+    // Only when the stops are loaded; otherwise fall back to the saved estimate.
+    const detailAmounts = expandedDetail?.projects ? splitRunAmounts(detailProjects) : null;
 
     const fieldBox = (label, value, fullWidth = false) => (
       <div key={label} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "4px", padding: "8px 10px", gridColumn: fullWidth ? "1 / -1" : undefined }}>
@@ -314,7 +319,10 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
               {fieldBox("Est. Distance", detailRun.estimated_distance != null ? `${(detailRun.estimated_distance / 1609.344).toFixed(1)} mi` : "—")}
               {fieldBox("Est. Mileage", detailRun.estimated_mileage != null ? `${Number(detailRun.estimated_mileage).toFixed(1)} mi` : "—")}
               {fieldBox("Est. Duration", detailRun.estimated_duration != null ? `${Math.round(Number(detailRun.estimated_duration) / 60)} min` : "—")}
-              {fieldBox("Est. Subtotal", formatCurrency(detailRun.estimated_subtotal))}
+              {fieldBox("Est. Subtotal", formatCurrency(detailAmounts ? detailAmounts.revenue : detailRun.estimated_subtotal))}
+              {detailAmounts && detailAmounts.repairs > 0
+                ? fieldBox("Repairs", <span style={{ color: "#dc2626" }}>{formatCurrency(detailAmounts.repairs)}</span>)
+                : null}
             </div>
 
             {sectionLabel("Record")}
@@ -352,6 +360,7 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
                     const proj = rp.proj_t_projects || {};
                     const address = stripTownshipLabel(proj.formatted_address) || [proj.address_line_1, stripTownshipLabel(proj.city), proj.state, proj.postal_code].filter(Boolean).join(", ") || "—";
                     const paymentMethodDisplay = proj.proj_s_payment_method?.method_description || proj.proj_s_payment_method?.method_name || "—";
+                    const amount = getProjectAmountDisplay(proj);
                     const hasNotes = proj.project_notes || proj.paid_sheet_notes;
                     const cellStyle = { padding: "8px 10px", fontSize: "11px", color: "#1e293b", verticalAlign: "top", borderBottom: hasNotes ? "none" : "1px solid #f1f5f9" };
 
@@ -378,7 +387,7 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
                             <div>{paymentMethodDisplay}</div>
                             {proj.payment_method_number && <div style={{ color: "#64748b" }}>Ref #{proj.payment_method_number}</div>}
                           </td>
-                          <td style={{ ...cellStyle, textAlign: "right", fontWeight: 700, color: "#16a34a" }}>{formatCurrency(proj.project_subtotal)}</td>
+                          <td style={{ ...cellStyle, textAlign: "right", fontWeight: 700, color: amount.color }}>{amount.prefix}{formatCurrency(proj.project_subtotal)}</td>
                         </tr>
                         {hasNotes && (
                           <tr key={`${proj.id || idx}-notes`}>
@@ -482,6 +491,16 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
         sortable: false,
         align: "right",
         render: (row) => formatCurrency(row._revenue),
+      },
+      {
+        key: "_repairs",
+        label: "Repairs",
+        sortable: false,
+        align: "right",
+        render: (row) =>
+          row._repairs > 0
+            ? <span style={{ color: "#dc2626", fontWeight: 600 }}>{formatCurrency(row._repairs)}</span>
+            : "—",
       },
     ],
     [getOriginName, formatDate]

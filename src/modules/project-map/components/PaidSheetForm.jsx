@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { Button, Modal, toastError, toastSuccess } from "@/shared/components/ui";
 import { updateRun, updateProjectPaymentInfo, loadPaidSheet, upsertPaidSheet } from "../data/projectMap.actions";
-import { formatProjectDescriptionForDisplay, parseStateRoute, formatStateRoute } from "../data/projectMap.data";
+import { formatProjectDescriptionForDisplay, parseStateRoute, formatStateRoute, isRepairProject, splitRunAmounts } from "../data/projectMap.data";
 import MultiSelectDropdown from "@/shared/components/ui/controls/MultiSelectDropdown";
 
 /**
@@ -146,10 +146,10 @@ export default function PaidSheetForm({
     return () => { cancelled = true; };
   }, [run, projects, show, headerReloadTick]);
 
-  // Total Amount Run = sum of the displayed project_subtotal values.
-  const totalAmount = useMemo(() => {
-    return projects.reduce((sum, rp) => sum + (Number(rp.proj_t_projects?.project_subtotal) || 0), 0);
-  }, [projects]);
+  // Total Amount Run = sum of the displayed project_subtotal values, without
+  // repairs: a repair is a company cost, not money collected from a client.
+  const runAmounts = useMemo(() => splitRunAmounts(projects), [projects]);
+  const totalAmount = runAmounts.revenue;
 
   const handleStopChange = (projectId, field, value) => {
     setStopValues((s) => ({
@@ -408,8 +408,8 @@ export default function PaidSheetForm({
                           placeholder="Ref #"
                         />
                       </td>
-                      <td style={{ ...cellStyle, textAlign: "right", whiteSpace: "nowrap" }}>
-                        {formatCurrency(proj.project_subtotal)}
+                      <td style={{ ...cellStyle, textAlign: "right", whiteSpace: "nowrap", ...(isRepairProject(proj) ? { color: "#dc2626", fontWeight: 700 } : {}) }}>
+                        {isRepairProject(proj) ? "Repairs: " : ""}{formatCurrency(proj.project_subtotal)}
                       </td>
                       <td style={cellStyle}>
                         <input
@@ -427,6 +427,16 @@ export default function PaidSheetForm({
             </tbody>
           </table>
         </div>
+
+        {/* Repairs — company cost, shown apart from the run total */}
+        {runAmounts.repairs > 0 && (
+          <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
+            <span style={{ fontSize: "12px", fontWeight: 700, color: "#dc2626" }}>Repairs (not included in total)</span>
+            <span style={{ fontSize: "14px", fontWeight: 800, color: "#dc2626", minWidth: "90px", textAlign: "right" }}>
+              {formatCurrency(runAmounts.repairs)}
+            </span>
+          </div>
+        )}
 
         {/* Total Amount Run */}
         <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "10px" }}>

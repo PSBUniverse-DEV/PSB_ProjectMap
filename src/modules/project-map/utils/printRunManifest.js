@@ -14,7 +14,7 @@
  * omitted (e.g. the Run Master List, which does not load route segments), the
  * per-stop distance / travel-time fields simply render as "—".
  */
-import { formatProjectDescriptionForDisplay, stripTownshipLabel } from "../data/projectMap.data";
+import { formatProjectDescriptionForDisplay, stripTownshipLabel, getProjectAmountDisplay, splitRunAmounts } from "../data/projectMap.data";
 
 // --- Formatting helpers (mirror the ones defined in RunDetailPanel.jsx) ---
 
@@ -45,7 +45,10 @@ export function generateRunManifestPrint(run, runProjects, runSegmentData = null
     const proj = rp.proj_t_projects || {};
     return Number(proj.project_subtotal) || 0;
   });
-  const totalRevenue = stopSubtotals.reduce((s, v) => s + v, 0);
+  // Total revenue excludes repairs: a repair is a company cost, not client
+  // revenue. Repairs are printed as their own figure.
+  const runAmounts = splitRunAmounts(runProjects);
+  const totalRevenue = runAmounts.revenue;
 
   const now = new Date();
   const printDate = now.toLocaleString("en-US", { month: "long", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
@@ -76,6 +79,8 @@ export function generateRunManifestPrint(run, runProjects, runSegmentData = null
     const segDistance = segment ? formatDistance(segment.distance) : "—";
     const segDuration = segment ? formatDuration(segment.duration) : "—";
     const sub = formatCurrency(stopSubtotals[idx]);
+    const amount = getProjectAmountDisplay(proj);
+    const repairStyle = amount.isRepair ? ' style="color: #dc2626;"' : "";
     const installDate = formatInstallDate(proj.install_start, proj.install_end);
     const address = stripTownshipLabel(proj.formatted_address) || (
       [proj.address_line_1, stripTownshipLabel(proj.city), proj.state, proj.postal_code].filter(Boolean).join(", ")
@@ -132,8 +137,8 @@ export function generateRunManifestPrint(run, runProjects, runSegmentData = null
             </div>
           </div>
           <div class="stop-money">
-            <div class="subtotal-label">Subtotal</div>
-            <div class="subtotal-value num">${sub}</div>
+            <div class="subtotal-label"${repairStyle}>${amount.isRepair ? "Repairs" : "Subtotal"}</div>
+            <div class="subtotal-value num"${repairStyle}>${sub}</div>
           </div>
         </div>
         ${notes ? `
@@ -373,6 +378,7 @@ export function generateRunManifestPrint(run, runProjects, runSegmentData = null
             <div class="info-cell revenue">
               <div class="info-label">Total revenue</div>
               <div class="info-value money num">${formatCurrency(totalRevenue)}</div>
+              ${runAmounts.repairs > 0 ? `<div class="info-label" style="margin-top: 4px; color: #dc2626;">Repairs</div><div class="info-value num" style="color: #dc2626;">${formatCurrency(runAmounts.repairs)}</div>` : ""}
             </div>
           </div>
           <div class="printed-line">Printed ${printDate}</div>

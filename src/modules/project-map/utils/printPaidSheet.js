@@ -14,7 +14,7 @@
  * editable UI lives in PaidSheetForm.jsx; printing always reflects what
  * was already saved.
  */
-import { formatProjectDescriptionForDisplay } from "../data/projectMap.data";
+import { formatProjectDescriptionForDisplay, isRepairProject, splitRunAmounts } from "../data/projectMap.data";
 export function generatePaidSheetPrint(run, runProjects, paidSheet = null, paymentMethods = []) {
   const now = new Date();
   const printDate = now.toLocaleString("en-US", { month: "long", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
@@ -44,7 +44,10 @@ export function generatePaidSheetPrint(run, runProjects, paidSheet = null, payme
     label: method.method_description || method.method_name || "Payment",
   }));
 
-  const totalAmount = runProjects.reduce((sum, rp) => sum + (Number(rp.proj_t_projects?.project_subtotal) || 0), 0);
+  // Repairs are a company cost, not money collected from a client, so they
+  // are left out of Total Amount Run and printed on their own line.
+  const runAmounts = splitRunAmounts(runProjects);
+  const totalAmount = runAmounts.revenue;
 
   const isPaid = Boolean(paidSheet?.is_paid);
   const paidDateDisplay = paidSheet?.paid_date ? formatDate(paidSheet.paid_date) : null;
@@ -73,7 +76,7 @@ export function generatePaidSheetPrint(run, runProjects, paidSheet = null, payme
         </td>
         <td class="cell"><span class="pm">${paymentMethod}</span></td>
         <td class="cell ref"><span class="ref-line">${refNo}</span></td>
-        <td class="cell num">${formatCurrency(proj.project_subtotal)}</td>
+        <td class="cell num${isRepairProject(proj) ? " repair" : ""}">${isRepairProject(proj) ? "Repairs: " : ""}${formatCurrency(proj.project_subtotal)}</td>
         <td class="cell notes">${notes}</td>
       </tr>`;
   }).join("\n");
@@ -188,6 +191,8 @@ export function generatePaidSheetPrint(run, runProjects, paidSheet = null, payme
   .payment-choice { display: flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 600; color: var(--ink); white-space: nowrap; }
   .payment-box { width: 11px; height: 11px; border: 1px solid #64748b; display: inline-flex; align-items: center; justify-content: center; font-size: 9px; line-height: 1; flex: 0 0 11px; }
   td.num { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--money); font-size: 12px; white-space: nowrap; }
+  td.num.repair { color: #dc2626; }
+  .repairs-row td { border-bottom: none; font-size: 11.5px; font-weight: 700; color: #dc2626; padding: 7px 8px; }
   td.notes { font-size: 10.5px; color: var(--body); white-space: pre-wrap; }
   td.ref { font-size: 10.5px; color: var(--muted); vertical-align: middle; }
   .ref-line { display: block; min-height: 16px; width: 100%; border-bottom: 1px solid var(--line-strong); padding: 0 2px 2px; }
@@ -300,6 +305,10 @@ export function generatePaidSheetPrint(run, runProjects, paidSheet = null, payme
       ${rowsHtml || '<tr><td colspan="6" class="cell" style="color: var(--muted); font-style: italic;">No stops assigned to this run.</td></tr>'}
     </tbody>
     <tfoot>
+      ${runAmounts.repairs > 0 ? `<tr class="repairs-row">
+        <td colspan="4">Repairs (company cost, not included in total)</td>
+        <td class="num repair" colspan="2">${formatCurrency(runAmounts.repairs)}</td>
+      </tr>` : ""}
       <tr class="total-row">
         <td colspan="4">Total Amount Run</td>
         <td class="num total-amount" colspan="2">${formatCurrency(totalAmount)}</td>

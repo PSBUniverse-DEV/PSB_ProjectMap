@@ -19,7 +19,7 @@ import ProjectSelectorModal from "../components/ProjectSelectorModal";
 import FilterBar from "../components/FilterBar";
 import AddProjectForm from "../components/AddProjectForm";
 import MapSearch from "../components/MapSearch";
-import { splitRunAmounts } from "../data/projectMap.data";
+import { splitRunAmounts, getStatusTabGroupIds } from "../data/projectMap.data";
 import FilterChips from "../components/FilterChips";
 import RunFilterPanel from "../components/RunFilterPanel";
 import RunFilterChips from "../components/RunFilterChips";
@@ -298,13 +298,16 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
       if (!statusId) {
         return { ...prev, status: [] };
       }
-      const current = prev.status || [];
-      const next = current.includes(statusId)
-        ? current.filter((s) => s !== statusId)
-        : [...current, statusId];
+      // The "Repairs" tab stands for the whole repair flow, so toggle every
+      // status id in the tab's group together. Other tabs are a group of one.
+      const groupIds = getStatusTabGroupIds(statusId, statuses);
+      const current = Array.isArray(prev.status) ? prev.status : (prev.status ? [String(prev.status)] : []);
+      const next = current.includes(String(statusId))
+        ? current.filter((s) => !groupIds.includes(s))
+        : [...current, ...groupIds.filter((id) => !current.includes(id))];
       return { ...prev, status: next };
     });
-  }, []);
+  }, [statuses]);
 
   const handleRemoveRunFilter = useCallback((filterKey) => {
     if (filterKey === "status") {

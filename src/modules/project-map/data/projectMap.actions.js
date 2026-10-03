@@ -7,7 +7,8 @@ import {
   getSignedFileUrl,
   removeStoredFiles as removeStorageObjects,
 } from "@/core/storage/files.service";
-import { PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, REPAIR_STATUS_NAMES } from "./projectMap.data";
+import { PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, REPAIR_STATUS_NAMES, PROJECT_COMMENT_MAX_LENGTH } from "./projectMap.data";
+import { getCurrentSession } from "@/core/auth/session.service";
 
 function getSupabaseAdmin() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -1803,3 +1804,96 @@ export async function deleteFile(fileId) {
   return { success: true };
 }
 
+
+// ─── Project Comments ───────────────────────────────────────
+//
+// A simple team comment thread per project (proj_t_project_comments).
+// Anyone with access to the module can read and post; a user can delete
+// only their own comments. There is no editing.
+
+const COMMENT_COLUMNS = "id, project_id, comment_text, author_name, created_by, created_at";
+
+/**
+ * Who is posting. The signed session is the source of truth whenever it
+ * exists (dev/prod), so the browser cannot post as someone else. Local
+ * development has no session (SSO is disabled there), so it falls back to
+ * the identity the page sends: { userId, name }.
+ */
+async function resolveCommentAuthor(fallbackAuthor) {
+  const session = await getCurrentSession();
+  if (session?.userId) {
+    return {
+      userId: toIntOrNull(session.userId),
+      name: session.fullName || session.email || "Unknown",
+    };
+  }
+  return {
+    userId: toIntOrNull(fallbackAuthor?.userId),
+    name: hasValue(fallbackAuthor?.name) ? String(fallbackAuthor.name).trim() : "Unknown",
+  };
+}
+
+export async function loadProjectComments(projectId) {
+  const id = toIntOrNull(projectId);
+  if (id === null) throw new Error("projectId is required.");
+
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("proj_t_project_comments")
+    .select(COMMENT_COLUMNS)
+    .eq("project_id", id)
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true });
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+export async function addProjectComment(projectId, text, fallbackAuthor = null) {
+  const id = toIntOrNull(projectId);
+  if (id === null) throw new Error("projectId is required.");
+
+  const commentText = String(text ?? "").trim();
+  if (!commentText) throw new Error("Comment cannot be empty.");
+  if (commentText.length > PROJECT_COMMENT_MAX_LENGTH) {
+    throw new Error(`Comment must be ${PROJECT_COMMENT_MAX_LENGTH} characters or fewer.`);
+  }
+
+  const author = await resolveCommentAuthor(fallbackAuthor);
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("proj_t_project_comments")
+    .insert({
+      project_id: id,
+      comment_text: commentText,
+      author_name: author.name,
+      created_by: author.userId,
+    })
+    .select(COMMENT_COLUMNS)
+    .single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+/** Deletes one comment. Only its author may delete it. */
+export async function deleteProjectComment(commentId, fallbackAuthor = null) {
+  const id = toIntOrNull(commentId);
+  if (id === null) throw new Error("commentId is required.");
+
+  const supabase = getSupabaseAdmin();
+  const { data: row, error } = await supabase
+    .from("proj_t_project_comments")
+    .select("id, created_by")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!row) return { success: true };
+
+  const author = await resolveCommentAuthor(fallbackAuthor);
+  if (row.created_by == null || author.userId == null || Number(row.created_by) !== author.userId) {
+    throw new Error("You can only delete your own comments.");
+  }
+
+  const { error: deleteError } = await supabase.from("proj_t_project_comments").delete().eq("id", id);
+  if (deleteError) throw new Error(deleteError.message);
+  return { success: true };
+}

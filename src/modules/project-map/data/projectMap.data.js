@@ -177,6 +177,9 @@ export const PROJECT_FILE_MAX_BYTES = 30 * 1024 * 1024;
  */
 export const PROJECT_FILE_TYPES = ["application/pdf"];
 
+/** Longest project comment, in characters. Checked in the UI and on the server. */
+export const PROJECT_COMMENT_MAX_LENGTH = 2000;
+
 /**
  * Project statuses that mark a project as a repair. "Repairs" is set by
  * staff; the other three are set by the run-status cascade (updateRun) so a

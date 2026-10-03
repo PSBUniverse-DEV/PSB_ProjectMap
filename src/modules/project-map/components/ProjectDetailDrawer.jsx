@@ -5,6 +5,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faLocationDot, faCalendarDays, faBuilding, faDollarSign, faTag } from "@fortawesome/free-solid-svg-icons";
 import { formatProjectDescriptionForDisplay, stripTownshipLabel, PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, getProjectAmountDisplay } from "../data/projectMap.data";
 import { FileAttachments } from "@/shared/components/ui";
+import ProjectComments from "./ProjectComments";
 import { loadFiles, createFileUpload, saveUploadedFile, getFileUrl, deleteFile } from "../data/projectMap.actions";
 
 /**
@@ -275,6 +276,9 @@ export default function ProjectDetailDrawer({ project, statuses = [], buildingCa
           maxBytes={PROJECT_FILE_MAX_BYTES}
           accept={PROJECT_FILE_TYPES.join(",")}
         />
+
+        {/* Comments */}
+        <ProjectComments key={`comments-${project.id}`} projectId={project.id} />
 
         {routeInfo && (
           <div style={{ marginBottom: "10px", padding: "8px", background: "#f8fafc", borderRadius: "4px", border: "1px solid #e2e8f0" }}>

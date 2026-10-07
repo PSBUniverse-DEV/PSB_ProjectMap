@@ -36,10 +36,14 @@
     "react-bootstrap": "^2.10.10",
     "react-dom": "19.2.4",
 <<<<<<< HEAD
+<<<<<<< HEAD
     "zipcodes-us": "^1.1.3"
 =======
     "zipcodes-us": "^1.2.0"
 >>>>>>> 09f66f2 (feat: add Dealer Master Setup module with CRUD functionality for dealer records)
+=======
+    "zipcodes-us": "^1.2.0"
+>>>>>>> core-main
   },
   "devDependencies": {
     "eslint": "^9",

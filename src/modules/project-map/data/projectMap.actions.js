@@ -1804,6 +1804,28 @@ export async function deleteFile(fileId) {
   return { success: true };
 }
 
+/**
+ * Counts attached files for several projects in one query, for screens
+ * that list many projects at once (e.g. a run's stops). Returns
+ * { [projectId]: count }; projects with no files are simply absent.
+ */
+export async function loadProjectFileCounts(projectIds) {
+  const ids = Array.from(
+    new Set((Array.isArray(projectIds) ? projectIds : []).map(toIntOrNull).filter((id) => id !== null))
+  );
+  if (ids.length === 0) return {};
+
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase.from("proj_t_files").select("project_id").in("project_id", ids);
+  if (error) throw new Error(error.message);
+
+  const counts = {};
+  (data || []).forEach((row) => {
+    counts[row.project_id] = (counts[row.project_id] || 0) + 1;
+  });
+  return counts;
+}
+
 
 // ─── Project Comments ───────────────────────────────────────
 //

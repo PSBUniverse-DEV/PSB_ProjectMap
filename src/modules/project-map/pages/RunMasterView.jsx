@@ -12,10 +12,10 @@
 import { useState, useMemo, useCallback, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faCircleInfo, faCheckCircle, faPrint, faMoneyCheckDollar, faPen } from "@fortawesome/free-solid-svg-icons";
-import { Button, Modal, toastError, TableZ } from "@/shared/components/ui";
-import { resolveRunStatusOptions, getRunStatusColor, formatProjectDescriptionForDisplay, stripTownshipLabel, parseStateRoute, getProjectAmountDisplay, splitRunAmounts } from "../data/projectMap.data";
-import { loadRunDetails, loadRuns, loadPaidSheet } from "../data/projectMap.actions";
+import { faCircleInfo, faCheckCircle, faPrint, faMoneyCheckDollar, faPen, faPaperclip } from "@fortawesome/free-solid-svg-icons";
+import { Button, Modal, toastError, TableZ, FileAttachments } from "@/shared/components/ui";
+import { resolveRunStatusOptions, getRunStatusColor, formatProjectDescriptionForDisplay, stripTownshipLabel, parseStateRoute, getProjectAmountDisplay, splitRunAmounts, PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES } from "../data/projectMap.data";
+import { loadRunDetails, loadRuns, loadPaidSheet, loadFiles, createFileUpload, saveUploadedFile, getFileUrl, deleteFile, loadProjectFileCounts } from "../data/projectMap.actions";
 import { generateRunManifestPrint } from "../utils/printRunManifest";
 import { generatePaidSheetPrint } from "../utils/printPaidSheet";
 import { computeRunSegmentData } from "../utils/runSegments";
@@ -37,6 +37,8 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
   const [expandedDetail, setExpandedDetail] = useState(null);
   const [expandedLoading, setExpandedLoading] = useState(false);
   const [activeDetailTab, setActiveDetailTab] = useState("run");
+  const [projectFileCounts, setProjectFileCounts] = useState({});
+  const [filesProject, setFilesProject] = useState(null);
 
   // ---- Helpers ----
   const refreshRuns = useCallback(async () => {
@@ -48,6 +50,21 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
     }
   }, []);
 
+  // File counts for the expanded run's stops. Best effort: the Files button
+  // still opens the list when the count could not be loaded.
+  const refreshProjectFileCounts = useCallback(async (runProjects) => {
+    const ids = (runProjects || []).map((rp) => rp.proj_t_projects?.id).filter((id) => id != null);
+    if (ids.length === 0) {
+      setProjectFileCounts({});
+      return;
+    }
+    try {
+      setProjectFileCounts(await loadProjectFileCounts(ids));
+    } catch (err) {
+      console.error("[RunMasterView] Failed to load project file counts:", err);
+    }
+  }, []);
+
   const handleRowClick = useCallback(async (row) => {
     if (expandedRunId === row.id) {
       setExpandedRunId(null);
@@ -56,18 +73,20 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
     }
     setExpandedRunId(row.id);
     setExpandedDetail(null);
+    setProjectFileCounts({});
     setActiveDetailTab("run");
     setExpandedLoading(true);
     try {
       const detail = await loadRunDetails(row.id);
       setExpandedDetail(detail);
+      refreshProjectFileCounts(detail?.projects);
     } catch (err) {
       console.error("[RunMasterView] Failed to load run detail:", err);
       toastError(err?.message || "Failed to load run details.", "Run Master List");
     } finally {
       setExpandedLoading(false);
     }
-  }, [expandedRunId]);
+  }, [expandedRunId, refreshProjectFileCounts]);
 
   const getOriginName = useCallback(
     (run) => {
@@ -169,6 +188,12 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
     setEditingRunDetail(null);
     refreshRuns();
   }, [refreshRuns]);
+
+  // Files may have been added or deleted while the modal was open.
+  const handleCloseProjectFiles = useCallback(() => {
+    setFilesProject(null);
+    refreshProjectFileCounts(expandedDetail?.projects);
+  }, [expandedDetail, refreshProjectFileCounts]);
 
   const handleClosePaidSheetForm = useCallback(() => {
     setShowPaidSheetForm(false);
@@ -353,6 +378,7 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
                     <th style={{ textAlign: "left", padding: "6px 10px", fontSize: "10px", fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.4px" }}>Invoice #</th>
                     <th style={{ textAlign: "left", padding: "6px 10px", fontSize: "10px", fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.4px" }}>Payment</th>
                     <th style={{ textAlign: "right", padding: "6px 10px", fontSize: "10px", fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.4px" }}>Amount</th>
+                    <th style={{ textAlign: "center", padding: "6px 10px", fontSize: "10px", fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.4px" }}>Files</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -362,6 +388,7 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
                     const paymentMethodDisplay = proj.proj_s_payment_method?.method_description || proj.proj_s_payment_method?.method_name || "—";
                     const amount = getProjectAmountDisplay(proj);
                     const hasNotes = proj.project_notes || proj.paid_sheet_notes;
+                    const fileCount = projectFileCounts[proj.id] || 0;
                     const cellStyle = { padding: "8px 10px", fontSize: "11px", color: "#1e293b", verticalAlign: "top", borderBottom: hasNotes ? "none" : "1px solid #f1f5f9" };
 
                     return (
@@ -388,10 +415,20 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
                             {proj.payment_method_number && <div style={{ color: "#64748b" }}>Ref #{proj.payment_method_number}</div>}
                           </td>
                           <td style={{ ...cellStyle, textAlign: "right", fontWeight: 700, color: amount.color }}>{amount.prefix}{formatCurrency(proj.project_subtotal)}</td>
+                          <td style={{ ...cellStyle, textAlign: "center", whiteSpace: "nowrap" }}>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setFilesProject(proj); }}
+                              disabled={!proj.id}
+                              title={fileCount > 0 ? `View ${fileCount} attached file${fileCount !== 1 ? "s" : ""}` : "View or attach files"}
+                              style={{ background: "none", border: "none", cursor: proj.id ? "pointer" : "not-allowed", fontSize: "11px", padding: 0, color: fileCount > 0 ? "#6366f1" : "#94a3b8", fontWeight: fileCount > 0 ? 600 : 400 }}
+                            >
+                              <FontAwesomeIcon icon={faPaperclip} /> {fileCount}
+                            </button>
+                          </td>
                         </tr>
                         {hasNotes && (
                           <tr key={`${proj.id || idx}-notes`}>
-                            <td colSpan={9} style={{ padding: "0 10px 8px", fontSize: "11px", color: "#1e293b", borderBottom: "1px solid #f1f5f9" }}>
+                            <td colSpan={10} style={{ padding: "0 10px 8px", fontSize: "11px", color: "#1e293b", borderBottom: "1px solid #f1f5f9" }}>
                               {proj.project_notes && <div style={{ whiteSpace: "pre-wrap" }}><strong>Notes:</strong> {proj.project_notes}</div>}
                               {proj.paid_sheet_notes && <div style={{ whiteSpace: "pre-wrap", marginTop: proj.project_notes ? "4px" : 0 }}><strong>Paid Sheet Notes:</strong> {proj.paid_sheet_notes}</div>}
                             </td>
@@ -407,7 +444,7 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
         )}
       </div>
     );
-  }, [expandedLoading, expandedDetail, activeDetailTab, getOriginName, formatDate, formatCurrency]);
+  }, [expandedLoading, expandedDetail, activeDetailTab, projectFileCounts, getOriginName, formatDate, formatCurrency]);
 
   // ---- TableZ config ----
   const columns = useMemo(
@@ -645,6 +682,22 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
         onSaved={handlePaidSheetSaved}
       />
 
+      {/* Project Files Modal — opens from the Files column in Project Data */}
+      <Modal show={Boolean(filesProject)} onHide={handleCloseProjectFiles} title={`Files — ${filesProject?.client_name || "Untitled"}`}>
+        {filesProject ? (
+          <FileAttachments
+            key={filesProject.id}
+            loadFiles={() => loadFiles("project", filesProject.id)}
+            createUpload={(meta) => createFileUpload("project", filesProject.id, meta)}
+            saveFile={(storagePath, meta) => saveUploadedFile("project", filesProject.id, storagePath, meta)}
+            getFileUrl={(file) => getFileUrl(file.id)}
+            deleteFile={(file) => deleteFile(file.id)}
+            maxBytes={PROJECT_FILE_MAX_BYTES}
+            accept={PROJECT_FILE_TYPES.join(",")}
+          />
+        ) : null}
+      </Modal>
+
       <Modal show={showInfoModal} onHide={() => setShowInfoModal(false)} title="How the Run Master List works">
         <div style={{ fontSize: "13px", color: "#1e293b", lineHeight: 1.6 }}>
           <p style={{ margin: "0 0 14px" }}>
@@ -656,10 +709,10 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
             <div>
               <div style={{ fontWeight: 600, marginBottom: "2px" }}>Edit</div>
               <div style={{ color: "#64748b", marginBottom: "6px" }}>
-                Opens the Paid Sheet form. It's where you record everything needed to pay the installer and print the Paid Sheet:
+                Opens the Paid Sheet form. It&apos;s where you record everything needed to pay the installer and print the Paid Sheet:
               </div>
               <div style={{ marginBottom: "5px" }}>
-                <strong>Installer</strong> <span style={{ color: "#64748b" }}>— who's assigned to run this route.</span>
+                <strong>Installer</strong> <span style={{ color: "#64748b" }}>— who&apos;s assigned to run this route.</span>
               </div>
               <div style={{ marginBottom: "5px" }}>
                 <strong>Route Info</strong> <span style={{ color: "#64748b" }}>— phone number, DOT#, state, and extra notes.</span>
@@ -673,11 +726,19 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
             </div>
           </div>
 
+          <div style={{ display: "flex", gap: "10px", marginBottom: "10px", padding: "10px", background: "#eef2ff", borderRadius: "6px", border: "1px solid #6366F1" }}>
+            <FontAwesomeIcon icon={faPaperclip} style={{ color: "#6366f1", marginTop: "2px" }} />
+            <div>
+              <div style={{ fontWeight: 600, marginBottom: "2px" }}>Project Files</div>
+              <div style={{ color: "#64748b" }}>Click a run, open <strong>Project Data</strong>, then use the paperclip on a stop to see the files attached to that project. The number is how many files it has.</div>
+            </div>
+          </div>
+
           <div style={{ display: "flex", gap: "10px", marginBottom: "10px", padding: "10px", background: "#f8fafc", borderRadius: "6px", border: "1px solid #7C3AED" }}>
             <FontAwesomeIcon icon={faPrint} style={{ color: "#7c3aed", marginTop: "2px" }} />
             <div>
               <div style={{ fontWeight: 600, marginBottom: "2px" }}>Print Manifest</div>
-              <div style={{ color: "#64748b" }}>Always available. Prints the route sheet for a run's stops.</div>
+              <div style={{ color: "#64748b" }}>Always available. Prints the route sheet for a run&apos;s stops.</div>
             </div>
           </div>
 
@@ -686,7 +747,7 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
             <div>
               <div style={{ fontWeight: 600, marginBottom: "2px" }}>Print Paid Sheet</div>
               <div style={{ color: "#64748b", marginBottom: "6px" }}>
-                This button only shows up once a run is ready. If you don't see it on a run, check:
+                This button only shows up once a run is ready. If you don&apos;t see it on a run, check:
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "3px" }}>
                 <FontAwesomeIcon icon={faCheckCircle} style={{ color: "#0d9488", fontSize: "11px" }} />

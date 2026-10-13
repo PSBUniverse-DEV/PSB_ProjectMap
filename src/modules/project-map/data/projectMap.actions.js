@@ -1381,11 +1381,18 @@ export async function updateRunStopsCount(runId, count) {
 }
 
 export async function loadRuns() {
+  // Same rule as the page load: only runs in statuses this user's department may see.
+  // Called from the browser, so access is always looked up here, never passed in.
+  const access = await loadProjectStatusTabAccess();
+  const statusNames = access.allowedRunStatusNames || [];
+  if (statusNames.length === 0) return [];
+
   const supabase = getSupabaseAdmin();
 
   const { data, error } = await supabase
     .from("proj_t_runs")
     .select("*, proj_s_origin_addresses(*), proj_t_run_projects(id, proj_t_projects(payment_method_type, project_subtotal, proj_s_project_status!proj_t_projects_status_id_fkey(status_name)))")
+    .in("status", statusNames)
     .order("run_date", { ascending: false });
 
   if (error) throw new Error(error.message);
@@ -1431,13 +1438,15 @@ export async function loadRuns() {
  * IMPORTANT: keep the select below in sync with loadProjectMapProjects().
  */
 export async function loadProjects() {
-  // Same rule as the page load: only projects in statuses this user's department may see.
+  // Same rule as the page load (see ProjectMapPage): users who can see runs get
+  // every project because the Runs tab needs them; everyone else gets only the
+  // statuses their department may see.
   const access = await loadProjectStatusTabAccess();
   if (access.reason !== "ok") return [];
 
   const supabase = getSupabaseAdmin();
 
-  const { data, error } = await supabase
+  let query = supabase
     .from("proj_t_projects")
     .select(
       "id, client_name, formatted_address, address_line_1, city, state, state_code, " +
@@ -1449,9 +1458,13 @@ export async function loadProjects() {
       "created_at, updated_at, created_by, updated_by, " +
       "proj_s_project_status!proj_t_projects_status_id_fkey(status_id, status_name, status_description)"
     )
-    .in("status_id", access.visibleProjectStatusIds)
     .order("updated_at", { ascending: false });
 
+  if (access.allowedRunStatusNames.length === 0) {
+    query = query.in("status_id", access.visibleProjectStatusIds);
+  }
+
+  const { data, error } = await query;
   if (error) throw new Error(error.message);
   return data || [];
 }
@@ -2003,11 +2016,8 @@ export async function setProjectDealerLink(projectId, dealerId) {
 
 // ─── Department Status Tabs ──────────────────────────────────
 
-/**
- * Sets which project status tabs a department sees. `statusIds` is the full
- * list the department should end up with; only the difference is written.
- */
-export async function saveDepartmentStatusTabs(deptId, statusIds) {
+// Writes only the difference between what a department has and what it should have.
+async function replaceDepartmentStatusRows(table, deptId, statusIds) {
   const session = await getCurrentSession();
   if (!session?.userId) throw new Error("Your sign-in has expired. Please sign in again.");
 
@@ -2017,7 +2027,7 @@ export async function saveDepartmentStatusTabs(deptId, statusIds) {
 
   const supabase = getSupabaseAdmin();
   const { data: current, error: loadError } = await supabase
-    .from("proj_m_department_project_status")
+    .from(table)
     .select("status_id")
     .eq("dept_id", departmentId);
   if (loadError) throw new Error(loadError.message);
@@ -2027,20 +2037,32 @@ export async function saveDepartmentStatusTabs(deptId, statusIds) {
   const toRemove = existing.filter((id) => !wanted.includes(id));
 
   if (toRemove.length > 0) {
-    const { error } = await supabase
-      .from("proj_m_department_project_status")
-      .delete()
-      .eq("dept_id", departmentId)
-      .in("status_id", toRemove);
+    const { error } = await supabase.from(table).delete().eq("dept_id", departmentId).in("status_id", toRemove);
     if (error) throw new Error(error.message);
   }
 
   if (toAdd.length > 0) {
     const { error } = await supabase
-      .from("proj_m_department_project_status")
+      .from(table)
       .insert(toAdd.map((statusId) => ({ dept_id: departmentId, status_id: statusId })));
     if (error) throw new Error(error.message);
   }
 
   return { success: true, count: wanted.length };
+}
+
+/**
+ * Sets which project status tabs a department sees. `statusIds` is the full
+ * list the department should end up with.
+ */
+export async function saveDepartmentStatusTabs(deptId, statusIds) {
+  return replaceDepartmentStatusRows("proj_m_department_project_status", deptId, statusIds);
+}
+
+/**
+ * Sets which run statuses a department sees. `statusIds` is the full list of
+ * proj_s_run_status ids the department should end up with.
+ */
+export async function saveDepartmentRunStatuses(deptId, statusIds) {
+  return replaceDepartmentStatusRows("proj_m_department_run_status", deptId, statusIds);
 }

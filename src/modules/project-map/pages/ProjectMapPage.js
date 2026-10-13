@@ -13,11 +13,17 @@ export default async function ProjectMapPage() {
 
   const [setup, runs] = await Promise.all([
     loadProjectMapSetup(),
-    loadRuns(),
+    loadRuns(statusTabAccess),
   ]);
-  // Only projects in statuses this user's department may see leave the server.
+  // Project statuses limit the Projects tab only. The Runs tab is limited by
+  // run statuses instead and needs every project (stop pins, add candidates),
+  // so users who can see runs get the full list and the view narrows the
+  // Projects tab itself. Users with no runs get only their own statuses.
+  const canSeeRuns = statusTabAccess.allowedRunStatusNames.length > 0;
   const visibleStatusIds = new Set(statusTabAccess.visibleProjectStatusIds);
-  const projects = (setup.projects || []).filter((project) => visibleStatusIds.has(String(project.status_id)));
+  const projects = canSeeRuns
+    ? setup.projects || []
+    : (setup.projects || []).filter((project) => visibleStatusIds.has(String(project.status_id)));
   // Map projectStatuses to statuses for backward compatibility with view
   return <ProjectMapView {...setup} projects={projects} statuses={setup.projectStatuses || []} origins={setup.originAddresses || []} runs={runs} runStatuses={setup.runStatuses || []} statusTabAccess={statusTabAccess} />;
 }

@@ -9,5 +9,5 @@ export default async function ProjectMapSetupPage() {
     loadProjectMapSetup(),
     loadDepartmentStatusMappings(),
   ]);
-  return <ProjectMapSetupView setup={setup} departments={departmentTabs.departments} departmentStatusMappings={departmentTabs.mappings} />;
+  return <ProjectMapSetupView setup={setup} departments={departmentTabs.departments} departmentStatusMappings={departmentTabs.mappings} departmentRunStatusMappings={departmentTabs.runMappings} />;
 }

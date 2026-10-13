@@ -98,6 +98,24 @@ export async function loadProjectMapSetup() {
 
 // ─── Status Tab Access ──────────────────────────────────────
 
+// Run status names mapped to a department (proj_m_department_run_status).
+// Runs store their status as the name, so names are what gets matched. A
+// failed lookup hides runs instead of blocking the whole page.
+async function loadDepartmentRunStatusNames(supabase, deptId) {
+  const [mappingResult, statusesResult] = await Promise.all([
+    supabase.from("proj_m_department_run_status").select("status_id").eq("dept_id", deptId),
+    supabase.from("proj_s_run_status").select("status_id, status_name"),
+  ]);
+  if (mappingResult.error || statusesResult.error) {
+    console.error("[loadDepartmentRunStatusNames]", mappingResult.error?.message || statusesResult.error?.message);
+    return [];
+  }
+  const mappedIds = new Set((mappingResult.data || []).map((row) => String(row.status_id)));
+  return (statusesResult.data || [])
+    .filter((status) => mappedIds.has(String(status.status_id)))
+    .map((status) => status.status_name);
+}
+
 /**
  * Which project status tabs the signed-in user may see.
  *
@@ -108,12 +126,16 @@ export async function loadProjectMapSetup() {
  * projects they may see (their tabs, plus the repair-flow statuses when they
  * have the "Repairs" tab); projects in any other status are never sent to them.
  *
+ * `allowedRunStatusNames` is the same idea for runs: the run statuses mapped
+ * to the department. It is filled even when `reason` is "no-mapping", because
+ * the Run Master List does not need project tabs. Empty means no runs at all.
+ *
  * `reason` is "ok" when tabs are available; otherwise it says why not, and
  * the page shows it on a blocked screen the user can screenshot for the developers:
  * "no-session" | "no-user" | "no-department" | "no-mapping" | "error".
  */
 export async function loadProjectStatusTabAccess() {
-  const access = { reason: "ok", allowedStatusIds: [], visibleProjectStatusIds: [], user: null, department: null };
+  const access = { reason: "ok", allowedStatusIds: [], visibleProjectStatusIds: [], allowedRunStatusNames: [], user: null, department: null };
 
   try {
     const session = await getCurrentSession();
@@ -146,6 +168,7 @@ export async function loadProjectStatusTabAccess() {
     if (statusesResult.error) throw new Error(statusesResult.error.message);
 
     access.department = { deptId: user.dept_id, name: departmentResult.data?.dept_name || "" };
+    access.allowedRunStatusNames = await loadDepartmentRunStatusNames(supabase, user.dept_id);
     access.allowedStatusIds = (mappingResult.data || []).map((row) => String(row.status_id));
     if (access.allowedStatusIds.length === 0) return { ...access, reason: "no-mapping" };
 
@@ -163,32 +186,42 @@ export async function loadProjectStatusTabAccess() {
 
 /**
  * Data for the "Department Tabs" setup screen: every department, and every
- * department ↔ status row in proj_m_department_project_status.
+ * department ↔ status row in the project and run mapping tables.
  */
 export async function loadDepartmentStatusMappings() {
   const supabase = getSupabaseAdmin();
-  const [departmentsResult, mappingsResult] = await Promise.all([
+  const [departmentsResult, mappingsResult, runMappingsResult] = await Promise.all([
     supabase.from("psb_s_department").select("dept_id, dept_name, is_active").order("dept_name", { ascending: true }),
     supabase.from("proj_m_department_project_status").select("dept_id, status_id"),
+    supabase.from("proj_m_department_run_status").select("dept_id, status_id"),
   ]);
 
   if (departmentsResult.error) console.error("[loadDepartmentStatusMappings] departments:", departmentsResult.error.message);
   if (mappingsResult.error) console.error("[loadDepartmentStatusMappings] mappings:", mappingsResult.error.message);
+  if (runMappingsResult.error) console.error("[loadDepartmentStatusMappings] run mappings:", runMappingsResult.error.message);
 
   return {
     departments: departmentsResult.data || [],
     mappings: mappingsResult.data || [],
+    runMappings: runMappingsResult.data || [],
   };
 }
 
 // ─── Runs Loader ────────────────────────────────────────────
 
-export async function loadRuns() {
+export async function loadRuns(access) {
+  // Only runs in statuses this user's department may see. A page that has
+  // already looked access up passes it in to save a second lookup.
+  const runAccess = access || (await loadProjectStatusTabAccess());
+  const statusNames = runAccess.allowedRunStatusNames || [];
+  if (statusNames.length === 0) return [];
+
   const supabase = getSupabaseAdmin();
 
   const { data, error } = await supabase
     .from("proj_t_runs")
     .select("*, proj_s_origin_addresses(*), proj_t_run_projects(id, proj_t_projects(payment_method_type, project_subtotal, proj_s_project_status!proj_t_projects_status_id_fkey(status_name)))")
+    .in("status", statusNames)
     .order("run_date", { ascending: false });
 
   if (error) throw new Error(error.message);

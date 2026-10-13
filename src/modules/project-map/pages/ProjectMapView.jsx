@@ -101,8 +101,10 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
   const [routeLoading, setRouteLoading] = useState(false);
   const prevSearchRef = useRef("");
   const [loadedProjects, setProjects] = useState(initialProjects);
-  // A project moved to a status this department cannot see drops out at once,
-  // without waiting for the next sync. A missing prop means no restriction.
+  // `projects` is the Projects tab's list: only statuses this department may
+  // see, so a project moved to another status drops out at once. The Runs tab
+  // reads `loadedProjects` instead (project statuses do not apply there).
+  // A missing prop means no restriction.
   const projects = useMemo(() => {
     const visibleIds = statusTabAccess?.visibleProjectStatusIds;
     if (!visibleIds) return loadedProjects;
@@ -114,7 +116,14 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
   }, [initialProjects]);
 
   // Runs state — local copy so we can update it after mutations
-  const [runs, setRuns] = useState(initialRuns);
+  const [loadedRuns, setRuns] = useState(initialRuns);
+  // A run moved to a status this department cannot see drops out at once,
+  // without waiting for the next sync. A missing prop means no restriction.
+  const runs = useMemo(() => {
+    const names = statusTabAccess?.allowedRunStatusNames;
+    if (!names) return loadedRuns;
+    return loadedRuns.filter((run) => names.includes(run.status));
+  }, [loadedRuns, statusTabAccess]);
   useEffect(() => { 
     console.log("[DEBUG] initialRuns changed:", initialRuns); 
     setRuns(initialRuns); 
@@ -133,6 +142,13 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
   // Status tabs are shown per department. Users with none never reach this
   // view (ProjectMapPage shows a blocked screen). A missing prop means no restriction.
   const visibleTabStatusIds = statusTabAccess ? statusTabAccess.allowedStatusIds : null;
+  // Run statuses work the same way: null = no restriction, empty = no runs at all.
+  const allowedRunStatusNames = statusTabAccess ? statusTabAccess.allowedRunStatusNames : null;
+  const canSeeRuns = !allowedRunStatusNames || allowedRunStatusNames.length > 0;
+  const visibleRunStatuses = useMemo(
+    () => (allowedRunStatusNames ? runStatuses.filter((status) => allowedRunStatusNames.includes(status.status_name)) : runStatuses),
+    [runStatuses, allowedRunStatusNames]
+  );
   const [recalculating, setRecalculating] = useState(false);
   const [editingStopNote, setEditingStopNote] = useState(null);
   const [editingStopDate, setEditingStopDate] = useState(null);
@@ -140,7 +156,9 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
   const [editingProjectPrice, setEditingProjectPrice] = useState(null);
   const [priceValue, setPriceValue] = useState("");
   const [allRunProjects, setAllRunProjects] = useState([]);
-  const [runFilters, setRunFilters] = useState({ status: ["Scheduled"] });
+  const [runFilters, setRunFilters] = useState(() => ({
+    status: !allowedRunStatusNames || allowedRunStatusNames.includes("Scheduled") ? ["Scheduled"] : [],
+  }));
   const [runSearch, setRunSearch] = useState("");
 
   const activeProjectStatusIds = useMemo(
@@ -148,8 +166,8 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
     [statuses]
   );
   const activeRunStatusNames = useMemo(
-    () => new Set(runStatuses.filter((status) => status?.is_active !== false).map((status) => status.status_name).filter(Boolean)),
-    [runStatuses]
+    () => new Set(visibleRunStatuses.filter((status) => status?.is_active !== false).map((status) => status.status_name).filter(Boolean)),
+    [visibleRunStatuses]
   );
 
   // Keep selected tab filters synchronized with setup activation changes. A
@@ -527,9 +545,14 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
   const mapProjects = useMemo(() => {
     if (mode !== "runs") return projects;
     const selectedStatuses = Array.isArray(runFilters.status) ? runFilters.status : [];
-    return projects.filter((p) => {
+    // Every assignment, including runs this department cannot see.
+    const assignedProjectIds = new Set(allRunProjects.map((rp) => rp.project_id));
+    // Runs tab: project statuses do not apply, so start from the full list.
+    return loadedProjects.filter((p) => {
       const assignment = projectRunLookup.get(p.id);
-      if (!assignment) return true; // unassigned — always visible for run assignment
+      // No visible run: show it only when it is truly unassigned (always
+      // visible for run assignment). On a run this department cannot see, hide it.
+      if (!assignment) return !assignedProjectIds.has(p.id);
       if (selectedRunId) {
         // A run is open: keep its own stops, hide every other run's pins.
         return assignment.run.id === selectedRunId;
@@ -537,7 +560,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
       if (selectedStatuses.length === 0) return true; // "All" — every run matches
       return selectedStatuses.includes(assignment.run.status);
     });
-  }, [mode, projects, runFilters.status, projectRunLookup, selectedRunId]);
+  }, [mode, projects, loadedProjects, allRunProjects, runFilters.status, projectRunLookup, selectedRunId]);
 
   // Project filters for the map. On the Runs tab the map ignores the project
   // filters entirely (the run status tabs override them) — ProjectMap receives
@@ -1327,8 +1350,12 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
 
       <div style={{ display: "flex", borderBottom: "1px solid #e2e8f0", background: "#fff", flexShrink: 0 }}>
         <button onClick={() => setMode("projects")} style={{ padding: "6px 16px", fontSize: "12px", fontWeight: mode === "projects" ? 600 : 400, border: "none", borderBottom: mode === "projects" ? "2px solid #1e293b" : "2px solid transparent", background: mode === "projects" ? "#f8fafc" : "#fff", color: mode === "projects" ? "#1e293b" : "#64748b", cursor: "pointer" }}>Projects</button>
-        <button onClick={() => setMode("runs")} style={{ padding: "6px 16px", fontSize: "12px", fontWeight: mode === "runs" ? 600 : 400, border: "none", borderBottom: mode === "runs" ? "2px solid #1e293b" : "2px solid transparent", background: mode === "runs" ? "#f8fafc" : "#fff", color: mode === "runs" ? "#1e293b" : "#64748b", cursor: "pointer" }}>Runs</button>
-<button onClick={() => { startNavbarLoader(); router.push("/project-map/run-master"); }} style={{ padding: "6px 16px", fontSize: "12px", fontWeight: 400, border: "none", borderBottom: "2px solid transparent", background: "#fff", color: "#64748b", cursor: "pointer" }}>📋 Run Master List</button>
+        {canSeeRuns && (
+          <>
+            <button onClick={() => setMode("runs")} style={{ padding: "6px 16px", fontSize: "12px", fontWeight: mode === "runs" ? 600 : 400, border: "none", borderBottom: mode === "runs" ? "2px solid #1e293b" : "2px solid transparent", background: mode === "runs" ? "#f8fafc" : "#fff", color: mode === "runs" ? "#1e293b" : "#64748b", cursor: "pointer" }}>Runs</button>
+            <button onClick={() => { startNavbarLoader(); router.push("/project-map/run-master"); }} style={{ padding: "6px 16px", fontSize: "12px", fontWeight: 400, border: "none", borderBottom: "2px solid transparent", background: "#fff", color: "#64748b", cursor: "pointer" }}>📋 Run Master List</button>
+          </>
+        )}
       </div>
 
       {mode === "projects" && (
@@ -1345,7 +1372,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
       {mode === "runs" && (
         <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0", flexShrink: 0 }}>
           <RunStatusTabs
-            runStatuses={runStatuses}
+            runStatuses={visibleRunStatuses}
             selectedStatuses={runFilters.status || []}
             onSelectStatus={handleRunStatusSelect}
           />
@@ -1398,7 +1425,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
           ) : (
             <>
               <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "4px 10px", borderBottom: "1px solid #e2e8f0", background: "#fff", flexShrink: 0 }}>
-                <RunFilterPanel runFilters={runFilters} onFilterChange={setRunFilters} runStatuses={runStatuses} />
+                <RunFilterPanel runFilters={runFilters} onFilterChange={setRunFilters} runStatuses={visibleRunStatuses} />
                 <button onClick={() => { setEditingRun(null); setShowRunForm(true); }} style={{ padding: "3px 10px", fontSize: "12px", borderRadius: "3px", border: "none", background: "#16a34a", color: "#fff", cursor: "pointer", whiteSpace: "nowrap" }}>+ New Run</button>
               </div>
               <RunList runs={filteredRuns} selectedRunId={selectedRunId} onSelectRun={handleSelectRun} isLoading={isLoadingRunDetails} />
@@ -1567,7 +1594,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
       </Modal>
 
       {mode === "runs" && selectedRunId && (
-        <ProjectSelectorModal show={showProjectSelector} runId={selectedRunId} allProjects={projects} existingProjectIds={runProjects.map((rp) => rp.project_id)} onClose={handleProjectSelectorClose} onSaved={handleProjectSelectorSaved} />
+        <ProjectSelectorModal show={showProjectSelector} runId={selectedRunId} allProjects={loadedProjects} existingProjectIds={runProjects.map((rp) => rp.project_id)} onClose={handleProjectSelectorClose} onSaved={handleProjectSelectorSaved} />
       )}
     </div>
   );

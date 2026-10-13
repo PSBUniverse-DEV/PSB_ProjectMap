@@ -155,7 +155,7 @@ const TABLE_DEFS = [
 
 // ─── Main Setup View ─────────────────────────────────────────────────────────
 
-export default function ProjectMapSetupView({ setup = {}, departments = [], departmentStatusMappings = [] }) {
+export default function ProjectMapSetupView({ setup = {}, departments = [], departmentStatusMappings = [], departmentRunStatusMappings = [] }) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("projectStatuses");
   const [modalMode, setModalMode] = useState(null); // "add" | "edit" | null
@@ -499,7 +499,7 @@ export default function ProjectMapSetupView({ setup = {}, departments = [], depa
         }
       >
         {activeTab === "departmentTabs" ? (
-          <DepartmentStatusTabsGrid departments={departments} statuses={setup.projectStatuses || []} mappings={departmentStatusMappings} />
+          <DepartmentStatusTabsGrid departments={departments} statuses={setup.projectStatuses || []} mappings={departmentStatusMappings} runStatuses={setup.runStatuses || []} runMappings={departmentRunStatusMappings} />
         ) : activeTab === "originAddresses" ? (
           <OriginAddressesGrid data={setup.originAddresses || []} />
         ) : ["projectStatuses", "states", "buildingCategories", "permitStatuses", "welcomeCallStatuses", "runStatuses", "paymentMethods"].includes(activeTab) ? (

@@ -123,12 +123,9 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
   const [showProjectSelector, setShowProjectSelector] = useState(false);
   const [runSegmentData, setRunSegmentData] = useState(null);
   const [showRouteErrorModal, setShowRouteErrorModal] = useState(false);
-  // Status tabs are shown per department. When this user has none, explain why
-  // in a pop-up they can screenshot for the developers. Tabs only: the project
-  // list and map are not restricted. A missing prop means no restriction.
-  const hasStatusTabs = !statusTabAccess || statusTabAccess.reason === "ok";
-  const visibleTabStatusIds = !statusTabAccess ? null : hasStatusTabs ? statusTabAccess.allowedStatusIds : [];
-  const [showTabAccessModal, setShowTabAccessModal] = useState(!hasStatusTabs);
+  // Status tabs are shown per department. Users with none never reach this
+  // view (ProjectMapPage shows a blocked screen). A missing prop means no restriction.
+  const visibleTabStatusIds = statusTabAccess ? statusTabAccess.allowedStatusIds : null;
   const [recalculating, setRecalculating] = useState(false);
   const [editingStopNote, setEditingStopNote] = useState(null);
   const [editingStopDate, setEditingStopDate] = useState(null);
@@ -1442,40 +1439,6 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
           </div>
         </Modal>
       )}
-
-      <Modal show={showTabAccessModal} onHide={() => setShowTabAccessModal(false)} title="No Project Status Tabs Assigned">
-        <div style={{ display: "flex", flexDirection: "column", gap: "10px", fontSize: "13px" }}>
-          <p style={{ margin: 0 }}>
-            {statusTabAccess?.reason === "no-department" && "Your user account has no department, so no project status tabs can be shown."}
-            {statusTabAccess?.reason === "no-mapping" && "Your department has no project status tabs assigned yet."}
-            {statusTabAccess?.reason === "no-session" && "Your sign-in could not be read, so no project status tabs can be shown."}
-            {statusTabAccess?.reason === "no-user" && "Your user record could not be found, so no project status tabs can be shown."}
-            {statusTabAccess?.reason === "error" && "Your project status tabs could not be loaded."}
-          </p>
-          <p style={{ margin: 0 }}>Please take a screenshot of this message and send it to the developers.</p>
-          <table style={{ width: "100%", borderCollapse: "collapse", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "4px" }}>
-            <tbody>
-              {[
-                ["Reason", statusTabAccess?.reason || "--"],
-                ["User", statusTabAccess?.user?.name || statusTabAccess?.user?.username || "--"],
-                ["Email", statusTabAccess?.user?.email || "--"],
-                ["User ID", statusTabAccess?.user?.userId ?? "--"],
-                ["Department", statusTabAccess?.department?.name || "None"],
-                ["Department ID", statusTabAccess?.department?.deptId ?? "--"],
-                ["Page", "Project Map"],
-              ].map(([label, value]) => (
-                <tr key={label}>
-                  <td style={{ padding: "5px 10px", fontSize: "11px", fontWeight: 600, color: "#64748b", width: "130px" }}>{label}</td>
-                  <td style={{ padding: "5px 10px", fontSize: "12px", color: "#1e293b", fontFamily: "ui-monospace, Consolas, monospace" }}>{String(value)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div style={{ display: "flex", justifyContent: "flex-end" }}>
-            <Button variant="secondary" onClick={() => setShowTabAccessModal(false)}>OK</Button>
-          </div>
-        </div>
-      </Modal>
 
       <Modal show={showRouteErrorModal} onHide={() => setShowRouteErrorModal(false)} title="Unable to Calculate Route">
         <div style={{ padding: "4px 0" }}>

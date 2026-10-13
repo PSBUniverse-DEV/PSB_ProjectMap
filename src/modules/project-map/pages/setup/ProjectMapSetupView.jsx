@@ -10,6 +10,7 @@ import SetupToolbar from "./SetupToolbar";
 import SetupFormModal from "./SetupFormModal";
 import OriginAddressesGrid from "../../components/OriginAddressesGrid";
 import LookupTableGrid from "../../components/LookupTableGrid";
+import DepartmentStatusTabsGrid from "../../components/DepartmentStatusTabsGrid";
 
 // ─── Table Definitions ─────────────────────────────────────────────
 
@@ -154,7 +155,7 @@ const TABLE_DEFS = [
 
 // ─── Main Setup View ─────────────────────────────────────────────────────────
 
-export default function ProjectMapSetupView({ setup = {} }) {
+export default function ProjectMapSetupView({ setup = {}, departments = [], departmentStatusMappings = [] }) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("projectStatuses");
   const [modalMode, setModalMode] = useState(null); // "add" | "edit" | null
@@ -195,12 +196,16 @@ export default function ProjectMapSetupView({ setup = {} }) {
 
   // Sidebar table list with counts
   const sidebarTables = useMemo(
-    () => TABLE_DEFS.map((t) => ({
-      key: t.key,
-      label: t.label,
-      count: Array.isArray(setup[t.key]) ? setup[t.key].length : 0,
-    })),
-    [setup]
+    () => [
+      ...TABLE_DEFS.map((t) => ({
+        key: t.key,
+        label: t.label,
+        count: Array.isArray(setup[t.key]) ? setup[t.key].length : 0,
+      })),
+      // Not a lookup table: maps departments to the status tabs they see.
+      { key: "departmentTabs", label: "Department Tabs", count: departments.length },
+    ],
+    [setup, departments]
   );
 
   // Reset search when switching tabs
@@ -349,7 +354,7 @@ export default function ProjectMapSetupView({ setup = {} }) {
   const singularName = tableDef?.label?.replace(/s$/, "") || "Item";
 
   // ─── Custom Tab Components ────────────────────────────────
-  const isCustomTab = ["projectStatuses", "originAddresses", "states", "buildingCategories", "permitStatuses", "welcomeCallStatuses", "runStatuses", "paymentMethods"].includes(activeTab);
+  const isCustomTab = ["projectStatuses", "originAddresses", "states", "buildingCategories", "permitStatuses", "welcomeCallStatuses", "runStatuses", "paymentMethods", "departmentTabs"].includes(activeTab);
 
   // Lookup table configs
   const lookupTableConfigs = {
@@ -493,7 +498,9 @@ export default function ProjectMapSetupView({ setup = {} }) {
           )
         }
       >
-        {activeTab === "originAddresses" ? (
+        {activeTab === "departmentTabs" ? (
+          <DepartmentStatusTabsGrid departments={departments} statuses={setup.projectStatuses || []} mappings={departmentStatusMappings} />
+        ) : activeTab === "originAddresses" ? (
           <OriginAddressesGrid data={setup.originAddresses || []} />
         ) : ["projectStatuses", "states", "buildingCategories", "permitStatuses", "welcomeCallStatuses", "runStatuses", "paymentMethods"].includes(activeTab) ? (
           <LookupTableGrid

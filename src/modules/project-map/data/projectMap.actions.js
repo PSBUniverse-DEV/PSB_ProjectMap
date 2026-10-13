@@ -1994,3 +1994,47 @@ export async function setProjectDealerLink(projectId, dealerId) {
   });
   return { linked: true, dealer };
 }
+
+// ─── Department Status Tabs ──────────────────────────────────
+
+/**
+ * Sets which project status tabs a department sees. `statusIds` is the full
+ * list the department should end up with; only the difference is written.
+ */
+export async function saveDepartmentStatusTabs(deptId, statusIds) {
+  const session = await getCurrentSession();
+  if (!session?.userId) throw new Error("Your sign-in has expired. Please sign in again.");
+
+  const departmentId = Number(deptId);
+  if (!departmentId) throw new Error("Department is required.");
+  const wanted = [...new Set((Array.isArray(statusIds) ? statusIds : []).map(Number).filter(Boolean))];
+
+  const supabase = getSupabaseAdmin();
+  const { data: current, error: loadError } = await supabase
+    .from("proj_m_department_project_status")
+    .select("status_id")
+    .eq("dept_id", departmentId);
+  if (loadError) throw new Error(loadError.message);
+
+  const existing = (current || []).map((row) => Number(row.status_id));
+  const toAdd = wanted.filter((id) => !existing.includes(id));
+  const toRemove = existing.filter((id) => !wanted.includes(id));
+
+  if (toRemove.length > 0) {
+    const { error } = await supabase
+      .from("proj_m_department_project_status")
+      .delete()
+      .eq("dept_id", departmentId)
+      .in("status_id", toRemove);
+    if (error) throw new Error(error.message);
+  }
+
+  if (toAdd.length > 0) {
+    const { error } = await supabase
+      .from("proj_m_department_project_status")
+      .insert(toAdd.map((statusId) => ({ dept_id: departmentId, status_id: statusId })));
+    if (error) throw new Error(error.message);
+  }
+
+  return { success: true, count: wanted.length };
+}

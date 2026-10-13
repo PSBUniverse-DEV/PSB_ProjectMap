@@ -102,11 +102,11 @@ export async function loadProjectMapSetup() {
  *
  * Business rule: tabs are shown per department, from
  * proj_m_department_project_status. A user with no department, or a
- * department with no mapped statuses, sees no status tabs. This hides tabs
- * only; it does not restrict which projects the user can see.
+ * department with no mapped statuses, cannot open the Project Map at all.
+ * For users who do have tabs, this limits the tabs only, not the projects.
  *
  * `reason` is "ok" when tabs are available; otherwise it says why not, and
- * the page shows it in a pop-up the user can screenshot for the developers:
+ * the page shows it on a blocked screen the user can screenshot for the developers:
  * "no-session" | "no-user" | "no-department" | "no-mapping" | "error".
  */
 export async function loadProjectStatusTabAccess() {
@@ -149,6 +149,26 @@ export async function loadProjectStatusTabAccess() {
     console.error("[loadProjectStatusTabAccess]", error?.message);
     return { ...access, reason: "error", allowedStatusIds: [] };
   }
+}
+
+/**
+ * Data for the "Department Tabs" setup screen: every department, and every
+ * department ↔ status row in proj_m_department_project_status.
+ */
+export async function loadDepartmentStatusMappings() {
+  const supabase = getSupabaseAdmin();
+  const [departmentsResult, mappingsResult] = await Promise.all([
+    supabase.from("psb_s_department").select("dept_id, dept_name, is_active").order("dept_name", { ascending: true }),
+    supabase.from("proj_m_department_project_status").select("dept_id, status_id"),
+  ]);
+
+  if (departmentsResult.error) console.error("[loadDepartmentStatusMappings] departments:", departmentsResult.error.message);
+  if (mappingsResult.error) console.error("[loadDepartmentStatusMappings] mappings:", mappingsResult.error.message);
+
+  return {
+    departments: departmentsResult.data || [],
+    mappings: mappingsResult.data || [],
+  };
 }
 
 // ─── Runs Loader ────────────────────────────────────────────

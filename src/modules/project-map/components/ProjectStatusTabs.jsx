@@ -15,6 +15,9 @@ export default function ProjectStatusTabs({
   statuses = [],
   selectedStatuses = [],
   onSelectStatus,
+  // Status ids (as strings) this user's department may see as tabs.
+  // null = no restriction (show every active status).
+  visibleStatusIds = null,
 }) {
   const trackRef = useRef(null);
   const [showLeftFade, setShowLeftFade] = useState(false);
@@ -29,8 +32,9 @@ export default function ProjectStatusTabs({
     // (see handleProjectStatusSelect in ProjectMapView).
     return statuses
       .filter((s) => s.is_active !== false && !isGroupedStatusTab(s, statuses))
+      .filter((s) => visibleStatusIds === null || visibleStatusIds.includes(String(s.status_id)))
       .sort((a, b) => Number(a.display_order ?? 0) - Number(b.display_order ?? 0));
-  }, [statuses]);
+  }, [statuses, visibleStatusIds]);
 
   // A tab is selected when its id is present in the active filter array.
   // The "All" tab (statusId === "") is considered selected when nothing else

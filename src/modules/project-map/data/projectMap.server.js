@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { getCurrentSession } from "@/core/auth/session.service";
 
 function getSupabaseAdmin() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -92,6 +93,62 @@ export async function loadProjectMapSetup() {
   });
 
   return { ...result, sourceErrors: errors };
+}
+
+// ─── Status Tab Access ──────────────────────────────────────
+
+/**
+ * Which project status tabs the signed-in user may see.
+ *
+ * Business rule: tabs are shown per department, from
+ * proj_m_department_project_status. A user with no department, or a
+ * department with no mapped statuses, sees no status tabs. This hides tabs
+ * only; it does not restrict which projects the user can see.
+ *
+ * `reason` is "ok" when tabs are available; otherwise it says why not, and
+ * the page shows it in a pop-up the user can screenshot for the developers:
+ * "no-session" | "no-user" | "no-department" | "no-mapping" | "error".
+ */
+export async function loadProjectStatusTabAccess() {
+  const access = { reason: "ok", allowedStatusIds: [], user: null, department: null };
+
+  try {
+    const session = await getCurrentSession();
+    if (!session?.userId) return { ...access, reason: "no-session" };
+
+    const supabase = getSupabaseAdmin();
+    const { data: user, error: userError } = await supabase
+      .from("psb_s_user")
+      .select("user_id, username, email, first_name, last_name, dept_id")
+      .eq("user_id", session.userId)
+      .maybeSingle();
+    if (userError) throw new Error(userError.message);
+    if (!user) return { ...access, reason: "no-user", user: { userId: session.userId, name: "", username: "", email: session.email || "" } };
+
+    access.user = {
+      userId: user.user_id,
+      name: `${user.first_name || ""} ${user.last_name || ""}`.trim(),
+      username: user.username || "",
+      email: user.email || "",
+    };
+    if (user.dept_id == null) return { ...access, reason: "no-department" };
+
+    const [departmentResult, mappingResult] = await Promise.all([
+      supabase.from("psb_s_department").select("dept_id, dept_name").eq("dept_id", user.dept_id).maybeSingle(),
+      supabase.from("proj_m_department_project_status").select("status_id").eq("dept_id", user.dept_id),
+    ]);
+    if (departmentResult.error) throw new Error(departmentResult.error.message);
+    if (mappingResult.error) throw new Error(mappingResult.error.message);
+
+    access.department = { deptId: user.dept_id, name: departmentResult.data?.dept_name || "" };
+    access.allowedStatusIds = (mappingResult.data || []).map((row) => String(row.status_id));
+    if (access.allowedStatusIds.length === 0) return { ...access, reason: "no-mapping" };
+
+    return access;
+  } catch (error) {
+    console.error("[loadProjectStatusTabAccess]", error?.message);
+    return { ...access, reason: "error", allowedStatusIds: [] };
+  }
 }
 
 // ─── Runs Loader ────────────────────────────────────────────

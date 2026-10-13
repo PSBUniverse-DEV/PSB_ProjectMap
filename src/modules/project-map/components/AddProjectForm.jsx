@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { Button, Modal, toastError, toastSuccess } from "@/shared/components/ui";
-import { createProject, updateProject } from "../data/projectMap.actions";
+import { Button, Modal, SearchSelect, toastError, toastSuccess } from "@/shared/components/ui";
+import { createProject, updateProject, loadProjectDealerOptions, setProjectDealerLink } from "../data/projectMap.actions";
 import { formatProjectDescription, parseProjectDescription } from "../data/projectMap.data";
 import LocationSearch from "./LocationSearch";
 
@@ -47,6 +47,51 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
 
   // Separate query state for LocationSearch so it can be controlled independently
   const [locationQuery, setLocationQuery] = useState("");
+
+  // Linked dealer (shared table psb_m_dealerlink). Kept OUT of `form` on
+  // purpose: handleSave sends every `form` key to proj_t_projects, and the
+  // link is not a column there.
+  const [dealerOptions, setDealerOptions] = useState([]);
+  const [linkedDealerId, setLinkedDealerId] = useState("");
+  const [savedLinkedDealerId, setSavedLinkedDealerId] = useState("");
+  const [dealersLoading, setDealersLoading] = useState(false);
+  const editingProjectId = project?.id ?? null;
+
+  useEffect(() => {
+    if (!show) return undefined;
+    let cancelled = false;
+    setDealersLoading(true);
+    loadProjectDealerOptions(editingProjectId)
+      .then((result) => {
+        if (cancelled) return;
+        setDealerOptions(result?.dealers || []);
+        setLinkedDealerId(result?.linkedDealerId || "");
+        setSavedLinkedDealerId(result?.linkedDealerId || "");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setDealerOptions([]);
+        setLinkedDealerId("");
+        setSavedLinkedDealerId("");
+        toastError("Unable to load the dealer list. The project can still be saved.", "Project Map");
+      })
+      .finally(() => {
+        if (!cancelled) setDealersLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [show, editingProjectId]);
+
+  // The link is saved after the project, on its own, so a link problem never
+  // blocks or loses the project itself.
+  const saveDealerLink = async (projectId) => {
+    try {
+      await setProjectDealerLink(projectId, linkedDealerId || null);
+    } catch (err) {
+      toastError(`The project was saved, but the dealer link was not: ${err?.message || "unknown error"}`, "Project Map");
+    }
+  };
 
   // Setup tables remain fully loaded for administration, but project forms may
   // only assign active lookup records.
@@ -230,9 +275,11 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
 
       if (mode === "edit" && project?.id) {
         await updateProject(project.id, { ...payload, updated_by: null });
+        if (linkedDealerId !== savedLinkedDealerId) await saveDealerLink(project.id);
         toastSuccess("Project updated.", "Project Map");
       } else {
-        await createProject({ ...payload, created_by: null, updated_by: null });
+        const created = await createProject({ ...payload, created_by: null, updated_by: null });
+        if (linkedDealerId && created?.id != null) await saveDealerLink(created.id);
         toastSuccess("Project created.", "Project Map");
       }
 
@@ -275,6 +322,33 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
                 style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px" }}
                 placeholder="Dealer name"
               />
+            </div>
+            <div className="pm-linked-dealer" style={{ gridColumn: "1 / -1" }}>
+              {/* SearchSelect's toggle is sized for regular forms; match this form's compact inputs. */}
+              <style>{`
+                .pm-linked-dealer .psb-ui-searchselect-toggle { width: 100%; font-size: 12px; padding: 4px 28px 4px 8px; border: 1px solid #e2e8f0; border-radius: 3px; }
+                .pm-linked-dealer .psb-ui-searchselect-toggle::after { display: none; }
+              `}</style>
+              <label htmlFor="pm-linked-dealer" style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>
+                Linked Dealer (Dealer Master)
+              </label>
+              <SearchSelect
+                id="pm-linked-dealer"
+                options={dealerOptions}
+                value={linkedDealerId || null}
+                onChange={(value, option) => {
+                  setLinkedDealerId(value == null ? "" : String(value));
+                  // Convenience only: fill the Dealer name box when it is still empty.
+                  if (option?.name && !String(form.dealer || "").trim()) handleChange("dealer", option.name);
+                }}
+                placeholder={dealersLoading ? "Loading dealers..." : dealerOptions.length ? "Not linked — pick a dealer" : "No dealers in Dealer Master yet"}
+                searchPlaceholder="Search dealers..."
+                disabled={dealersLoading || busy}
+                menuStyle={{ fontSize: 12 }}
+              />
+              <div style={{ fontSize: "10px", color: "#94a3b8", marginTop: "3px" }}>
+                Optional. Links this project to the dealer&apos;s portal account. The Dealer box above keeps working as before.
+              </div>
             </div>
           </div>
         </div>

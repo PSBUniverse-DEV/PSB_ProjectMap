@@ -9,6 +9,15 @@ import {
 } from "@/core/storage/files.service";
 import { PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, REPAIR_STATUS_NAMES, PROJECT_COMMENT_MAX_LENGTH } from "./projectMap.data";
 import { getCurrentSession } from "@/core/auth/session.service";
+import {
+  getDealerLink,
+  linkRecordToDealer,
+  listDealersForPicker,
+  unlinkRecordFromDealer,
+} from "@/core/dealer/dealerLinks";
+
+// This app's key in psb_s_application; identifies its records in psb_m_dealerlink.
+const DEALER_LINK_MODULE_KEY = "project-map";
 
 function getSupabaseAdmin() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -997,6 +1006,14 @@ export async function deleteProject(projectId) {
   const { error: mappingError } = await supabase.from("proj_t_run_projects").delete().eq("project_id", id);
   if (mappingError) throw new Error(mappingError.message);
 
+  // Drop the project's dealer link. A leftover link is harmless (nothing can
+  // load the project it points at), so a failure here must not block the delete.
+  try {
+    await unlinkRecordFromDealer({ moduleKey: DEALER_LINK_MODULE_KEY, recordId: id });
+  } catch (linkError) {
+    console.error("[deleteProject] Failed to remove dealer link:", linkError?.message);
+  }
+
   // Then delete the project record
   const { error } = await supabase.from("proj_t_projects").delete().eq("id", id);
   if (error) throw new Error(error.message);
@@ -1918,4 +1935,55 @@ export async function deleteProjectComment(commentId, fallbackAuthor = null) {
   const { error: deleteError } = await supabase.from("proj_t_project_comments").delete().eq("id", id);
   if (deleteError) throw new Error(deleteError.message);
   return { success: true };
+}
+
+// ─── Dealer link (shared table psb_m_dealerlink, via core) ─────────────
+
+/**
+ * Data for the project form's "Linked Dealer" picker: the active dealers from
+ * Dealer Master and, when editing, the dealer this project is linked to.
+ * A linked dealer that has since been deactivated is still listed (marked),
+ * so the picker shows the real value.
+ */
+export async function loadProjectDealerOptions(projectId) {
+  const id = toIntOrNull(projectId);
+  const [dealers, link] = await Promise.all([
+    listDealersForPicker(),
+    id === null ? Promise.resolve(null) : getDealerLink({ moduleKey: DEALER_LINK_MODULE_KEY, recordId: id }),
+  ]);
+
+  const options = dealers.map((dealer) => ({
+    value: String(dealer.dealer_id),
+    label: dealer.dealer_code ? `${dealer.dealer_name} (${dealer.dealer_code})` : dealer.dealer_name,
+    name: dealer.dealer_name,
+  }));
+
+  if (link && !options.some((option) => option.value === String(link.dealer_id))) {
+    options.unshift({ value: String(link.dealer_id), label: `${link.dealer_name} (inactive)`, name: link.dealer_name });
+  }
+
+  return { dealers: options, linkedDealerId: link ? String(link.dealer_id) : "" };
+}
+
+/**
+ * Sets or clears a project's linked dealer. Only the link is stored; the
+ * project's own `dealer` text column is not touched here.
+ */
+export async function setProjectDealerLink(projectId, dealerId) {
+  const id = toIntOrNull(projectId);
+  if (id === null) throw new Error("projectId is required.");
+
+  if (!hasValue(dealerId)) {
+    await unlinkRecordFromDealer({ moduleKey: DEALER_LINK_MODULE_KEY, recordId: id });
+    return { linked: false };
+  }
+
+  const session = await getCurrentSession();
+  const dealer = await linkRecordToDealer({
+    moduleKey: DEALER_LINK_MODULE_KEY,
+    recordId: id,
+    dealerId,
+    userId: toIntOrNull(session?.userId),
+  });
+  return { linked: true, dealer };
 }

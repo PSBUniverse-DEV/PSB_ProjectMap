@@ -9,6 +9,7 @@ import {
 } from "@/core/storage/files.service";
 import { PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, REPAIR_STATUS_NAMES, PROJECT_COMMENT_MAX_LENGTH } from "./projectMap.data";
 import { getCurrentSession } from "@/core/auth/session.service";
+import { loadProjectStatusTabAccess } from "./projectMap.server";
 import {
   getDealerLink,
   linkRecordToDealer,
@@ -1430,6 +1431,10 @@ export async function loadRuns() {
  * IMPORTANT: keep the select below in sync with loadProjectMapProjects().
  */
 export async function loadProjects() {
+  // Same rule as the page load: only projects in statuses this user's department may see.
+  const access = await loadProjectStatusTabAccess();
+  if (access.reason !== "ok") return [];
+
   const supabase = getSupabaseAdmin();
 
   const { data, error } = await supabase
@@ -1444,6 +1449,7 @@ export async function loadProjects() {
       "created_at, updated_at, created_by, updated_by, " +
       "proj_s_project_status!proj_t_projects_status_id_fkey(status_id, status_name, status_description)"
     )
+    .in("status_id", access.visibleProjectStatusIds)
     .order("updated_at", { ascending: false });
 
   if (error) throw new Error(error.message);

@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { getCurrentSession } from "@/core/auth/session.service";
+import { getStatusTabGroupIds } from "./projectMap.data";
 
 function getSupabaseAdmin() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -103,14 +104,16 @@ export async function loadProjectMapSetup() {
  * Business rule: tabs are shown per department, from
  * proj_m_department_project_status. A user with no department, or a
  * department with no mapped statuses, cannot open the Project Map at all.
- * For users who do have tabs, this limits the tabs only, not the projects.
+ * For users who do have tabs, `visibleProjectStatusIds` is every status whose
+ * projects they may see (their tabs, plus the repair-flow statuses when they
+ * have the "Repairs" tab); projects in any other status are never sent to them.
  *
  * `reason` is "ok" when tabs are available; otherwise it says why not, and
  * the page shows it on a blocked screen the user can screenshot for the developers:
  * "no-session" | "no-user" | "no-department" | "no-mapping" | "error".
  */
 export async function loadProjectStatusTabAccess() {
-  const access = { reason: "ok", allowedStatusIds: [], user: null, department: null };
+  const access = { reason: "ok", allowedStatusIds: [], visibleProjectStatusIds: [], user: null, department: null };
 
   try {
     const session = await getCurrentSession();
@@ -133,16 +136,23 @@ export async function loadProjectStatusTabAccess() {
     };
     if (user.dept_id == null) return { ...access, reason: "no-department" };
 
-    const [departmentResult, mappingResult] = await Promise.all([
+    const [departmentResult, mappingResult, statusesResult] = await Promise.all([
       supabase.from("psb_s_department").select("dept_id, dept_name").eq("dept_id", user.dept_id).maybeSingle(),
       supabase.from("proj_m_department_project_status").select("status_id").eq("dept_id", user.dept_id),
+      supabase.from("proj_s_project_status").select("status_id, status_name, is_active"),
     ]);
     if (departmentResult.error) throw new Error(departmentResult.error.message);
     if (mappingResult.error) throw new Error(mappingResult.error.message);
+    if (statusesResult.error) throw new Error(statusesResult.error.message);
 
     access.department = { deptId: user.dept_id, name: departmentResult.data?.dept_name || "" };
     access.allowedStatusIds = (mappingResult.data || []).map((row) => String(row.status_id));
     if (access.allowedStatusIds.length === 0) return { ...access, reason: "no-mapping" };
+
+    const statuses = statusesResult.data || [];
+    access.visibleProjectStatusIds = [
+      ...new Set(access.allowedStatusIds.flatMap((statusId) => getStatusTabGroupIds(statusId, statuses))),
+    ];
 
     return access;
   } catch (error) {

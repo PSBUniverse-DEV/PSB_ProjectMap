@@ -100,7 +100,14 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
   const [routeData, setRouteData] = useState(null);
   const [routeLoading, setRouteLoading] = useState(false);
   const prevSearchRef = useRef("");
-  const [projects, setProjects] = useState(initialProjects);
+  const [loadedProjects, setProjects] = useState(initialProjects);
+  // A project moved to a status this department cannot see drops out at once,
+  // without waiting for the next sync. A missing prop means no restriction.
+  const projects = useMemo(() => {
+    const visibleIds = statusTabAccess?.visibleProjectStatusIds;
+    if (!visibleIds) return loadedProjects;
+    return loadedProjects.filter((project) => visibleIds.includes(String(project.status_id)));
+  }, [loadedProjects, statusTabAccess]);
 
   useEffect(() => {
     setProjects(initialProjects);
@@ -194,8 +201,10 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
   // Find the default "New Dealer Order" status ID
   const defaultStatusId = useMemo(() => {
     const status = statuses.find((s) => s.status_name === "New Dealer Order" && s.is_active !== false);
-    return status ? String(status.status_id) : "";
-  }, [statuses]);
+    const id = status ? String(status.status_id) : "";
+    // Only when this department has that tab; otherwise the page opens on "All".
+    return id && (visibleTabStatusIds === null || visibleTabStatusIds.includes(id)) ? id : "";
+  }, [statuses, visibleTabStatusIds]);
 
   // Set default status on initial mount
   useEffect(() => {

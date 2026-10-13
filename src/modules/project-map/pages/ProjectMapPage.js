@@ -15,6 +15,9 @@ export default async function ProjectMapPage() {
     loadProjectMapSetup(),
     loadRuns(),
   ]);
+  // Only projects in statuses this user's department may see leave the server.
+  const visibleStatusIds = new Set(statusTabAccess.visibleProjectStatusIds);
+  const projects = (setup.projects || []).filter((project) => visibleStatusIds.has(String(project.status_id)));
   // Map projectStatuses to statuses for backward compatibility with view
-  return <ProjectMapView {...setup} statuses={setup.projectStatuses || []} origins={setup.originAddresses || []} runs={runs} runStatuses={setup.runStatuses || []} statusTabAccess={statusTabAccess} />;
+  return <ProjectMapView {...setup} projects={projects} statuses={setup.projectStatuses || []} origins={setup.originAddresses || []} runs={runs} runStatuses={setup.runStatuses || []} statusTabAccess={statusTabAccess} />;
 }

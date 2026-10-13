@@ -390,30 +390,37 @@ export async function toggleOriginAddressActive(id, isActive) {
   return data;
 }
 
-export async function softDeleteOriginAddress(id) {
+export async function deleteOriginAddress(id) {
   const supabase = getSupabaseAdmin();
   const originId = Number(id);
   if (!originId) throw new Error("id is required.");
 
-  // Check if the origin address is referenced by any runs
-  const { data: referencedRuns, error: refError } = await supabase
+  // Runs keep a link to their origin address, so one that is in use cannot be removed
+  const { count: runCount, error: refError } = await supabase
     .from("proj_t_runs")
-    .select("id")
-    .eq("origin_id", originId)
-    .limit(1);
+    .select("id", { count: "exact", head: true })
+    .eq("origin_id", originId);
 
   if (refError) throw new Error(refError.message);
+  if (runCount > 0) {
+    throw new Error(
+      `This origin address is used by ${runCount} run${runCount === 1 ? "" : "s"} and cannot be deleted. Switch it off instead.`
+    );
+  }
 
-  // Soft delete by setting is_active = false
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from("proj_s_origin_addresses")
-    .update({ is_active: false })
-    .eq("id", originId)
-    .select("*")
-    .single();
+    .delete()
+    .eq("id", originId);
 
-  if (error) throw new Error(error.message);
-  return data;
+  if (error) {
+    // 23503 = another record still points at this address
+    if (error.code === "23503") {
+      throw new Error("This origin address is still in use and cannot be deleted. Switch it off instead.");
+    }
+    throw new Error(error.message);
+  }
+  return { success: true };
 }
 
 // ─── States Specific Actions ────────────────────────────────

@@ -10,7 +10,7 @@ import {
   createOriginAddress,
   updateOriginAddress,
   toggleOriginAddressActive,
-  softDeleteOriginAddress,
+  deleteOriginAddress,
 } from "../data/projectMap.actions";
 import LocationSearch from "./LocationSearch";
 import MapLocationPicker from "./MapLocationPicker";
@@ -25,7 +25,7 @@ import { stripTownshipLabel } from "../data/projectMap.data";
  *  - Search across name and formatted_address
  *  - Add/Edit modal with LocationSearch (auto-populates all address fields, hidden from user)
  *  - No is_default, origin_code, city, state fields exposed in UI
- *  - Delete confirmation with soft delete (is_active = false)
+ *  - Delete confirmation with permanent delete (blocked while a run uses the address)
  *  - Empty state
  *  - Validation (required name, required address)
  */
@@ -222,20 +222,18 @@ export default function OriginAddressesGrid({ data = [], onRefresh }) {
     }
   }, [modalDraft, modalMode, editingRow, closeModal, router, onRefresh]);
 
-  // ─── Delete Handler (soft delete) ──────────────────────────
+  // ─── Delete Handler (permanent delete) ─────────────────────
 
   const handleDelete = useCallback(async () => {
     if (!confirmDelete) return;
     setBusy(true);
     try {
-      await softDeleteOriginAddress(confirmDelete.id);
-      toastSuccess("Origin address deactivated.", "Delete");
+      await deleteOriginAddress(confirmDelete.id);
+      toastSuccess("Origin address deleted.", "Delete");
       setConfirmDelete(null);
       setLocalData((prev) => {
         const base = prev ?? data;
-        return base.map((r) =>
-          r.id === confirmDelete.id ? { ...r, is_active: false } : r
-        );
+        return base.filter((r) => r.id !== confirmDelete.id);
       });
       router.refresh();
       onRefresh?.();
@@ -446,10 +444,10 @@ export default function OriginAddressesGrid({ data = [], onRefresh }) {
       <Modal show={!!confirmDelete} onHide={() => setConfirmDelete(null)} title="Delete Origin Address">
         <div className="oag-delete-modal">
           <p className="oag-delete-msg">
-            This origin address may already be used by project runs or route calculations.
+            Permanently delete <strong>{confirmDelete?.origin_name}</strong>? This cannot be undone.
           </p>
           <p className="oag-delete-msg">
-            The address will be deactivated instead of permanently removed.
+            An address that is used by a run cannot be deleted. Use the Active switch to turn it off instead.
           </p>
           <div className="oag-modal-actions">
             <Button variant="secondary" onClick={() => setConfirmDelete(null)}>Cancel</Button>

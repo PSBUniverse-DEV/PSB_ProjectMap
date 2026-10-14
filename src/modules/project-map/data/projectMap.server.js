@@ -30,7 +30,7 @@ export async function loadProjectMapSetup() {
       "order_received_at, scheduled_project_start, scheduled_project_end, install_start, install_end, " +
       "project_subtotal, project_notes, dimension, " +
       "created_at, updated_at, created_by, updated_by, " +
-      "proj_s_project_status!proj_t_projects_status_id_fkey(status_id, status_name, status_description)"
+      "proj_s_project_status!proj_t_projects_status_id_fkey(status_id, status_name, status_description, system_key)"
     )
     .order("updated_at", { ascending: false });
 
@@ -161,7 +161,7 @@ export async function loadProjectStatusTabAccess() {
     const [departmentResult, mappingResult, statusesResult] = await Promise.all([
       supabase.from("psb_s_department").select("dept_id, dept_name").eq("dept_id", user.dept_id).maybeSingle(),
       supabase.from("proj_m_department_project_status").select("status_id").eq("dept_id", user.dept_id),
-      supabase.from("proj_s_project_status").select("status_id, status_name, is_active"),
+      supabase.from("proj_s_project_status").select("status_id, status_name, is_active, system_key"),
     ]);
     if (departmentResult.error) throw new Error(departmentResult.error.message);
     if (mappingResult.error) throw new Error(mappingResult.error.message);
@@ -237,7 +237,7 @@ export async function loadRuns(access) {
 
   const { data, error } = await supabase
     .from("proj_t_runs")
-    .select("*, proj_s_origin_addresses(*), proj_t_run_projects(id, proj_t_projects(payment_method_type, project_subtotal, proj_s_project_status!proj_t_projects_status_id_fkey(status_name)))")
+    .select("*, proj_s_origin_addresses(*), proj_t_run_projects(id, proj_t_projects(payment_method_type, project_subtotal, proj_s_project_status!proj_t_projects_status_id_fkey(status_name, system_key)))")
     .in("status", statusNames)
     .order("run_date", { ascending: false });
 

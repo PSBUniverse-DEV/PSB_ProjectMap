@@ -7,7 +7,7 @@ import {
   getSignedFileUrl,
   removeStoredFiles as removeStorageObjects,
 } from "@/core/storage/files.service";
-import { PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, REPAIR_STATUS_NAMES, PROJECT_COMMENT_MAX_LENGTH } from "./projectMap.data";
+import { PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, REPAIR_STATUS_KEYS, PROJECT_COMMENT_MAX_LENGTH } from "./projectMap.data";
 import { getCurrentSession } from "@/core/auth/session.service";
 import { loadProjectStatusTabAccess } from "./projectMap.server";
 import {
@@ -106,16 +106,6 @@ export async function deleteSetupRow(tableKey, id) {
 
 // ─── Setup Grid Hard Delete ──────────────────────────────────
 
-// Project statuses the code looks up by name (default tab, run cascade, repair
-// flow). Deleting one would silently switch a feature off, so it is refused.
-const PROTECTED_PROJECT_STATUS_NAMES = [
-  "New Dealer Order",
-  "Ready for Install",
-  "Currently Being Installed",
-  "Fully Installed",
-  ...REPAIR_STATUS_NAMES,
-];
-
 // What still uses one row of each setup table. `from` is the row's column
 // whose value is looked for. Runs use run statuses by NAME and projects and
 // origins use states by CODE (no foreign key), so these are counted here;
@@ -156,8 +146,9 @@ export async function deleteSetupTableRow(tableKey, id) {
   if (rowError) throw new Error(rowError.message);
   if (!row) return { success: true };
 
-  const protectedNames = tableKey === "projectStatuses" ? PROTECTED_PROJECT_STATUS_NAMES : tableKey === "runStatuses" ? RUN_STATUSES : [];
-  if (protectedNames.includes(row.status_name)) {
+  // Statuses with a system_key are the ones the app relies on (cascade,
+  // defaults, repair flow). They can be renamed, but not deleted.
+  if (row.system_key) {
     throw new Error(`"${row.status_name}" is used by the app itself and cannot be deleted. Switch it off instead.`);
   }
 
@@ -799,6 +790,13 @@ export async function updateLookupRow(tableKey, id, data) {
     }
   }
 
+  // Runs store their status by NAME, so a renamed run status must be renamed on the runs too.
+  let previousRunStatusName = null;
+  if (tableKey === "runStatuses" && data[nameField] !== undefined) {
+    const { data: current } = await supabase.from(table).select(nameField).eq(pk, rowId).maybeSingle();
+    previousRunStatusName = current?.[nameField] ?? null;
+  }
+
   const payload = {};
   if (data[nameField] !== undefined) payload[nameField] = String(data[nameField]).trim();
   if (data[descField] !== undefined) payload[descField] = data[descField] ? String(data[descField]).trim() : null;
@@ -808,6 +806,16 @@ export async function updateLookupRow(tableKey, id, data) {
 
   const { data: result, error } = await supabase.from(table).update(payload).eq(pk, rowId).select("*").single();
   if (error) throw new Error(error.message);
+
+  if (previousRunStatusName && result[nameField] !== previousRunStatusName) {
+    const { error: runsError } = await supabase
+      .from("proj_t_runs")
+      .update({ status: result[nameField] })
+      .eq("status", previousRunStatusName);
+    if (runsError) {
+      throw new Error(`The status was renamed, but existing runs still say "${previousRunStatusName}": ${runsError.message}`);
+    }
+  }
   return result;
 }
 
@@ -1123,11 +1131,6 @@ export async function deleteProject(projectId) {
 
 // ─── Run CRUD ──────────────────────────────────────────────
 
-// Run statuses the code relies on by name (defaults, the project-status
-// cascade in updateRun). They cannot be deleted in setup. Any other status
-// added in setup is valid too: see isKnownRunStatus.
-const RUN_STATUSES = ["Draft", "Planned", "Scheduled", "In Progress", "Completed", "Cancelled"];
-
 // A run status is valid when it exists in proj_s_run_status (the setup table).
 async function isKnownRunStatus(supabase, statusName) {
   if (!statusName) return false;
@@ -1135,23 +1138,64 @@ async function isKnownRunStatus(supabase, statusName) {
   return Boolean(data);
 }
 
-// Run status → project status for the stops on that run (used by updateRun
-// and addProjectToRun). Draft, Scheduled and Cancelled change nothing.
+// The run status a run falls back to when it is given an unknown one: the
+// status with system_key "draft", whatever it is named now.
+async function fallbackRunStatusName(supabase) {
+  const { data } = await supabase.from("proj_s_run_status").select("status_name").eq("system_key", "draft").maybeSingle();
+  if (!data?.status_name) throw new Error('The run status with system_key "draft" is missing from proj_s_run_status.');
+  return data.status_name;
+}
+
+// Run status system_key → project status system_key for the stops on that run
+// (updateRun and addProjectToRun). draft, scheduled and cancelled change nothing.
 const projectStatusByRunStatus = {
-  Planned: "Ready for Install",
-  "In Progress": "Currently Being Installed",
-  Completed: "Fully Installed",
+  planned: "ready_for_install",
+  in_progress: "currently_being_installed",
+  completed: "fully_installed",
 };
 // Repairs follow their own flow so a repair never turns into an install.
 const repairStatusByRunStatus = {
-  Planned: "For Repair",
-  "In Progress": "Currently Being Repaired",
-  Completed: "Repaired",
+  planned: "for_repair",
+  in_progress: "currently_being_repaired",
+  completed: "repaired",
 };
 
 /**
+ * Where a run status sends the project statuses of its stops, or null when
+ * it changes nothing: { targetKey, repairKey, targetStatusId,
+ * targetRepairStatusId, repairStatusIds }. Everything is found by system_key,
+ * so renaming any of these statuses in setup changes nothing here.
+ */
+async function resolveCascadeTargets(supabase, runStatusName) {
+  if (!runStatusName) return null;
+  const { data: runStatus, error: runStatusError } = await supabase
+    .from("proj_s_run_status")
+    .select("system_key")
+    .eq("status_name", runStatusName)
+    .maybeSingle();
+  if (runStatusError) throw runStatusError;
+  const targetKey = projectStatusByRunStatus[runStatus?.system_key];
+  if (!targetKey) return null;
+  const repairKey = repairStatusByRunStatus[runStatus.system_key];
+
+  const { data, error } = await supabase
+    .from("proj_s_project_status")
+    .select("status_id, system_key")
+    .in("system_key", [targetKey, repairKey, ...REPAIR_STATUS_KEYS]);
+  if (error) throw error;
+  const idByKey = new Map((data || []).map((row) => [row.system_key, row.status_id]));
+  return {
+    targetKey,
+    repairKey,
+    targetStatusId: idByKey.get(targetKey) ?? null,
+    targetRepairStatusId: idByKey.get(repairKey) ?? null,
+    repairStatusIds: new Set(REPAIR_STATUS_KEYS.map((key) => idByKey.get(key)).filter((id) => id != null)),
+  };
+}
+
+/**
  * Gives one project the project status its run's current status maps to,
- * so a stop added to a Planned, In Progress or Completed run matches the
+ * so a stop added to a planned, in-progress or completed run matches the
  * others. Same rules as the cascade in updateRun. Failures are logged, never
  * thrown: the stop itself was added fine.
  */
@@ -1159,21 +1203,14 @@ async function matchProjectStatusToRun(supabase, runId, projectId) {
   try {
     const { data: run, error: runError } = await supabase.from("proj_t_runs").select("status").eq("id", runId).maybeSingle();
     if (runError) throw runError;
-    const targetName = projectStatusByRunStatus[run?.status];
-    if (!targetName) return;
-    const repairName = repairStatusByRunStatus[run.status];
+    const targets = await resolveCascadeTargets(supabase, run?.status);
+    if (!targets) return;
 
-    const [{ data: statusRows, error: statusError }, { data: project, error: projectError }] = await Promise.all([
-      supabase.from("proj_s_project_status").select("status_id, status_name").in("status_name", [targetName, repairName, ...REPAIR_STATUS_NAMES]),
-      supabase.from("proj_t_projects").select("status_id").eq("id", projectId).maybeSingle(),
-    ]);
-    if (statusError) throw statusError;
+    const { data: project, error: projectError } = await supabase.from("proj_t_projects").select("status_id").eq("id", projectId).maybeSingle();
     if (projectError) throw projectError;
     if (!project) return;
 
-    const idByName = new Map((statusRows || []).map((row) => [row.status_name, row.status_id]));
-    const repairIds = new Set(REPAIR_STATUS_NAMES.map((name) => idByName.get(name)).filter((id) => id != null));
-    const nextStatusId = repairIds.has(project.status_id) ? idByName.get(repairName) : idByName.get(targetName);
+    const nextStatusId = targets.repairStatusIds.has(project.status_id) ? targets.targetRepairStatusId : targets.targetStatusId;
     if (nextStatusId == null || nextStatusId === project.status_id) return;
 
     const { error } = await supabase
@@ -1194,7 +1231,7 @@ export async function createRun(runData) {
     run_name: runData.run_name ? String(runData.run_name).trim() : null,
     origin_id: runData.origin_id || null,
     run_date: runData.run_date || null,
-    status: (await isKnownRunStatus(supabase, runData.status)) ? runData.status : "Draft",
+    status: (await isKnownRunStatus(supabase, runData.status)) ? runData.status : await fallbackRunStatusName(supabase),
     notes: runData.notes ? String(runData.notes).trim() : null,
     team_assigned: runData.team_assigned ? String(runData.team_assigned).trim() : null,
     vehicle_assigned: runData.vehicle_assigned ? String(runData.vehicle_assigned).trim() : null,
@@ -1248,7 +1285,9 @@ export async function createRun(runData) {
  * - Planned → Ready for Install
  * - In Progress → Currently Being Installed
  * - Completed → Fully Installed
- * - Repair projects (status in REPAIR_STATUS_NAMES) follow their own flow so
+ * - Statuses are matched by system_key (see resolveCascadeTargets), so all of
+ *   them can be renamed in setup. The names above are today's names.
+ * - Repair projects (status system_key in REPAIR_STATUS_KEYS) follow their own flow so
  *   they stay recognisable as repairs: Planned → For Repair,
  *   In Progress → Currently Being Repaired, Completed → Repaired.
  * - The cascade fires only when the run enters a mapped status, not on every
@@ -1286,7 +1325,7 @@ export async function updateRun(runId, updates) {
   }
 
   if (payload.status && !(await isKnownRunStatus(supabase, payload.status))) {
-    payload.status = "Draft";
+    payload.status = await fallbackRunStatusName(supabase);
   }
 
   const { data, error } = await supabase.from("proj_t_runs").update(payload).eq("id", runId).select("*").single();
@@ -1298,36 +1337,18 @@ export async function updateRun(runId, updates) {
 
   let cascadeResult = null;
 
-  // projectStatusByRunStatus / repairStatusByRunStatus are defined at module level, next to isKnownRunStatus.
-  const targetProjectStatusName = previousStatus !== newStatus
-    ? projectStatusByRunStatus[newStatus]
-    : null;
-  const targetRepairStatusName = targetProjectStatusName
-    ? repairStatusByRunStatus[newStatus]
-    : null;
-
-  if (targetProjectStatusName) {
+  // Fires only when the run enters a different status. Targets are found by
+  // system_key (resolveCascadeTargets), so the statuses can be renamed.
+  if (previousStatus !== newStatus) {
     try {
-      // Resolve by name because setup rows are user-editable and IDs must not be hardcoded.
-      // One query fetches both targets plus every repair status (to recognise repairs).
-      const { data: statusRows, error: statusError } = await supabase
-        .from("proj_s_project_status")
-        .select("status_id, status_name")
-        .in("status_name", [targetProjectStatusName, targetRepairStatusName, ...REPAIR_STATUS_NAMES]);
+      const targets = await resolveCascadeTargets(supabase, newStatus);
 
-      if (statusError) throw statusError;
-
-      const statusIdByName = new Map((statusRows || []).map((row) => [row.status_name, row.status_id]));
-      const repairStatusIds = new Set(
-        REPAIR_STATUS_NAMES.map((name) => statusIdByName.get(name)).filter((id) => id != null)
-      );
-      const targetStatusId = statusIdByName.get(targetProjectStatusName) ?? null;
-      const targetRepairStatusId = statusIdByName.get(targetRepairStatusName) ?? null;
-
-      if (targetStatusId == null) {
+      if (!targets) {
+        // This run status changes no project statuses (draft, scheduled, cancelled, or one added in setup).
+      } else if (targets.targetStatusId == null) {
         // A missing lookup row is not a run-save failure; log and skip the cascade.
         console.error(
-          `[updateRun] '${targetProjectStatusName}' status row not found in proj_s_project_status; skipping project status cascade for run #${runId}`
+          `[updateRun] project status with system_key '${targets.targetKey}' not found; skipping project status cascade for run #${runId}`
         );
       } else {
         // Collect every project assigned to this run.
@@ -1345,14 +1366,13 @@ export async function updateRun(runId, updates) {
           const project = mapping.proj_t_projects;
           if (!project) continue;
 
-          const isRepair = repairStatusIds.has(project.status_id);
-          const nextStatusId = isRepair ? targetRepairStatusId : targetStatusId;
+          const isRepair = targets.repairStatusIds.has(project.status_id);
+          const nextStatusId = isRepair ? targets.targetRepairStatusId : targets.targetStatusId;
 
           if (nextStatusId == null) {
-            // Repair-flow row missing (migration 006 not run): leave the repair
-            // as it is rather than turn it into a normal install.
+            // Repair-flow row missing: leave the repair as it is rather than turn it into a normal install.
             console.error(
-              `[updateRun] '${targetRepairStatusName}' status row not found in proj_s_project_status; leaving repair project #${mapping.project_id} unchanged for run #${runId}`
+              `[updateRun] project status with system_key '${targets.repairKey}' not found; leaving repair project #${mapping.project_id} unchanged for run #${runId}`
             );
             continue;
           }
@@ -1379,7 +1399,7 @@ export async function updateRun(runId, updates) {
       // Run save already succeeded; a failure here must not fail the response.
       // Log it so this silent partial failure stays visible in server logs.
       console.error(
-        `[updateRun] Failed to cascade project status to '${targetProjectStatusName}' for run #${runId}:`,
+        `[updateRun] Failed to cascade project statuses for run #${runId} entering '${newStatus}':`,
         cascadeErr?.message ?? cascadeErr
       );
     }
@@ -1538,7 +1558,7 @@ export async function loadRuns() {
 
   const { data, error } = await supabase
     .from("proj_t_runs")
-    .select("*, proj_s_origin_addresses(*), proj_t_run_projects(id, proj_t_projects(payment_method_type, project_subtotal, proj_s_project_status!proj_t_projects_status_id_fkey(status_name)))")
+    .select("*, proj_s_origin_addresses(*), proj_t_run_projects(id, proj_t_projects(payment_method_type, project_subtotal, proj_s_project_status!proj_t_projects_status_id_fkey(status_name, system_key)))")
     .in("status", statusNames)
     .order("run_date", { ascending: false });
 
@@ -1603,7 +1623,7 @@ export async function loadProjects() {
       "order_received_at, scheduled_project_start, scheduled_project_end, install_start, install_end, " +
       "project_subtotal, project_notes, dimension, " +
       "created_at, updated_at, created_by, updated_by, " +
-      "proj_s_project_status!proj_t_projects_status_id_fkey(status_id, status_name, status_description)"
+      "proj_s_project_status!proj_t_projects_status_id_fkey(status_id, status_name, status_description, system_key)"
     )
     .order("updated_at", { ascending: false });
 

@@ -3,7 +3,7 @@
 
 import { useMemo, useState, useEffect } from "react";
 import { StatusBadge, FileAttachments } from "@/shared/components/ui";
-import { formatProjectDescriptionForDisplay, getRunStatusColor, resolveRunStatusOptions, stripTownshipLabel, PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, getProjectAmountDisplay, splitRunAmounts } from "../data/projectMap.data";
+import { formatProjectDescriptionForDisplay, getRunStatusColor, resolveRunStatusOptions, stripTownshipLabel, PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, getProjectAmountDisplay, splitRunAmounts, runStatusKeyByName } from "../data/projectMap.data";
 import { generateRunManifestPrint } from "../utils/printRunManifest";
 import { loadFiles, createFileUpload, saveUploadedFile, getFileUrl, deleteFile } from "../data/projectMap.actions";
 
@@ -35,12 +35,12 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
   const [dragIndex, setDragIndex] = useState(null);
   const [dragOverIndex, setDragOverIndex] = useState(null);
   const [isEditingStatus, setIsEditingStatus] = useState(false);
-  const [pendingStatus, setPendingStatus] = useState(run?.status || "Draft");
+  const [pendingStatus, setPendingStatus] = useState(run?.status || "");
   const [savingStatus, setSavingStatus] = useState(false);
 
   useEffect(() => {
     setIsEditingStatus(false);
-    setPendingStatus(run?.status || "Draft");
+    setPendingStatus(run?.status || "");
   }, [run?.id]);
 
   const originName = run?.proj_s_origin_addresses?.origin_name || "No Origin";
@@ -74,7 +74,7 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
     };
   }, [runSegmentData, runProjects]);
 
-  const status = run?.status || "Draft";
+  const status = run?.status || "";
 
   const handleSaveStatus = async () => {
     if (pendingStatus === status) {
@@ -96,19 +96,11 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
   const actionButtons = useMemo(() => {
     const print = () => generateRunManifestPrint(run, runProjects, runSegmentData);
     const btns = [{ label: "Edit", onClick: onEdit, variant: "secondary" }];
-    if (status === "Draft") {
-      btns.push({ label: "Print Record", onClick: print, variant: "primary" });
-    } else if (status === "Planned") {
-      btns.push({ label: "Print Record", onClick: print, variant: "primary" });
-    } else if (status === "In Progress") {
-      btns.push({ label: "Print Record", onClick: print, variant: "secondary" });
-    } else if (status === "Completed") {
-      btns.push({ label: "Print Record", onClick: print, variant: "primary" });
-    } else {
-      btns.push({ label: "Print Record", onClick: print, variant: "primary" });
-    }
+    // Same print for every status; a run in progress gets the quieter button style.
+    const inProgress = runStatusKeyByName(runStatuses, status) === "in_progress";
+    btns.push({ label: "Print Record", onClick: print, variant: inProgress ? "secondary" : "primary" });
     return btns;
-  }, [status, onEdit, run, runProjects, runSegmentData]);
+  }, [status, onEdit, run, runProjects, runSegmentData, runStatuses]);
 
   if (!run) return null;
 
@@ -252,7 +244,7 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
                     const segment = runSegmentData?.segments?.[idx];
                     const currentProjectStatus = proj.proj_s_project_status?.status_name || "—";
                     const previousProjectStatus = proj.previous_project_status?.status_name || null;
-                    const projectStatusLabel = run.status === "Completed" && previousProjectStatus && currentProjectStatus !== previousProjectStatus
+                    const projectStatusLabel = runStatusKeyByName(runStatuses, run.status) === "completed" && previousProjectStatus && currentProjectStatus !== previousProjectStatus
                       ? `${previousProjectStatus} -> ${currentProjectStatus}`
                       : currentProjectStatus;
                     const hasError = segment?.error;

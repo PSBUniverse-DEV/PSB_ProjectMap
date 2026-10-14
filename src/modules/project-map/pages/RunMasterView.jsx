@@ -328,7 +328,7 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "10px" }}>
               {fieldBox("Run Name", detailRun.run_name || "—")}
               {fieldBox("Run Code", detailRun.run_code || "—")}
-              {fieldBox("Status", detailRun.status || "Draft")}
+              {fieldBox("Status", detailRun.status || "—")}
             </div>
 
             {sectionLabel("Schedule & Origin")}
@@ -510,7 +510,7 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
                 border: `1px solid ${color}40`,
               }}
             >
-              {row.status || "Draft"}
+              {row.status || "—"}
             </span>
           );
         },

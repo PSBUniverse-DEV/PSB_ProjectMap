@@ -19,7 +19,7 @@ import ProjectSelectorModal from "../components/ProjectSelectorModal";
 import FilterBar from "../components/FilterBar";
 import AddProjectForm from "../components/AddProjectForm";
 import MapSearch from "../components/MapSearch";
-import { splitRunAmounts, getStatusTabGroupIds } from "../data/projectMap.data";
+import { splitRunAmounts, getStatusTabGroupIds, runStatusNameByKey } from "../data/projectMap.data";
 import FilterChips from "../components/FilterChips";
 import RunFilterPanel from "../components/RunFilterPanel";
 import RunFilterChips from "../components/RunFilterChips";
@@ -159,9 +159,14 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
   const [editingProjectPrice, setEditingProjectPrice] = useState(null);
   const [priceValue, setPriceValue] = useState("");
   const [allRunProjects, setAllRunProjects] = useState([]);
-  const [runFilters, setRunFilters] = useState(() => ({
-    status: !allowedRunStatusNames || allowedRunStatusNames.includes("Scheduled") ? ["Scheduled"] : [],
-  }));
+  // Opens on the "scheduled" run status (found by system_key, whatever it is
+  // named) when this department may see it; otherwise on "All".
+  const [runFilters, setRunFilters] = useState(() => {
+    const scheduledName = runStatusNameByKey(runStatuses, "scheduled");
+    return {
+      status: scheduledName && (!allowedRunStatusNames || allowedRunStatusNames.includes(scheduledName)) ? [scheduledName] : [],
+    };
+  });
   const [runSearch, setRunSearch] = useState("");
 
   const activeProjectStatusIds = useMemo(
@@ -219,9 +224,9 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
 
   useEffect(() => { window.scrollTo(0, 0); }, []);
 
-  // Find the default "New Dealer Order" status ID
+  // The default project tab: the status with system_key "new_dealer_order", whatever it is named.
   const defaultStatusId = useMemo(() => {
-    const status = statuses.find((s) => s.status_name === "New Dealer Order" && s.is_active !== false);
+    const status = statuses.find((s) => s.system_key === "new_dealer_order" && s.is_active !== false);
     const id = status ? String(status.status_id) : "";
     // Only when this department has that tab; otherwise the page opens on "All".
     return id && (visibleTabStatusIds === null || visibleTabStatusIds.includes(id)) ? id : "";

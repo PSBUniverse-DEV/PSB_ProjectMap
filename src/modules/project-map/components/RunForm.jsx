@@ -3,16 +3,22 @@
 import { useState, useEffect, useMemo } from "react";
 import { Button, Modal, toastError, toastSuccess } from "@/shared/components/ui";
 import { createRun, updateRun, deleteRun } from "../data/projectMap.actions";
-import { resolveRunStatusOptions } from "../data/projectMap.data";
+import { resolveRunStatusOptions, runStatusNameByKey } from "../data/projectMap.data";
 
 export default function RunForm({ show, mode, run, origins = [], runStatuses = [], onClose, onSaved }) {
   const [busy, setBusy] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  // New runs start on the "scheduled" run status (by system_key, whatever it
+  // is named), or the first active status if that one is missing.
+  const defaultRunStatus = useMemo(
+    () => runStatusNameByKey(runStatuses, "scheduled") || resolveRunStatusOptions(runStatuses)[0] || "",
+    [runStatuses]
+  );
   const [form, setForm] = useState({
     run_name: "",
     origin_id: "",
     run_date: "",
-    status: "Scheduled",
+    status: defaultRunStatus,
     notes: "",
     team_assigned: "",
     vehicle_assigned: "",
@@ -38,7 +44,7 @@ export default function RunForm({ show, mode, run, origins = [], runStatuses = [
         run_name: run.run_name || "",
         origin_id: run.origin_id || "",
         run_date: run.run_date || "",
-        status: run.status || "Draft",
+        status: run.status || defaultRunStatus,
         notes: run.notes || "",
         team_assigned: run.team_assigned || "",
         vehicle_assigned: run.vehicle_assigned || "",
@@ -52,7 +58,7 @@ export default function RunForm({ show, mode, run, origins = [], runStatuses = [
         run_name: "",
         origin_id: "",
         run_date: "",
-        status: "Scheduled",
+        status: defaultRunStatus,
         notes: "",
         team_assigned: "",
         vehicle_assigned: "",
@@ -62,7 +68,7 @@ export default function RunForm({ show, mode, run, origins = [], runStatuses = [
         estimated_subtotal: "",
       });
     }
-  }, [run, show]);
+  }, [run, show, defaultRunStatus]);
 
   const handleChange = (field, value) => {
     setForm((f) => ({ ...f, [field]: value }));

@@ -30,6 +30,20 @@ export function getRunStatusColor(statusName, runStatuses = []) {
   return found?.display_color || "#6b7280";
 }
 
+// Runs store their status NAME. The run statuses the app relies on also have a
+// fixed system_key (draft, planned, scheduled, in_progress, completed,
+// cancelled) that never changes, so they can be renamed in setup.
+
+/** Name of the run status with this system_key, or "". */
+export function runStatusNameByKey(runStatuses = [], key) {
+  return runStatuses.find((s) => s.system_key === key)?.status_name || "";
+}
+
+/** system_key of the run status with this name, or "". */
+export function runStatusKeyByName(runStatuses = [], name) {
+  return runStatuses.find((s) => s.status_name === name)?.system_key || "";
+}
+
 export function formatRunCode(runNumber) {
   if (runNumber == null) return null;
   return `PSBR-${String(runNumber).padStart(6, "0")}`;
@@ -181,57 +195,54 @@ export const PROJECT_FILE_TYPES = ["application/pdf"];
 export const PROJECT_COMMENT_MAX_LENGTH = 2000;
 
 /**
- * Project statuses that mark a project as a repair. "Repairs" is set by
- * staff; the other three are set by the run-status cascade (updateRun) so a
- * repair keeps a repair status while its run is Planned / In Progress /
- * Completed. A repair's amount is never revenue: it is labelled "Repairs",
- * shown in red, and kept out of subtotal sums.
+ * Project statuses that mark a project as a repair, by system_key (a fixed
+ * code in proj_s_project_status that never changes, so the statuses can be
+ * renamed). "repairs" is set by staff; the other three are set by the
+ * run-status cascade (updateRun) so a repair keeps a repair status while its
+ * run is planned / in progress / completed. A repair's amount is never
+ * revenue: it is labelled "Repairs", shown in red, and kept out of subtotal sums.
  */
-export const REPAIR_STATUS_NAMES = [
-  "Repairs",
-  "For Repair",
-  "Currently Being Repaired",
-  "Repaired",
-];
+export const REPAIR_STATUS_KEYS = ["repairs", "for_repair", "currently_being_repaired", "repaired"];
 
 // The whole repair flow is shown under this one tab.
-const REPAIRS_TAB_STATUS_NAME = "Repairs";
+const REPAIRS_TAB_STATUS_KEY = "repairs";
 
 /**
  * True when this status has no tab of its own because it is shown under the
- * "Repairs" tab (the repair-flow statuses other than "Repairs" itself). Only
- * applies while an active "Repairs" status exists to hold them.
+ * repairs tab (the repair-flow statuses other than "repairs" itself). Only
+ * applies while an active "repairs" status exists to hold them.
  */
 export function isGroupedStatusTab(status, statuses = []) {
-  const name = status?.status_name;
-  if (name === REPAIRS_TAB_STATUS_NAME || !REPAIR_STATUS_NAMES.includes(name)) return false;
-  return statuses.some((s) => s.status_name === REPAIRS_TAB_STATUS_NAME && s.is_active !== false);
+  const key = status?.system_key;
+  if (key === REPAIRS_TAB_STATUS_KEY || !REPAIR_STATUS_KEYS.includes(key)) return false;
+  return statuses.some((s) => s.system_key === REPAIRS_TAB_STATUS_KEY && s.is_active !== false);
 }
 
 /**
  * Status ids (as strings) that one tab stands for. Every tab stands for its
- * own status only, except "Repairs", which also covers the grouped
+ * own status only, except the repairs tab, which also covers the grouped
  * repair-flow statuses.
  */
 export function getStatusTabGroupIds(statusId, statuses = []) {
   const own = String(statusId);
   const tabStatus = statuses.find((s) => String(s.status_id) === own);
-  if (tabStatus?.status_name !== REPAIRS_TAB_STATUS_NAME) return [own];
+  if (tabStatus?.system_key !== REPAIRS_TAB_STATUS_KEY) return [own];
   const grouped = statuses.filter((s) => s.is_active !== false && isGroupedStatusTab(s, statuses));
   return [own, ...grouped.map((s) => String(s.status_id))];
 }
 
 /**
- * True when the project is a repair. The status name is resolved from the
- * statuses list first (always current), then from the joined status object.
+ * True when the project is a repair. The status is resolved from the
+ * statuses list first (always current), then from the joined status object
+ * (which must include system_key).
  */
 export function isRepairProject(project, statuses = []) {
   if (!project) return false;
-  const statusName =
-    statuses.find((s) => s.status_id === project.status_id)?.status_name ||
-    project.proj_s_project_status?.status_name ||
+  const statusKey =
+    statuses.find((s) => s.status_id === project.status_id)?.system_key ||
+    project.proj_s_project_status?.system_key ||
     "";
-  return REPAIR_STATUS_NAMES.includes(statusName);
+  return REPAIR_STATUS_KEYS.includes(statusKey);
 }
 
 /**

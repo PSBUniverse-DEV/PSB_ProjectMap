@@ -133,6 +133,9 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
   const [showRunForm, setShowRunForm] = useState(false);
   const [editingRun, setEditingRun] = useState(null);
   const [confirmDeleteRunId, setConfirmDeleteRunId] = useState(null);
+  // After a stop is taken off a run: { projectId, clientName, statusId } for the "choose its status now" pop-up.
+  const [removedStop, setRemovedStop] = useState(null);
+  const [savingRemovedStop, setSavingRemovedStop] = useState(false);
   const [runProjects, setRunProjects] = useState([]);
   const [runRouteData, setRunRouteData] = useState(null);
   const [runRouteLoading, setRunRouteLoading] = useState(false);
@@ -946,24 +949,50 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
       toastSuccess("Project added to run.", "Runs");
       await refreshRunData();
       await refreshRunProjects();
+      // Its status may have changed to match the run.
+      await refreshProjects();
     } catch (err) {
       toastError(err?.message || "Failed to add project to run.", "Runs");
     } finally { setBusy(false); }
   };
 
   const handleProjectSelectorClose = () => { setShowProjectSelector(false); };
-  const handleProjectSelectorSaved = () => { setShowProjectSelector(false); refreshRunData(); };
+  // Added stops may have changed status to match the run, so projects are reloaded too.
+  const handleProjectSelectorSaved = () => { setShowProjectSelector(false); refreshRunData(); refreshProjects(); };
 
   const handleRemoveProjectFromRun = async (runProjectId) => {
+    // Read the project before the stop row is gone, for the status pop-up.
+    const assignment = allRunProjects.find((rp) => rp.id === runProjectId);
+    const project = assignment ? loadedProjects.find((p) => p.id === assignment.project_id) : null;
     setBusy(true);
     try {
       await removeProjectFromRun(runProjectId);
       toastSuccess("Project removed from run.", "Runs");
       await refreshRunData();
       await refreshRunProjects();
+      if (project) {
+        setRemovedStop({
+          projectId: project.id,
+          clientName: project.client_name || "This project",
+          statusId: project.status_id != null ? String(project.status_id) : "",
+        });
+      }
     } catch (err) {
       toastError(err?.message || "Failed to remove project.", "Runs");
     } finally { setBusy(false); }
+  };
+
+  const handleSaveRemovedStopStatus = async () => {
+    if (!removedStop?.statusId) return;
+    setSavingRemovedStop(true);
+    try {
+      await updateProject(removedStop.projectId, { status_id: Number(removedStop.statusId) });
+      toastSuccess("Project status updated.", "Runs");
+      setRemovedStop(null);
+      await refreshProjects();
+    } catch (err) {
+      toastError(err?.message || "Failed to update the project status.", "Runs");
+    } finally { setSavingRemovedStop(false); }
   };
 
   // Unassign entry point for the Project Detail Drawer's "×" button, keyed by
@@ -1465,6 +1494,30 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
           </div>
         </Modal>
       )}
+
+      {/* Any tab: a stop can be removed from the run panel, the map or the project drawer. */}
+      <Modal show={!!removedStop} onHide={() => setRemovedStop(null)} title="Project Removed from Run">
+        <p style={{ fontSize: "13px", color: "#1e293b", margin: "0 0 10px" }}>
+          <strong>{removedStop?.clientName}</strong> is no longer on a run. Its status has not changed. Choose its status now, or keep it as is.
+        </p>
+        <select
+          value={removedStop?.statusId || ""}
+          onChange={(e) => setRemovedStop((prev) => (prev ? { ...prev, statusId: e.target.value } : prev))}
+          style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "6px 8px", fontSize: "12px", background: "#fff", marginBottom: "16px" }}
+        >
+          {statuses
+            .filter((s) => s.is_active !== false || String(s.status_id) === removedStop?.statusId)
+            .slice()
+            .sort((a, b) => Number(a.display_order ?? 0) - Number(b.display_order ?? 0))
+            .map((s) => (
+              <option key={s.status_id} value={String(s.status_id)}>{s.status_name}</option>
+            ))}
+        </select>
+        <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+          <Button variant="secondary" onClick={() => setRemovedStop(null)}>Keep as is</Button>
+          <Button variant="primary" loading={savingRemovedStop} onClick={handleSaveRemovedStopStatus}>Save Status</Button>
+        </div>
+      </Modal>
 
       {mode === "runs" && (
         <Modal show={!!confirmDeleteRunId} onHide={() => setConfirmDeleteRunId(null)} title="Delete Run">

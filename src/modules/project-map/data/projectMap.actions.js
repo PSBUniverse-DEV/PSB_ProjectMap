@@ -1124,6 +1124,57 @@ async function isKnownRunStatus(supabase, statusName) {
   return Boolean(data);
 }
 
+// Run status → project status for the stops on that run (used by updateRun
+// and addProjectToRun). Draft, Scheduled and Cancelled change nothing.
+const projectStatusByRunStatus = {
+  Planned: "Ready for Install",
+  "In Progress": "Currently Being Installed",
+  Completed: "Fully Installed",
+};
+// Repairs follow their own flow so a repair never turns into an install.
+const repairStatusByRunStatus = {
+  Planned: "For Repair",
+  "In Progress": "Currently Being Repaired",
+  Completed: "Repaired",
+};
+
+/**
+ * Gives one project the project status its run's current status maps to,
+ * so a stop added to a Planned, In Progress or Completed run matches the
+ * others. Same rules as the cascade in updateRun. Failures are logged, never
+ * thrown: the stop itself was added fine.
+ */
+async function matchProjectStatusToRun(supabase, runId, projectId) {
+  try {
+    const { data: run, error: runError } = await supabase.from("proj_t_runs").select("status").eq("id", runId).maybeSingle();
+    if (runError) throw runError;
+    const targetName = projectStatusByRunStatus[run?.status];
+    if (!targetName) return;
+    const repairName = repairStatusByRunStatus[run.status];
+
+    const [{ data: statusRows, error: statusError }, { data: project, error: projectError }] = await Promise.all([
+      supabase.from("proj_s_project_status").select("status_id, status_name").in("status_name", [targetName, repairName, ...REPAIR_STATUS_NAMES]),
+      supabase.from("proj_t_projects").select("status_id").eq("id", projectId).maybeSingle(),
+    ]);
+    if (statusError) throw statusError;
+    if (projectError) throw projectError;
+    if (!project) return;
+
+    const idByName = new Map((statusRows || []).map((row) => [row.status_name, row.status_id]));
+    const repairIds = new Set(REPAIR_STATUS_NAMES.map((name) => idByName.get(name)).filter((id) => id != null));
+    const nextStatusId = repairIds.has(project.status_id) ? idByName.get(repairName) : idByName.get(targetName);
+    if (nextStatusId == null || nextStatusId === project.status_id) return;
+
+    const { error } = await supabase
+      .from("proj_t_projects")
+      .update({ status_id: nextStatusId, updated_at: new Date().toISOString() })
+      .eq("id", projectId);
+    if (error) throw error;
+  } catch (err) {
+    console.error(`[matchProjectStatusToRun] project #${projectId} on run #${runId}:`, err?.message ?? err);
+  }
+}
+
 export async function createRun(runData) {
   const supabase = getSupabaseAdmin();
   const now = new Date().toISOString();
@@ -1236,17 +1287,7 @@ export async function updateRun(runId, updates) {
 
   let cascadeResult = null;
 
-  const projectStatusByRunStatus = {
-    Planned: "Ready for Install",
-    "In Progress": "Currently Being Installed",
-    Completed: "Fully Installed",
-  };
-  // Repairs follow their own flow so a repair never turns into an install.
-  const repairStatusByRunStatus = {
-    Planned: "For Repair",
-    "In Progress": "Currently Being Repaired",
-    Completed: "Repaired",
-  };
+  // projectStatusByRunStatus / repairStatusByRunStatus are defined above isKnownRunStatus's neighbours (module level).
   const targetProjectStatusName = previousStatus !== newStatus
     ? projectStatusByRunStatus[newStatus]
     : null;
@@ -1403,6 +1444,9 @@ export async function addProjectToRun(runId, projectId, stopSequence = 0) {
 
   const { data, error } = await supabase.from("proj_t_run_projects").insert(payload).select("*").single();
   if (error) throw new Error(error.message);
+
+  // A stop added to a run that is already under way gets the same project status as the others.
+  await matchProjectStatusToRun(supabase, runId, pid);
   return data;
 }
 

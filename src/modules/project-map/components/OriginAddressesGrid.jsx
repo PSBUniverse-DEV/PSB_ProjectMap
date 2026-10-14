@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Form } from "react-bootstrap";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -45,6 +45,11 @@ export default function OriginAddressesGrid({ data = [], onRefresh }) {
   // ─── Local data (for optimistic updates) ──────────────────
   const [localData, setLocalData] = useState(null);
   const displayData = localData ?? data;
+
+  // Fresh server data replaces the local optimistic copy, so saved edits show.
+  useEffect(() => {
+    setLocalData(null);
+  }, [data]);
 
   // ─── Search ─────────────────────────────────────────────────
   const filteredData = useMemo(() => {

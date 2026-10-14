@@ -3,7 +3,7 @@
 import { useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Modal, TableZ, toastError, toastSuccess } from "@/shared/components/ui";
-import { createSetupRow, updateSetupRow, deleteSetupRow, createLookupRow, updateLookupRow, toggleLookupRowActive, reorderLookupRows, softDeleteLookupRow, createProjectStatus, updateProjectStatus, toggleProjectStatusActive, reorderProjectStatuses, softDeleteProjectStatus, createState, updateState, toggleStateActive, reorderStates, softDeleteState } from "../../data/projectMap.actions";
+import { createSetupRow, updateSetupRow, deleteSetupTableRow, createLookupRow, updateLookupRow, toggleLookupRowActive, reorderLookupRows, createProjectStatus, updateProjectStatus, toggleProjectStatusActive, reorderProjectStatuses, softDeleteProjectStatus, createState, updateState, toggleStateActive, reorderStates, softDeleteState } from "../../data/projectMap.actions";
 import SetupWorkspaceLayout from "./SetupWorkspaceLayout";
 import SetupSidebar from "./SetupSidebar";
 import SetupToolbar from "./SetupToolbar";
@@ -321,7 +321,7 @@ export default function ProjectMapSetupView({ setup = {}, departments = [], depa
     setBusy(true);
     try {
       const rowId = confirmDelete[tableDef.pk];
-      await deleteSetupRow(activeTab, rowId);
+      await deleteSetupTableRow(activeTab, rowId);
       toastSuccess("Row deleted.", tableDef.label);
       setConfirmDelete(null);
       router.refresh();
@@ -441,7 +441,6 @@ export default function ProjectMapSetupView({ setup = {}, departments = [], depa
       hasColor: false,
       hasOrder: false,
       hasActive: false,
-      softDelete: false,
     },
   };
 
@@ -451,7 +450,7 @@ export default function ProjectMapSetupView({ setup = {}, departments = [], depa
         onUpdate: updateProjectStatus,
         onToggle: toggleProjectStatusActive,
         onReorder: reorderProjectStatuses,
-        onDelete: softDeleteProjectStatus,
+        onDelete: (id) => deleteSetupTableRow(tableKey, id),
       }
     : tableKey === "states"
     ? {
@@ -459,20 +458,20 @@ export default function ProjectMapSetupView({ setup = {}, departments = [], depa
         onUpdate: updateState,
         onToggle: toggleStateActive,
         onReorder: reorderStates,
-        onDelete: softDeleteState,
+        onDelete: (id) => deleteSetupTableRow(tableKey, id),
       }
     : tableKey === "paymentMethods"
     ? {
         onCreate: (payload) => createSetupRow(tableKey, payload),
         onUpdate: (id, payload) => updateSetupRow(tableKey, id, payload),
-        onDelete: (id) => deleteSetupRow(tableKey, id),
+        onDelete: (id) => deleteSetupTableRow(tableKey, id),
       }
     : {
         onCreate: (payload) => createLookupRow(tableKey, payload),
         onUpdate: (id, payload) => updateLookupRow(tableKey, id, payload),
         onToggle: (id, isActive) => toggleLookupRowActive(tableKey, id, isActive),
         onReorder: (updates) => reorderLookupRows(tableKey, updates),
-        onDelete: (id) => softDeleteLookupRow(tableKey, id),
+        onDelete: (id) => deleteSetupTableRow(tableKey, id),
       };
 
   return (

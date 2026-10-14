@@ -207,6 +207,23 @@ export async function loadDepartmentStatusMappings() {
   };
 }
 
+/**
+ * Every run status, switched on or off, for the setup grid.
+ * loadProjectMapSetup returns active ones only, which the map pages need.
+ */
+export async function loadAllRunStatuses() {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("proj_s_run_status")
+    .select("*")
+    .order("display_order", { ascending: true });
+  if (error) {
+    console.error("[loadAllRunStatuses]", error.message);
+    return [];
+  }
+  return data || [];
+}
+
 // ─── Runs Loader ────────────────────────────────────────────
 
 export async function loadRuns(access) {

@@ -104,6 +104,85 @@ export async function deleteSetupRow(tableKey, id) {
   return { success: true };
 }
 
+// ─── Setup Grid Hard Delete ──────────────────────────────────
+
+// Project statuses the code looks up by name (default tab, run cascade, repair
+// flow). Deleting one would silently switch a feature off, so it is refused.
+const PROTECTED_PROJECT_STATUS_NAMES = [
+  "New Dealer Order",
+  "Ready for Install",
+  "Currently Being Installed",
+  "Fully Installed",
+  ...REPAIR_STATUS_NAMES,
+];
+
+// What still uses one row of each setup table. `from` is the row's column
+// whose value is looked for. Runs use run statuses by NAME and projects and
+// origins use states by CODE (no foreign key), so these are counted here;
+// foreign-key users are also caught by the database when deleting.
+const SETUP_ROW_USAGE = {
+  projectStatuses: [{ table: "proj_t_projects", column: "status_id", from: "status_id", label: "project" }],
+  runStatuses: [{ table: "proj_t_runs", column: "status", from: "status_name", label: "run" }],
+  originAddresses: [{ table: "proj_t_runs", column: "origin_id", from: "id", label: "run" }],
+  states: [
+    { table: "proj_t_projects", column: "state_code", from: "state_code", label: "project" },
+    { table: "proj_s_origin_addresses", column: "state_code", from: "state_code", label: "origin address" },
+  ],
+  buildingCategories: [{ table: "proj_t_projects", column: "building_category_id", from: "id", label: "project" }],
+  permitStatuses: [{ table: "proj_t_projects", column: "permit_status_id", from: "id", label: "project" }],
+  welcomeCallStatuses: [{ table: "proj_t_projects", column: "welcome_call_status_id", from: "id", label: "project" }],
+  paymentMethods: [{ table: "proj_t_projects", column: "payment_method_type", from: "id", label: "project" }],
+};
+
+/**
+ * Permanently deletes one row of a setup grid. Refused when the row is a
+ * status the code relies on by name, or when records still use it (the
+ * message says how many); the Active switch is the way to retire those.
+ */
+export async function deleteSetupTableRow(tableKey, id) {
+  const session = await getCurrentSession();
+  if (!session?.userId) throw new Error("Your sign-in has expired. Please sign in again.");
+
+  const { table, pk } = resolveSetupTable(tableKey);
+  if (id == null || id === "") throw new Error(`${pk} is required.`);
+
+  const supabase = getSupabaseAdmin();
+  const { data: row, error: rowError } = await supabase.from(table).select("*").eq(pk, id).maybeSingle();
+  if (rowError) throw new Error(rowError.message);
+  if (!row) return { success: true };
+
+  const protectedNames = tableKey === "projectStatuses" ? PROTECTED_PROJECT_STATUS_NAMES : tableKey === "runStatuses" ? RUN_STATUSES : [];
+  if (protectedNames.includes(row.status_name)) {
+    throw new Error(`"${row.status_name}" is used by the app itself and cannot be deleted. Switch it off instead.`);
+  }
+
+  for (const usage of SETUP_ROW_USAGE[tableKey] || []) {
+    const value = row[usage.from];
+    if (value == null || value === "") continue;
+    const { count, error } = await supabase.from(usage.table).select("*", { count: "exact", head: true }).eq(usage.column, value);
+    if (error) throw new Error(error.message);
+    if (count > 0) {
+      throw new Error(
+        `This is used by ${count} ${usage.label}${count === 1 ? "" : "s"} and cannot be deleted. Change those first, or switch it off instead.`
+      );
+    }
+  }
+
+  // A status no longer exists for any department once it is deleted.
+  if (tableKey === "projectStatuses") {
+    const { error } = await supabase.from("proj_m_department_project_status").delete().eq("status_id", id);
+    if (error) throw new Error(error.message);
+  }
+
+  const { error } = await supabase.from(table).delete().eq(pk, id);
+  if (error) {
+    // 23503 = another record still points at this row
+    if (error.code === "23503") throw new Error("This is still in use and cannot be deleted. Switch it off instead.");
+    throw new Error(error.message);
+  }
+  return { success: true };
+}
+
 // ─── Project Status Specific Actions ─────────────────────────
 
 export async function createProjectStatus(data) {
@@ -671,6 +750,8 @@ export async function createLookupRow(tableKey, data) {
   const payload = {
     [nameField]: name,
     [descField]: data[descField] ? String(data[descField]).trim() : null,
+    // Only tables with a colour column send it (LookupTableGrid `hasColor`).
+    ...(data.display_color !== undefined && { display_color: data.display_color ? String(data.display_color).trim() : null }),
     display_order: nextOrder,
     is_active: data.is_active === true || data.is_active === "true" || data.is_active === "1",
   };
@@ -716,6 +797,7 @@ export async function updateLookupRow(tableKey, id, data) {
   const payload = {};
   if (data[nameField] !== undefined) payload[nameField] = String(data[nameField]).trim();
   if (data[descField] !== undefined) payload[descField] = data[descField] ? String(data[descField]).trim() : null;
+  if (data.display_color !== undefined) payload.display_color = data.display_color ? String(data.display_color).trim() : null;
   if (data.display_order !== undefined) payload.display_order = Number(data.display_order);
   if (data.is_active !== undefined) payload.is_active = data.is_active === true || data.is_active === "true" || data.is_active === "1";
 
@@ -1030,7 +1112,17 @@ export async function deleteProject(projectId) {
 
 // ─── Run CRUD ──────────────────────────────────────────────
 
+// Run statuses the code relies on by name (defaults, the project-status
+// cascade in updateRun). They cannot be deleted in setup. Any other status
+// added in setup is valid too: see isKnownRunStatus.
 const RUN_STATUSES = ["Draft", "Planned", "Scheduled", "In Progress", "Completed", "Cancelled"];
+
+// A run status is valid when it exists in proj_s_run_status (the setup table).
+async function isKnownRunStatus(supabase, statusName) {
+  if (!statusName) return false;
+  const { data } = await supabase.from("proj_s_run_status").select("status_id").eq("status_name", statusName).maybeSingle();
+  return Boolean(data);
+}
 
 export async function createRun(runData) {
   const supabase = getSupabaseAdmin();
@@ -1040,7 +1132,7 @@ export async function createRun(runData) {
     run_name: runData.run_name ? String(runData.run_name).trim() : null,
     origin_id: runData.origin_id || null,
     run_date: runData.run_date || null,
-    status: RUN_STATUSES.includes(runData.status) ? runData.status : "Draft",
+    status: (await isKnownRunStatus(supabase, runData.status)) ? runData.status : "Draft",
     notes: runData.notes ? String(runData.notes).trim() : null,
     team_assigned: runData.team_assigned ? String(runData.team_assigned).trim() : null,
     vehicle_assigned: runData.vehicle_assigned ? String(runData.vehicle_assigned).trim() : null,
@@ -1131,7 +1223,7 @@ export async function updateRun(runId, updates) {
     payload.run_name = payload.run_name ? String(payload.run_name).trim() : null;
   }
 
-  if (payload.status && !RUN_STATUSES.includes(payload.status)) {
+  if (payload.status && !(await isKnownRunStatus(supabase, payload.status))) {
     payload.status = "Draft";
   }
 

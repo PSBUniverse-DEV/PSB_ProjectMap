@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Form } from "react-bootstrap";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -17,7 +17,7 @@ import { Button, Modal, TableZ, toastSuccess, toastError } from "@/shared/compon
  * @param {Function} props.onUpdate - Async function to update a record
  * @param {Function} props.onToggle - Async function to toggle active status
  * @param {Function} props.onReorder - Async function to reorder records
- * @param {Function} props.onDelete - Async function to soft-delete a record
+ * @param {Function} props.onDelete - Async function to permanently delete a record
  * @param {Function} props.onRefresh - Optional callback after successful operations
  *
  * @param {Object} props.config
@@ -54,7 +54,6 @@ export default function LookupTableGrid({
     idField = "id",
     hasOrder = true,
     hasActive = true,
-    softDelete = true,
     extraFields = [],
     extraColumns = [],
   } = config;
@@ -71,6 +70,11 @@ export default function LookupTableGrid({
   // ─── Local data ────────────────────────────────────────────
   const [localData, setLocalData] = useState(null);
   const displayData = localData ?? data;
+
+  // Fresh server data replaces the local optimistic copy, so saved edits show.
+  useEffect(() => {
+    setLocalData(null);
+  }, [data]);
 
   // ─── Filtering & Search ────────────────────────────────────
   const filteredData = useMemo(() => {
@@ -244,14 +248,9 @@ export default function LookupTableGrid({
     setBusy(true);
     try {
       await onDelete(confirmDelete[idField]);
-      toastSuccess(`${singularName} ${softDelete ? "deactivated" : "deleted"}.`, "Delete");
+      toastSuccess(`${singularName} deleted.`, "Delete");
       setConfirmDelete(null);
-      setLocalData((prev) => {
-        const base = prev ?? data;
-        return base.map((r) =>
-          r[idField] === confirmDelete[idField] ? { ...r, is_active: false } : r
-        );
-      });
+      setLocalData((prev) => (prev ?? data).filter((r) => r[idField] !== confirmDelete[idField]));
       router.refresh();
       onRefresh?.();
     } catch (err) {
@@ -259,7 +258,7 @@ export default function LookupTableGrid({
     } finally {
       setBusy(false);
     }
-  }, [confirmDelete, data, idField, onDelete, singularName, softDelete, router, onRefresh]);
+  }, [confirmDelete, data, idField, onDelete, singularName, router, onRefresh]);
 
   // ─── Render Helpers ────────────────────────────────────────
 
@@ -344,12 +343,12 @@ export default function LookupTableGrid({
     },
     {
       key: "delete",
-      label: softDelete ? "Deactivate" : "Delete",
-      icon: softDelete ? "ban" : "trash",
-      type: softDelete ? "secondary" : "danger",
+      label: "Delete",
+      icon: "trash",
+      type: "danger",
       onClick: (row) => setConfirmDelete(row),
     },
-  ], [openEdit, softDelete]);
+  ], [openEdit]);
 
   // ─── Render ────────────────────────────────────────────────
 
@@ -527,10 +526,10 @@ export default function LookupTableGrid({
       <Modal show={!!confirmDelete} onHide={() => setConfirmDelete(null)} title={`Delete ${singularName}`}>
         <div className="ltg-delete-modal">
           <p className="ltg-delete-msg">
-            This {singularName.toLowerCase()} may already be referenced by existing projects.
+            Permanently delete <strong>{confirmDelete?.[nameField]}</strong>? This cannot be undone.
           </p>
           <p className="ltg-delete-msg">
-            The {singularName.toLowerCase()} will be {softDelete ? "deactivated instead of permanently removed" : "permanently removed"}.
+            If records still use it, it will not be deleted. Use the Active switch to turn it off instead.
           </p>
           <div className="ltg-modal-actions">
             <Button variant="secondary" onClick={() => setConfirmDelete(null)}>Cancel</Button>

@@ -439,8 +439,6 @@ export default function ProjectMapSetupView({ setup = {}, departments = [], depa
       descLabel: "Description",
       searchFields: "method_name,method_description",
       hasColor: false,
-      hasOrder: false,
-      hasActive: false,
     },
   };
 
@@ -458,12 +456,6 @@ export default function ProjectMapSetupView({ setup = {}, departments = [], depa
         onUpdate: updateState,
         onToggle: toggleStateActive,
         onReorder: reorderStates,
-        onDelete: (id) => deleteSetupTableRow(tableKey, id),
-      }
-    : tableKey === "paymentMethods"
-    ? {
-        onCreate: (payload) => createSetupRow(tableKey, payload),
-        onUpdate: (id, payload) => updateSetupRow(tableKey, id, payload),
         onDelete: (id) => deleteSetupTableRow(tableKey, id),
       }
     : {

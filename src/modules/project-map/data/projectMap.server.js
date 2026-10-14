@@ -41,7 +41,11 @@ export async function loadProjectMapSetup() {
       .select("*")
       .order("display_order", { ascending: true })
       .order("status_name", { ascending: true }),
-    originAddresses: supabase.from("proj_s_origin_addresses").select("*").order("origin_name"),
+    originAddresses: supabase
+      .from("proj_s_origin_addresses")
+      .select("*")
+      .order("display_order", { ascending: true })
+      .order("origin_name", { ascending: true }),
     states: supabase
       .from("proj_s_states")
       .select("*")
@@ -70,6 +74,7 @@ export async function loadProjectMapSetup() {
     paymentMethods: supabase
       .from("proj_s_payment_method")
       .select("*")
+      .order("display_order", { ascending: true })
       .order("method_name", { ascending: true }),
   };
 

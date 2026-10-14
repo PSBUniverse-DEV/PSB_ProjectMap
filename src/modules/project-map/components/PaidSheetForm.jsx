@@ -384,7 +384,10 @@ export default function PaidSheetForm({
                           {paymentMethods.length === 0 ? (
                             <span style={{ fontStyle: "italic", color: "#64748b" }}>No payment methods configured.</span>
                           ) : (
-                            paymentMethods.map((m) => (
+                            // Switched-off methods are hidden, unless this stop already uses one.
+                            paymentMethods
+                              .filter((m) => m.is_active !== false || String(v.payment_method_type) === String(m.id))
+                              .map((m) => (
                               <label key={m.id} style={{ display: "flex", alignItems: "center", gap: "5px", fontSize: "12px", color: "#1e293b", cursor: "pointer", whiteSpace: "nowrap" }}>
                                 <input
                                   type="radio"

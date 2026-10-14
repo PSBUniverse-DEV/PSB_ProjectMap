@@ -4,12 +4,13 @@ import { useState, useMemo, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Form } from "react-bootstrap";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faPlus, faPen, faTrash, faMagnifyingGlass } from "@fortawesome/free-solid-svg-icons";
-import { Button, Modal, toastSuccess, toastError } from "@/shared/components/ui";
+import { faPlus, faMagnifyingGlass } from "@fortawesome/free-solid-svg-icons";
+import { Button, Modal, TableZ, toastSuccess, toastError } from "@/shared/components/ui";
 import {
   createOriginAddress,
   updateOriginAddress,
   toggleOriginAddressActive,
+  reorderOriginAddresses,
   deleteOriginAddress,
 } from "../data/projectMap.actions";
 import LocationSearch from "./LocationSearch";
@@ -20,7 +21,9 @@ import { stripTownshipLabel } from "../data/projectMap.data";
  * OriginAddressesGrid — Dedicated admin grid for managing origin addresses.
  *
  * Features:
- *  - Grid columns: Actions, Origin Name, Formatted Address, Active
+ *  - Same layout as the other setup grids (LookupTableGrid): All / Active /
+ *    Inactive filter, drag to reorder (display_order), Active switch, delete
+ *  - Grid columns: Actions, Order, Origin Name, Formatted Address, Active
  *  - Active toggle inline (immediate DB update)
  *  - Search across name and formatted_address
  *  - Add/Edit modal with LocationSearch (auto-populates all address fields, hidden from user)
@@ -34,6 +37,7 @@ export default function OriginAddressesGrid({ data = [], onRefresh }) {
 
   // ─── State ─────────────────────────────────────────────────
   const [searchValue, setSearchValue] = useState("");
+  const [filterActive, setFilterActive] = useState("all"); // "all" | "active" | "inactive"
   const [modalMode, setModalMode] = useState(null); // "add" | "edit" | null
   const [modalDraft, setModalDraft] = useState({});
   const [editingRow, setEditingRow] = useState(null);
@@ -53,14 +57,17 @@ export default function OriginAddressesGrid({ data = [], onRefresh }) {
 
   // ─── Search ─────────────────────────────────────────────────
   const filteredData = useMemo(() => {
-    if (!searchValue.trim()) return displayData;
+    let result = displayData;
+    if (filterActive === "active") result = result.filter((r) => r.is_active === true);
+    else if (filterActive === "inactive") result = result.filter((r) => r.is_active !== true);
+    if (!searchValue.trim()) return result;
     const q = searchValue.toLowerCase();
-    return displayData.filter((r) => {
+    return result.filter((r) => {
       const name = (r.origin_name || "").toLowerCase();
       const addr = (r.formatted_address || "").toLowerCase();
       return name.includes(q) || addr.includes(q);
     });
-  }, [displayData, searchValue]);
+  }, [displayData, filterActive, searchValue]);
 
   // ─── Active Toggle ─────────────────────────────────────────
 
@@ -249,43 +256,111 @@ export default function OriginAddressesGrid({ data = [], onRefresh }) {
     }
   }, [confirmDelete, data, router, onRefresh]);
 
-  // ─── Render Helpers ────────────────────────────────────────
+  // ─── Drag & Drop (same order numbering as LookupTableGrid) ─
 
-  const renderActiveBadge = (isActive) => {
-    return (
-      <span className={`oag-status-badge oag-status-badge--${isActive ? "active" : "inactive"}`}>
-        {isActive ? "ON" : "OFF"}
-      </span>
-    );
-  };
+  const handleReorder = useCallback(async (nextRows) => {
+    const reordered = nextRows.map((item, index) => ({ ...item, display_order: (index + 1) * 10 }));
+    setLocalData(reordered);
+    try {
+      await reorderOriginAddresses(reordered.map((item) => ({ id: item.id, display_order: item.display_order })));
+      toastSuccess("Display order updated.", "Reorder");
+      router.refresh();
+      onRefresh?.();
+    } catch (err) {
+      toastError(err?.message || "Unable to update display order. Please try again.", "Reorder");
+      setLocalData(null);
+    }
+  }, [router, onRefresh]);
+
+  // ─── Table (same look as LookupTableGrid) ──────────────────
+
+  const tableColumns = useMemo(() => [
+    {
+      key: "display_order",
+      label: "Order",
+      sortable: true,
+      width: 86,
+      render: (row) => row.display_order ?? "",
+    },
+    {
+      key: "origin_name",
+      label: "Origin Name",
+      sortable: true,
+      minWidth: 150,
+      render: (row) => <span className="ltg-name">{row.origin_name}</span>,
+    },
+    {
+      key: "formatted_address",
+      label: "Formatted Address",
+      sortable: true,
+      minWidth: 260,
+      render: (row) => <span className="ltg-description">{stripTownshipLabel(row.formatted_address) || "--"}</span>,
+    },
+    {
+      key: "is_active",
+      label: "Active",
+      sortable: true,
+      width: 120,
+      render: (row) => (
+        <div className="ltg-active-cell">
+          <Form.Check
+            type="switch"
+            id={`active-${row.id}`}
+            checked={row.is_active === true}
+            onChange={() => handleToggleActive(row.id, row.is_active === true)}
+            disabled={busy}
+            className="ltg-active-switch"
+          />
+          <span className={`ltg-status-badge ltg-status-badge--${row.is_active === true ? "active" : "inactive"}`}>
+            {row.is_active === true ? "Active" : "Inactive"}
+          </span>
+        </div>
+      ),
+    },
+  ], [busy, handleToggleActive]);
+
+  const tableActions = useMemo(() => [
+    { key: "edit", label: "Edit", icon: "pen", type: "primary", onClick: (row) => openEdit(row) },
+    { key: "delete", label: "Delete", icon: "trash", type: "danger", onClick: (row) => setConfirmDelete(row) },
+  ], [openEdit]);
 
   // ─── Render ────────────────────────────────────────────────
 
   return (
-    <div className="oag-root">
+    <div className="ltg-root">
       {/* ─── Toolbar ─────────────────────────────────────────── */}
-      <div className="oag-toolbar">
-        <div className="oag-toolbar__left">
-          <h2 className="oag-toolbar__title">Origin Addresses</h2>
-          <span className="oag-toolbar__count">
+      <div className="ltg-toolbar">
+        <div className="ltg-toolbar__left">
+          <h2 className="ltg-toolbar__title">Origin Addresses</h2>
+          <span className="ltg-toolbar__count">
             {filteredData.length} record{filteredData.length !== 1 ? "s" : ""}
           </span>
         </div>
-        <div className="oag-toolbar__right">
-          {/* Search */}
-          <div className="oag-search">
-            <FontAwesomeIcon icon={faMagnifyingGlass} className="oag-search__icon" />
+        <div className="ltg-toolbar__right">
+          <div className="ltg-filters">
+            {["all", "active", "inactive"].map((f) => (
+              <button
+                key={f}
+                className={`ltg-filter-btn ${filterActive === f ? "ltg-filter-btn--active" : ""}`}
+                onClick={() => setFilterActive(f)}
+              >
+                {f.charAt(0).toUpperCase() + f.slice(1)}
+              </button>
+            ))}
+          </div>
+
+          <div className="ltg-search">
+            <FontAwesomeIcon icon={faMagnifyingGlass} className="ltg-search__icon" />
             <input
               type="text"
-              className="oag-search__input"
+              className="ltg-search__input"
               placeholder="Search origin addresses..."
               value={searchValue}
               onChange={(e) => setSearchValue(e.target.value)}
             />
           </div>
 
-          {/* Add Button */}
-          <Button variant="success" onClick={openAdd} className="oag-add-btn">
+          <Button variant="success" onClick={openAdd} className="ltg-add-btn">
             <FontAwesomeIcon icon={faPlus} />
             <span>Add Origin Address</span>
           </Button>
@@ -293,85 +368,19 @@ export default function OriginAddressesGrid({ data = [], onRefresh }) {
       </div>
 
       {/* ─── Grid ─────────────────────────────────────────────── */}
-      <div className="oag-grid-wrap">
-        {filteredData.length === 0 ? (
-          <div className="oag-empty">
-            {searchValue ? (
-              <>
-                <p className="oag-empty__title">No matching origin addresses</p>
-                <p className="oag-empty__desc">Try adjusting your search.</p>
-              </>
-            ) : (
-              <>
-                <p className="oag-empty__title">No Origin Addresses</p>
-                <p className="oag-empty__desc">Click "Add Origin Address" to create one.</p>
-              </>
-            )}
-          </div>
-        ) : (
-          <table className="oag-table">
-            <thead>
-              <tr>
-                <th className="oag-col-actions">Actions</th>
-                <th className="oag-col-name">Origin Name</th>
-                <th className="oag-col-address">Formatted Address</th>
-                <th className="oag-col-active">Active</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredData.map((row) => (
-                <tr key={row.id} className="oag-row">
-                  {/* Actions */}
-                  <td className="oag-col-actions">
-                    <div className="oag-actions">
-                      <button
-                        className="oag-action-btn oag-action-btn--edit"
-                        title="Edit"
-                        onClick={() => openEdit(row)}
-                        disabled={busy}
-                      >
-                        <FontAwesomeIcon icon={faPen} />
-                      </button>
-                      <button
-                        className="oag-action-btn oag-action-btn--delete"
-                        title="Delete"
-                        onClick={() => setConfirmDelete(row)}
-                        disabled={busy}
-                      >
-                        <FontAwesomeIcon icon={faTrash} />
-                      </button>
-                    </div>
-                  </td>
-
-                  {/* Origin Name */}
-                  <td className="oag-col-name">
-                    <span className="oag-origin-name">{row.origin_name}</span>
-                  </td>
-
-                  {/* Formatted Address */}
-                  <td className="oag-col-address">
-                    <span className="oag-address">{stripTownshipLabel(row.formatted_address) || "—"}</span>
-                  </td>
-
-                  {/* Active */}
-                  <td className="oag-col-active">
-                    <div className="oag-active-cell">
-                      <Form.Check
-                        type="switch"
-                        id={`active-${row.id}`}
-                        checked={row.is_active === true}
-                        onChange={() => handleToggleActive(row.id, row.is_active === true)}
-                        disabled={busy}
-                        className="oag-active-switch"
-                      />
-                      {renderActiveBadge(row.is_active === true)}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+      <div className="ltg-grid-wrap">
+        <TableZ
+          data={filteredData}
+          columns={tableColumns}
+          rowIdKey="id"
+          actions={tableActions}
+          variant="setup"
+          draggable
+          onReorder={handleReorder}
+          hideSearch
+          hideFooter
+          emptyMessage={searchValue || filterActive !== "all" ? "No matching origin addresses." : "No origin addresses found."}
+        />
       </div>
 
       {/* ─── Add / Edit Modal ────────────────────────────────── */}

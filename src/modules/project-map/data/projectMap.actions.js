@@ -372,7 +372,16 @@ export async function createOriginAddress(data) {
     throw new Error("An origin address with this name already exists.");
   }
 
+  // New addresses go to the bottom of the list.
+  const { data: maxOrder } = await supabase
+    .from("proj_s_origin_addresses")
+    .select("display_order")
+    .order("display_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
   const payload = {
+    display_order: (maxOrder?.display_order ?? 0) + 10,
     origin_name: trimmedName,
     formatted_address: String(data.formatted_address).trim(),
     address_line_1: data.address_line_1 ? String(data.address_line_1).trim() : null,
@@ -446,6 +455,11 @@ export async function updateOriginAddress(id, data) {
 
   if (error) throw new Error(error.message);
   return result;
+}
+
+// Saves the drag-and-drop order of the Origin Addresses setup grid.
+export async function reorderOriginAddresses(updates) {
+  return reorderLookupRows("originAddresses", updates);
 }
 
 export async function toggleOriginAddressActive(id, isActive) {
@@ -702,6 +716,9 @@ const LOOKUP_TABLES = {
   buildingCategories: { table: "proj_s_building_categories", pk: "id", nameField: "building_category_name", descField: "description" },
   permitStatuses: { table: "proj_s_permit_status", pk: "id", nameField: "status_name", descField: "description" },
   welcomeCallStatuses: { table: "proj_s_welcome_call_status", pk: "id", nameField: "status_name", descField: "description" },
+  paymentMethods: { table: "proj_s_payment_method", pk: "id", nameField: "method_name", descField: "method_description" },
+  // Origin addresses only use reorderLookupRows; they have their own create/update/delete.
+  originAddresses: { table: "proj_s_origin_addresses", pk: "id", nameField: "origin_name", descField: "formatted_address" },
 };
 
 function resolveLookupTable(tableKey) {

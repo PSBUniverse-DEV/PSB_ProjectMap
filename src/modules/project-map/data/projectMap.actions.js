@@ -121,7 +121,12 @@ const PROTECTED_PROJECT_STATUS_NAMES = [
 // origins use states by CODE (no foreign key), so these are counted here;
 // foreign-key users are also caught by the database when deleting.
 const SETUP_ROW_USAGE = {
-  projectStatuses: [{ table: "proj_t_projects", column: "status_id", from: "status_id", label: "project" }],
+  projectStatuses: [
+    { table: "proj_t_projects", column: "status_id", from: "status_id", label: "project" },
+    // Status a project had before its run completed (foreign key). Checked here so
+    // department mappings are never removed for a delete the database would refuse.
+    { table: "proj_t_projects", column: "status_before_run_completion_id", from: "status_id", label: "project" },
+  ],
   runStatuses: [{ table: "proj_t_runs", column: "status", from: "status_name", label: "run" }],
   originAddresses: [{ table: "proj_t_runs", column: "origin_id", from: "id", label: "run" }],
   states: [
@@ -894,6 +899,8 @@ export async function loadWelcomeCallStatuses() {
 // ─── Project CRUD ──────────────────────────────────────────
 
 export async function createProject(project) {
+  if (toIntOrNull(project?.status_id) === null) throw new Error("Project status is required.");
+
   const supabase = getSupabaseAdmin();
   const now = new Date().toISOString();
 
@@ -954,6 +961,10 @@ export async function createProject(project) {
 export async function updateProject(projectId, updates) {
   const id = toIntOrNull(projectId);
   if (id === null) throw new Error("projectId is required.");
+  // Only checked when the caller sends a status; other partial updates are untouched.
+  if (Object.prototype.hasOwnProperty.call(updates || {}, "status_id") && toIntOrNull(updates.status_id) === null) {
+    throw new Error("Project status is required.");
+  }
 
   const supabase = getSupabaseAdmin();
   const now = new Date().toISOString();
@@ -1287,7 +1298,7 @@ export async function updateRun(runId, updates) {
 
   let cascadeResult = null;
 
-  // projectStatusByRunStatus / repairStatusByRunStatus are defined above isKnownRunStatus's neighbours (module level).
+  // projectStatusByRunStatus / repairStatusByRunStatus are defined at module level, next to isKnownRunStatus.
   const targetProjectStatusName = previousStatus !== newStatus
     ? projectStatusByRunStatus[newStatus]
     : null;

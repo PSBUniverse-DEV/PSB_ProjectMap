@@ -1505,6 +1505,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
           onChange={(e) => setRemovedStop((prev) => (prev ? { ...prev, statusId: e.target.value } : prev))}
           style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "6px 8px", fontSize: "12px", background: "#fff", marginBottom: "16px" }}
         >
+          <option value="" disabled>Choose a status...</option>
           {statuses
             .filter((s) => s.is_active !== false || String(s.status_id) === removedStop?.statusId)
             .slice()
@@ -1515,7 +1516,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
         </select>
         <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
           <Button variant="secondary" onClick={() => setRemovedStop(null)}>Keep as is</Button>
-          <Button variant="primary" loading={savingRemovedStop} onClick={handleSaveRemovedStopStatus}>Save Status</Button>
+          <Button variant="primary" loading={savingRemovedStop} disabled={!removedStop?.statusId} onClick={handleSaveRemovedStopStatus}>Save Status</Button>
         </div>
       </Modal>
 

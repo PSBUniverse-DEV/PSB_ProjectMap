@@ -260,6 +260,11 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
       return;
     }
 
+    if (!form.status_id) {
+      toastError("Project status is required.", "Validation");
+      return;
+    }
+
     setBusy(true);
     try {
       // Split out the transient description inputs — they are NOT real
@@ -492,7 +497,7 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
           <div style={{ fontSize: "11px", fontWeight: 600, color: "#1e293b", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Workflow Status</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px" }}>
             <div>
-              <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Project Status</label>
+              <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Project Status <span style={{ color: "#dc2626" }}>*</span></label>
               <select
                 value={form.status_id}
                 onChange={(e) => handleChange("status_id", e.target.value)}

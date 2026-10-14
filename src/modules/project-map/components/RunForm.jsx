@@ -199,7 +199,7 @@ export default function RunForm({ show, mode, run, origins = [], runStatuses = [
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
           <div>
-            <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Status</label>
+            <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Status <span style={{ color: "#dc2626" }}>*</span></label>
             <select
               value={form.status}
               onChange={(e) => handleChange("status", e.target.value)}

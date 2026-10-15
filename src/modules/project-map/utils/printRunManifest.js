@@ -14,7 +14,7 @@
  * omitted (e.g. the Run Master List, which does not load route segments), the
  * per-stop distance / travel-time fields simply render as "—".
  */
-import { formatProjectDescriptionForDisplay, stripTownshipLabel, getProjectAmountDisplay, splitRunAmounts } from "../data/projectMap.data";
+import { formatProjectDescriptionForDisplay, stripTownshipLabel, getProjectAmountDisplay, splitRunAmounts, formatDisplayDate } from "../data/projectMap.data";
 
 // --- Formatting helpers (mirror the ones defined in RunDetailPanel.jsx) ---
 
@@ -153,7 +153,7 @@ export function generateRunManifestPrint(run, runProjects, runSegmentData = null
     <html>
     <head>
       <meta charset="UTF-8">
-      <title>Run Manifest — ${run.run_name || "—"} — ${run.run_date || "Unscheduled"}</title>
+      <title>Run Manifest — ${run.run_name || "—"} — ${formatDisplayDate(run.run_date, "Unscheduled")}</title>
       <style>
 
           :root {
@@ -350,7 +350,7 @@ export function generateRunManifestPrint(run, runProjects, runSegmentData = null
             </div>
             <div class="doc-meta">
               <div class="run-code">${run.run_name || "—"}</div>
-              <div class="run-date">${run.run_date ? new Date(run.run_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Unscheduled"}</div>
+              <div class="run-date">${formatDisplayDate(run.run_date, "Unscheduled")}</div>
             </div>
           </div>
 
@@ -369,7 +369,7 @@ export function generateRunManifestPrint(run, runProjects, runSegmentData = null
             </div>
             <div class="info-cell">
               <div class="info-label">Run date</div>
-              <div class="info-value num">${run.run_date ? new Date(run.run_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "&mdash;"}</div>
+              <div class="info-value num">${formatDisplayDate(run.run_date, "&mdash;")}</div>
             </div>
             <div class="info-cell">
               <div class="info-label">Status</div>

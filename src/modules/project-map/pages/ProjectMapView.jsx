@@ -1407,6 +1407,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
           <>
             <button onClick={() => setMode("runs")} style={{ padding: "6px 16px", fontSize: "12px", fontWeight: mode === "runs" ? 600 : 400, border: "none", borderBottom: mode === "runs" ? "2px solid #1e293b" : "2px solid transparent", background: mode === "runs" ? "#f8fafc" : "#fff", color: mode === "runs" ? "#1e293b" : "#64748b", cursor: "pointer" }}>Runs</button>
             <button onClick={() => { startNavbarLoader(); router.push("/project-map/run-master"); }} style={{ padding: "6px 16px", fontSize: "12px", fontWeight: 400, border: "none", borderBottom: "2px solid transparent", background: "#fff", color: "#64748b", cursor: "pointer" }}>📋 Run Master List</button>
+            <button onClick={() => { startNavbarLoader(); router.push("/project-map/calendar"); }} style={{ padding: "6px 16px", fontSize: "12px", fontWeight: 400, border: "none", borderBottom: "2px solid transparent", background: "#fff", color: "#64748b", cursor: "pointer" }}>📅 Run Calendar</button>
           </>
         )}
       </div>

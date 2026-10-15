@@ -14,19 +14,13 @@
  * editable UI lives in PaidSheetForm.jsx; printing always reflects what
  * was already saved.
  */
-import { formatProjectDescriptionForDisplay, isRepairProject, splitRunAmounts } from "../data/projectMap.data";
+import { formatProjectDescriptionForDisplay, isRepairProject, splitRunAmounts, formatDisplayDate } from "../data/projectMap.data";
 export function generatePaidSheetPrint(run, runProjects, paidSheet = null, paymentMethods = []) {
   const now = new Date();
   const printDate = now.toLocaleString("en-US", { month: "long", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
 
-  const formatDate = (val) => {
-    if (!val) return "Unscheduled";
-    try {
-      return new Date(val).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-    } catch {
-      return val;
-    }
-  };
+  // "Oct 19, 2026"; plain dates never shift a day (see formatDisplayDate).
+  const formatDate = (val) => formatDisplayDate(val, "Unscheduled");
 
   const formatCurrency = (value) => {
     if (value == null) return "—";

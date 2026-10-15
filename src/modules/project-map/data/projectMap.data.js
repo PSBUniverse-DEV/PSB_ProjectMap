@@ -44,6 +44,44 @@ export function runStatusKeyByName(runStatuses = [], name) {
   return runStatuses.find((s) => s.status_name === name)?.system_key || "";
 }
 
+/**
+ * Where a run stands against its date, for the Run Calendar. Worked out on
+ * the fly, never stored. `todayKey` is the viewer's date as "YYYY-MM-DD".
+ * - finished: its run status is "completed" or "cancelled" (by system_key)
+ * - onTrack: not finished, dated today or later
+ * - behind: not finished, dated before today
+ * - rescheduled: run_date differs from original_run_date (can be true together with onTrack or behind)
+ */
+export function getRunScheduleState(run, runStatuses = [], todayKey) {
+  const key = runStatusKeyByName(runStatuses, run?.status);
+  const finished = key === "completed" || key === "cancelled";
+  const runDate = String(run?.run_date || "").slice(0, 10);
+  const originalDate = String(run?.original_run_date || "").slice(0, 10);
+  return {
+    finished,
+    onTrack: !finished && Boolean(runDate) && runDate >= todayKey,
+    behind: !finished && Boolean(runDate) && runDate < todayKey,
+    rescheduled: Boolean(runDate) && Boolean(originalDate) && runDate !== originalDate,
+  };
+}
+
+/**
+ * A date as "Oct 19, 2026" (Mon DD, YYYY), the one format Project Map shows.
+ * A plain date ("2026-10-19") is read as that calendar day, so it never shows
+ * a day early in US time zones; a full timestamp uses the viewer's time zone.
+ * Empty or unreadable values return `empty`.
+ */
+export function formatDisplayDate(value, empty = "—") {
+  if (!value) return empty;
+  const text = String(value);
+  const dateOnly = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const date = dateOnly
+    ? new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]))
+    : new Date(text);
+  if (Number.isNaN(date.getTime())) return empty;
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
 export function formatRunCode(runNumber) {
   if (runNumber == null) return null;
   return `PSBR-${String(runNumber).padStart(6, "0")}`;

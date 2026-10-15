@@ -3,7 +3,7 @@
 
 import { useMemo, useState, useEffect } from "react";
 import { StatusBadge, FileAttachments } from "@/shared/components/ui";
-import { formatProjectDescriptionForDisplay, getRunStatusColor, resolveRunStatusOptions, stripTownshipLabel, PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, getProjectAmountDisplay, splitRunAmounts, runStatusKeyByName } from "../data/projectMap.data";
+import { formatProjectDescriptionForDisplay, getRunStatusColor, resolveRunStatusOptions, stripTownshipLabel, PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, getProjectAmountDisplay, splitRunAmounts, runStatusKeyByName, formatDisplayDate } from "../data/projectMap.data";
 import { generateRunManifestPrint } from "../utils/printRunManifest";
 import { loadFiles, createFileUpload, saveUploadedFile, getFileUrl, deleteFile } from "../data/projectMap.actions";
 
@@ -116,7 +116,13 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
             {run.run_code && (
               <div style={{ fontSize: "10px", color: "#94a3b8", marginBottom: "2px" }}>{run.run_code}</div>
             )}
-            <div style={{ fontSize: "10px", color: "#64748b" }}>{run.run_date || "No date"}</div>
+            <div style={{ fontSize: "10px", color: "#64748b" }}>{formatDisplayDate(run.run_date, "No date")}</div>
+            {/* original_run_date is the first date the run was given; shown only when the run was moved. */}
+            {run.run_date && run.original_run_date && String(run.run_date).slice(0, 10) !== String(run.original_run_date).slice(0, 10) && (
+              <div style={{ fontSize: "10px", color: "#d97706", fontWeight: 600 }}>
+                Rescheduled from {formatDisplayDate(run.original_run_date)}
+              </div>
+            )}
           </div>
           <button onClick={onClose} style={{ background: "none", border: "none", fontSize: "18px", cursor: "pointer", color: "#64748b", lineHeight: 1, padding: "0" }}>×</button>
         </div>

@@ -1248,6 +1248,8 @@ export async function createRun(runData) {
     run_name: runData.run_name ? String(runData.run_name).trim() : null,
     origin_id: runData.origin_id || null,
     run_date: runData.run_date || null,
+    // The first date this run was given; the Run Calendar shows "Rescheduled" when run_date moves away from it.
+    original_run_date: runData.run_date || null,
     status: (await isKnownRunStatus(supabase, runData.status)) ? runData.status : await fallbackRunStatusName(supabase),
     notes: runData.notes ? String(runData.notes).trim() : null,
     team_assigned: runData.team_assigned ? String(runData.team_assigned).trim() : null,
@@ -1329,7 +1331,7 @@ export async function updateRun(runId, updates) {
   // "Completed" can be detected (updates only carries the new values).
   const { data: existingRun, error: fetchError } = await supabase
     .from("proj_t_runs")
-    .select("id, status")
+    .select("id, status, original_run_date")
     .eq("id", runId)
     .maybeSingle();
   if (fetchError) throw new Error(fetchError.message);
@@ -1343,6 +1345,12 @@ export async function updateRun(runId, updates) {
 
   if (payload.status && !(await isKnownRunStatus(supabase, payload.status))) {
     payload.status = await fallbackRunStatusName(supabase);
+  }
+
+  // The first date a run is given is kept as original_run_date (never moved
+  // afterwards), so the Run Calendar can tell a rescheduled run.
+  if (payload.run_date && !existingRun?.original_run_date) {
+    payload.original_run_date = payload.run_date;
   }
 
   const { data, error } = await supabase.from("proj_t_runs").update(payload).eq("id", runId).select("*").single();

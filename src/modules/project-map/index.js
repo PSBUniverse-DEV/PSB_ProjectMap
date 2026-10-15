@@ -67,6 +67,7 @@ const projectMapModule = {
     { path: "/project-map", page: "ProjectMapPage" },
     { path: "/project-map/setup", page: "ProjectMapSetupPage" },
     { path: "/project-map/run-master", page: "RunMasterPage" },
+    { path: "/project-map/calendar", page: "RunCalendarPage" },
   ],
 };
 

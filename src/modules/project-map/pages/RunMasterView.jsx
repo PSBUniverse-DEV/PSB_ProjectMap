@@ -14,7 +14,7 @@ import { useRouter } from "next/navigation";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCircleInfo, faCheckCircle, faPrint, faMoneyCheckDollar, faPen, faPaperclip } from "@fortawesome/free-solid-svg-icons";
 import { Button, Modal, toastError, TableZ, FileAttachments } from "@/shared/components/ui";
-import { resolveRunStatusOptions, getRunStatusColor, formatProjectDescriptionForDisplay, stripTownshipLabel, parseStateRoute, getProjectAmountDisplay, splitRunAmounts, PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES } from "../data/projectMap.data";
+import { resolveRunStatusOptions, getRunStatusColor, formatProjectDescriptionForDisplay, stripTownshipLabel, parseStateRoute, getProjectAmountDisplay, splitRunAmounts, PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, formatDisplayDate } from "../data/projectMap.data";
 import { loadRunDetails, loadRuns, loadPaidSheet, loadFiles, createFileUpload, saveUploadedFile, getFileUrl, deleteFile, loadProjectFileCounts } from "../data/projectMap.actions";
 import { generateRunManifestPrint } from "../utils/printRunManifest";
 import { generatePaidSheetPrint } from "../utils/printPaidSheet";
@@ -253,18 +253,8 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
     return `$${Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
-  const formatDate = (dateStr) => {
-    if (!dateStr) return "—";
-    try {
-      return new Date(dateStr).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      });
-    } catch {
-      return "—";
-    }
-  };
+  // "Oct 19, 2026"; plain dates never shift a day (see formatDisplayDate).
+  const formatDate = (dateStr) => formatDisplayDate(dateStr);
 
   const formatDateTime = (val) => {
     if (!val) return "—";

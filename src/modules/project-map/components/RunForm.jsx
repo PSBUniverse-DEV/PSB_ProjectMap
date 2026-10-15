@@ -111,8 +111,10 @@ export default function RunForm({ show, mode, run, origins = [], runStatuses = [
       // the four on every save — a simple rename wiped the estimates until
       // someone recalculated. If the origin changes, the estimates simply stay
       // until the next Recalculate, same as estimated_mileage always has.)
+      // Passed to onSaved so the parent can react to a cancelled run.
+      let savedRun = null;
       if (mode === "edit" && run?.id) {
-        await updateRun(run.id, payload);
+        savedRun = await updateRun(run.id, payload);
         toastSuccess("Run updated.", "Runs");
       } else {
         // A brand-new run has no route estimates yet, so store nulls.
@@ -120,7 +122,7 @@ export default function RunForm({ show, mode, run, origins = [], runStatuses = [
         toastSuccess("Run created.", "Runs");
       }
 
-      onSaved?.();
+      onSaved?.(savedRun);
       onClose?.();
     } catch (err) {
       toastError(err?.message || "Error saving run.", "Runs");
@@ -134,10 +136,10 @@ export default function RunForm({ show, mode, run, origins = [], runStatuses = [
     
     setBusy(true);
     try {
-      await deleteRun(run.id);
+      const deleted = await deleteRun(run.id);
       toastSuccess("Run deleted.", "Runs");
       setShowDeleteConfirm(false);
-      onSaved?.();
+      onSaved?.(deleted);
       onClose?.();
     } catch (err) {
       toastError(err?.message || "Failed to delete run.", "Runs");

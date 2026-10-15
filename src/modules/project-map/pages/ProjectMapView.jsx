@@ -16,6 +16,7 @@ import RunList from "../components/RunList";
 import RunDetailPanel from "../components/RunDetailPanel";
 import RunForm from "../components/RunForm";
 import ProjectSelectorModal from "../components/ProjectSelectorModal";
+import StopStatusPrompt from "../components/StopStatusPrompt";
 import FilterBar from "../components/FilterBar";
 import AddProjectForm from "../components/AddProjectForm";
 import MapSearch from "../components/MapSearch";
@@ -133,9 +134,9 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
   const [showRunForm, setShowRunForm] = useState(false);
   const [editingRun, setEditingRun] = useState(null);
   const [confirmDeleteRunId, setConfirmDeleteRunId] = useState(null);
-  // After a stop is taken off a run: { projectId, clientName, statusId } for the "choose its status now" pop-up.
-  const [removedStop, setRemovedStop] = useState(null);
-  const [savingRemovedStop, setSavingRemovedStop] = useState(false);
+  // "Choose a status" pop-up after stops leave a run (stop removed, run cancelled
+  // or deleted): { title, message, stops: [{ projectId, clientName, statusId }] }.
+  const [stopPrompt, setStopPrompt] = useState(null);
   const [runProjects, setRunProjects] = useState([]);
   const [runRouteData, setRunRouteData] = useState(null);
   const [runRouteLoading, setRunRouteLoading] = useState(false);
@@ -785,6 +786,18 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
     } finally { setRecalculating(false); }
   }, [selectedRunId, selectedRun, refreshRuns]);
 
+  // Opens the status pop-up for the stops of a run that was cancelled or deleted.
+  const promptForReleasedStops = useCallback((stops, wasDeleted) => {
+    if (!Array.isArray(stops) || stops.length === 0) return;
+    setStopPrompt({
+      title: wasDeleted ? "Run Deleted" : "Run Cancelled",
+      message: wasDeleted
+        ? "These projects are no longer on a run. Their statuses have not changed. Choose a new status for any of them, or keep them as they are."
+        : "This run was cancelled. Its projects keep their current statuses. Choose a new status for any of them, or keep them as they are.",
+      stops,
+    });
+  }, []);
+
   const handleRunStatusChange = useCallback(async (newStatus) => {
     if (!selectedRunId) return;
     try {
@@ -820,12 +833,13 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
 
       await refreshRuns();
       toastSuccess("Run status updated.", "Runs");
+      promptForReleasedStops(updatedRun?._releasedStops, false);
     } catch (err) {
       console.error("[ProjectMapView] Failed to update run status:", err);
       toastError(err?.message || "Failed to update run status.", "Runs");
       throw err; // rethrow so RunDetailPanel keeps its editor open for retry
     }
-  }, [selectedRunId, refreshRuns, statuses]);
+  }, [selectedRunId, refreshRuns, statuses, promptForReleasedStops]);
 
   const handleSelectRun = (id) => {
     console.log("[DEBUG] handleSelectRun:", id);
@@ -851,17 +865,25 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
     if (!confirmDeleteRunId) return;
     setBusy(true);
     try {
-      await deleteRun(confirmDeleteRunId);
+      const deleted = await deleteRun(confirmDeleteRunId);
       toastSuccess("Run deleted.", "Runs");
       // Clear ALL run-related state
       clearRunState();
       await refreshRuns();
+      promptForReleasedStops(deleted?.releasedStops, true);
     } catch (err) {
       toastError(err?.message || "Failed to delete run.", "Runs");
     } finally { setBusy(false); }
   };
 
-  const handleRunSaved = () => { setShowRunForm(false); setEditingRun(null); refreshRuns(); };
+  // `result` is what RunForm saved: a deleted run carries `releasedStops`, a cancelled one `_releasedStops`.
+  const handleRunSaved = (result) => {
+    setShowRunForm(false);
+    setEditingRun(null);
+    refreshRuns();
+    if (result?.releasedStops) promptForReleasedStops(result.releasedStops, true);
+    else promptForReleasedStops(result?._releasedStops, false);
+  };
   const handleCloseRunForm = () => { setShowRunForm(false); setEditingRun(null); };
 
   // Re-fetches the currently selected run's details (stop list + header).
@@ -976,10 +998,14 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
       await refreshRunData();
       await refreshRunProjects();
       if (project) {
-        setRemovedStop({
-          projectId: project.id,
-          clientName: project.client_name || "This project",
-          statusId: project.status_id != null ? String(project.status_id) : "",
+        setStopPrompt({
+          title: "Project Removed from Run",
+          message: "This project is no longer on a run. Its status has not changed. Choose its status now, or keep it as is.",
+          stops: [{
+            projectId: project.id,
+            clientName: project.client_name || "This project",
+            statusId: project.status_id != null ? String(project.status_id) : "",
+          }],
         });
       }
     } catch (err) {
@@ -987,17 +1013,10 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
     } finally { setBusy(false); }
   };
 
-  const handleSaveRemovedStopStatus = async () => {
-    if (!removedStop?.statusId) return;
-    setSavingRemovedStop(true);
-    try {
-      await updateProject(removedStop.projectId, { status_id: Number(removedStop.statusId) });
-      toastSuccess("Project status updated.", "Runs");
-      setRemovedStop(null);
-      await refreshProjects();
-    } catch (err) {
-      toastError(err?.message || "Failed to update the project status.", "Runs");
-    } finally { setSavingRemovedStop(false); }
+  // StopStatusPrompt saved at least one status: close it and reload the projects.
+  const handleStopPromptSaved = async () => {
+    setStopPrompt(null);
+    await refreshProjects();
   };
 
   // Unassign entry point for the Project Detail Drawer's "×" button, keyed by
@@ -1500,30 +1519,13 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
         </Modal>
       )}
 
-      {/* Any tab: a stop can be removed from the run panel, the map or the project drawer. */}
-      <Modal show={!!removedStop} onHide={() => setRemovedStop(null)} title="Project Removed from Run">
-        <p style={{ fontSize: "13px", color: "#1e293b", margin: "0 0 10px" }}>
-          <strong>{removedStop?.clientName}</strong> is no longer on a run. Its status has not changed. Choose its status now, or keep it as is.
-        </p>
-        <select
-          value={removedStop?.statusId || ""}
-          onChange={(e) => setRemovedStop((prev) => (prev ? { ...prev, statusId: e.target.value } : prev))}
-          style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "6px 8px", fontSize: "12px", background: "#fff", marginBottom: "16px" }}
-        >
-          <option value="" disabled>Choose a status...</option>
-          {statuses
-            .filter((s) => s.is_active !== false || String(s.status_id) === removedStop?.statusId)
-            .slice()
-            .sort((a, b) => Number(a.display_order ?? 0) - Number(b.display_order ?? 0))
-            .map((s) => (
-              <option key={s.status_id} value={String(s.status_id)}>{s.status_name}</option>
-            ))}
-        </select>
-        <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
-          <Button variant="secondary" onClick={() => setRemovedStop(null)}>Keep as is</Button>
-          <Button variant="primary" loading={savingRemovedStop} disabled={!removedStop?.statusId} onClick={handleSaveRemovedStopStatus}>Save Status</Button>
-        </div>
-      </Modal>
+      {/* Any tab: stops leave a run from the run panel, the map, the project drawer, the run form, or a cancelled or deleted run. */}
+      <StopStatusPrompt
+        prompt={stopPrompt}
+        statuses={statuses}
+        onClose={() => setStopPrompt(null)}
+        onSaved={handleStopPromptSaved}
+      />
 
       {mode === "runs" && (
         <Modal show={!!confirmDeleteRunId} onHide={() => setConfirmDeleteRunId(null)} title="Delete Run">

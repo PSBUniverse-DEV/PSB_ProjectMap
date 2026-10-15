@@ -1422,18 +1422,64 @@ export async function updateRun(runId, updates) {
     }
   }
 
+  // Entering the run status with system_key "cancelled": return the stops so
+  // the screen can ask which project status each should have now. Stops stay
+  // on the run. A failure here is logged; the run itself saved fine.
+  let releasedStops = null;
+  if (previousStatus !== newStatus) {
+    try {
+      const { data: newRunStatus } = await supabase
+        .from("proj_s_run_status")
+        .select("system_key")
+        .eq("status_name", newStatus)
+        .maybeSingle();
+      if (newRunStatus?.system_key === "cancelled") {
+        releasedStops = await loadRunStopStatuses(supabase, runId);
+      }
+    } catch (err) {
+      console.error(`[updateRun] Could not read the stops of cancelled run #${runId}:`, err?.message ?? err);
+    }
+  }
+
   // Attach cascade metadata only when it actually ran, so callers that don't
   // care (RunForm, PaidSheetForm, route-estimate saves) see the plain run row
   // exactly as before and nothing can be mistaken for a real column.
   return {
     ...data,
     ...(cascadeResult ? { _cascadedStatusByProjectId: cascadeResult.statusByProjectId } : {}),
+    ...(releasedStops?.length ? { _releasedStops: releasedStops } : {}),
   };
+}
+
+// One run's stops with each project's current status, for the "choose a
+// status" pop-up shown after the run is cancelled or deleted.
+async function loadRunStopStatuses(supabase, runId) {
+  const { data, error } = await supabase
+    .from("proj_t_run_projects")
+    .select("project_id, proj_t_projects(id, client_name, status_id)")
+    .eq("run_id", runId)
+    .order("stop_sequence");
+  if (error) throw error;
+  return (data || [])
+    .filter((row) => row.proj_t_projects)
+    .map((row) => ({
+      projectId: row.project_id,
+      clientName: row.proj_t_projects.client_name || "Untitled",
+      statusId: row.proj_t_projects.status_id != null ? String(row.proj_t_projects.status_id) : "",
+    }));
 }
 
 export async function deleteRun(runId) {
   const supabase = getSupabaseAdmin();
-  
+
+  // Read the stops before they are removed, so the screen can ask which status each should have now.
+  let releasedStops = [];
+  try {
+    releasedStops = await loadRunStopStatuses(supabase, runId);
+  } catch (err) {
+    console.error(`[deleteRun] Could not read the stops of run #${runId}:`, err?.message ?? err);
+  }
+
   // Remove the run's stored attachments (their rows cascade with the run)
   await removeStoredFiles(supabase, "run", runId);
 
@@ -1445,7 +1491,7 @@ export async function deleteRun(runId) {
   const { error } = await supabase.from("proj_t_runs").delete().eq("id", runId);
   if (error) throw new Error(error.message);
   
-  return { success: true };
+  return { success: true, releasedStops };
 }
 
 export async function addProjectToRun(runId, projectId, stopSequence = 0) {

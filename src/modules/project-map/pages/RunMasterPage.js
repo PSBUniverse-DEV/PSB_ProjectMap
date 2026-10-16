@@ -14,8 +14,8 @@ import RunMasterView from "./RunMasterView";
 export const dynamic = "force-dynamic";
 
 export default async function RunMasterPage() {
-  // Runs are shown per department. Project tabs are not needed on this page,
-  // so a department with run statuses but no project tabs ("no-mapping") gets in.
+  // Runs are shown per Project Map role. Project tabs are not needed on this page,
+  // so a user whose roles have run statuses but no project tabs ("no-mapping") gets in.
   const access = await loadProjectStatusTabAccess();
   if (access.reason !== "ok" && access.reason !== "no-mapping") {
     return <ProjectMapAccessBlocked access={access} page="Run Master List" />;

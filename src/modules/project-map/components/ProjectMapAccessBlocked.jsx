@@ -1,9 +1,9 @@
 const REASON_MESSAGES = {
-  "no-department": "Your user account has no department, so Project Map cannot be shown.",
-  "no-mapping": "Your department has no project statuses assigned yet, so Project Map cannot be shown.",
+  "no-role": "Your user account has no active Project Map role, so Project Map cannot be shown.",
+  "no-mapping": "Your Project Map roles have no project statuses assigned yet, so Project Map cannot be shown.",
   "no-session": "Your sign-in could not be read, so Project Map cannot be shown.",
   "no-user": "Your user record could not be found, so Project Map cannot be shown.",
-  "no-run-mapping": "Your department has no run statuses assigned yet, so runs cannot be shown.",
+  "no-run-mapping": "Your Project Map roles have no run statuses assigned yet, so runs cannot be shown.",
   error: "Your Project Map access could not be checked.",
 };
 
@@ -18,8 +18,8 @@ export default function ProjectMapAccessBlocked({ access, page = "Project Map" }
     ["User", access?.user?.name || access?.user?.username || "--"],
     ["Email", access?.user?.email || "--"],
     ["User ID", access?.user?.userId ?? "--"],
-    ["Department", access?.department?.name || "None"],
-    ["Department ID", access?.department?.deptId ?? "--"],
+    ["Project Map roles", access?.roles?.length ? access.roles.map((role) => role.name).join(", ") : "None"],
+    ["Role IDs", access?.roles?.length ? access.roles.map((role) => role.roleId).join(", ") : "--"],
     ["Page", page],
   ];
 

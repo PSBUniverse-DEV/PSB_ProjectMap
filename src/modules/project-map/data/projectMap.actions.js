@@ -10,6 +10,7 @@ import {
 import { PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, REPAIR_STATUS_KEYS, PROJECT_COMMENT_MAX_LENGTH } from "./projectMap.data";
 import { getCurrentSession } from "@/core/auth/session.service";
 import { loadProjectStatusTabAccess } from "./projectMap.server";
+import projectMapModule from "../index";
 import {
   getDealerLink,
   linkRecordToDealer,
@@ -17,8 +18,9 @@ import {
   unlinkRecordFromDealer,
 } from "@/core/dealer/dealerLinks";
 
-// This app's key in psb_s_application; identifies its records in psb_m_dealerlink.
-const DEALER_LINK_MODULE_KEY = "project-map";
+// This app's key in psb_s_application (from the module definition in index.js);
+// identifies its records in psb_m_dealerlink.
+const DEALER_LINK_MODULE_KEY = projectMapModule.module_key;
 
 function getSupabaseAdmin() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -114,7 +116,7 @@ const SETUP_ROW_USAGE = {
   projectStatuses: [
     { table: "proj_t_projects", column: "status_id", from: "status_id", label: "project" },
     // Status a project had before its run completed (foreign key). Checked here so
-    // department mappings are never removed for a delete the database would refuse.
+    // role mappings are never removed for a delete the database would refuse.
     { table: "proj_t_projects", column: "status_before_run_completion_id", from: "status_id", label: "project" },
   ],
   runStatuses: [{ table: "proj_t_runs", column: "status", from: "status_name", label: "run" }],
@@ -164,9 +166,9 @@ export async function deleteSetupTableRow(tableKey, id) {
     }
   }
 
-  // A status no longer exists for any department once it is deleted.
+  // A status no longer exists for any role once it is deleted.
   if (tableKey === "projectStatuses") {
-    const { error } = await supabase.from("proj_m_department_project_status").delete().eq("status_id", id);
+    const { error } = await supabase.from("proj_m_role_project_status").delete().eq("status_id", id);
     if (error) throw new Error(error.message);
   }
 
@@ -921,10 +923,102 @@ export async function loadWelcomeCallStatuses() {
   return data || [];
 }
 
+// ─── Edit Access ────────────────────────────────────────────
+//
+// Business rule (agreed with the business owner, Oct 2026): every user with a
+// Project Map role SEES every project and run, but may CHANGE one only while it
+// is in a status ticked for one of their roles in Setup → Role Tabs
+// (editableProjectStatusIds / editableRunStatusNames from
+// loadProjectStatusTabAccess). Anything else is view-only for them.
+// - Moving a project or run into any status is allowed (hand-off to the next
+//   team), even one that is view-only for them afterwards.
+// - New projects and runs can only be created in a status they can edit.
+// - A run's details and stops follow the run's status.
+// - A project counts as editable when its own status is editable OR the run it
+//   is on is editable (stop edits made from inside a run). Deleting a project
+//   needs its own status.
+// - Comments are open to every Project Map user.
+// The screens hide edit controls too; these checks are what enforce the rule.
+
+// Run fields the screen works out by itself whenever a run is opened (also for
+// viewers). They are bookkeeping, not edits, so they skip the status check.
+const RUN_BOOKKEEPING_FIELDS = ["estimated_distance", "estimated_duration", "estimated_mileage", "estimated_subtotal"];
+
+// Access of the signed-in user; throws when they may not use Project Map at all.
+async function requireProjectMapAccess() {
+  const access = await loadProjectStatusTabAccess();
+  if (access.reason === "no-session") throw new Error("Your sign-in has expired. Please sign in again.");
+  if (access.reason !== "ok") throw new Error("You do not have access to Project Map.");
+  return access;
+}
+
+function canEditProjectStatus(access, statusId) {
+  return statusId != null && (access.editableProjectStatusIds || []).includes(String(statusId));
+}
+
+function canEditRunStatus(access, statusName) {
+  return Boolean(statusName) && (access.editableRunStatusNames || []).includes(statusName);
+}
+
+// Throws unless the user may change this run (judged by its current status).
+async function requireRunEdit(supabase, access, runId) {
+  const { data: run, error } = await supabase.from("proj_t_runs").select("id, status").eq("id", runId).maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!run) throw new Error("Run not found.");
+  if (!canEditRunStatus(access, run.status)) {
+    throw new Error(`Runs in "${run.status || "no status"}" are view-only for you.`);
+  }
+}
+
+// Throws unless the user may change the run this stop (proj_t_run_projects row) is on.
+async function requireRunStopEdit(supabase, access, runProjectId) {
+  const { data: stop, error } = await supabase.from("proj_t_run_projects").select("run_id").eq("id", runProjectId).maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!stop) throw new Error("Stop not found.");
+  await requireRunEdit(supabase, access, stop.run_id);
+}
+
+// Throws unless the user may change this project: its own status is editable,
+// or (unless ownStatusOnly) the run it is on is editable.
+async function requireProjectEdit(supabase, access, projectId, { ownStatusOnly = false } = {}) {
+  const { data: project, error } = await supabase
+    .from("proj_t_projects")
+    .select("id, status_id, proj_s_project_status!proj_t_projects_status_id_fkey(status_name)")
+    .eq("id", projectId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!project) throw new Error("Project not found.");
+  if (canEditProjectStatus(access, project.status_id)) return;
+
+  if (!ownStatusOnly) {
+    const { data: stop, error: stopError } = await supabase
+      .from("proj_t_run_projects")
+      .select("proj_t_runs(status)")
+      .eq("project_id", projectId)
+      .maybeSingle();
+    if (stopError) throw new Error(stopError.message);
+    if (canEditRunStatus(access, stop?.proj_t_runs?.status)) return;
+  }
+
+  const statusName = project.proj_s_project_status?.status_name || "no status";
+  throw new Error(`Projects in "${statusName}" are view-only for you.`);
+}
+
+// Files belong to one project or one run; changing them follows that owner.
+async function requireFileOwnerEdit(supabase, access, ownerType, ownerId) {
+  if (ownerType === "project") return requireProjectEdit(supabase, access, ownerId);
+  if (ownerType === "run") return requireRunEdit(supabase, access, ownerId);
+  throw new Error(`Unknown file owner type: "${ownerType}"`);
+}
+
 // ─── Project CRUD ──────────────────────────────────────────
 
 export async function createProject(project) {
   if (toIntOrNull(project?.status_id) === null) throw new Error("Project status is required.");
+  const access = await requireProjectMapAccess();
+  if (!canEditProjectStatus(access, project.status_id)) {
+    throw new Error("You can only create projects in a status you can edit.");
+  }
 
   const supabase = getSupabaseAdmin();
   const now = new Date().toISOString();
@@ -992,6 +1086,8 @@ export async function updateProject(projectId, updates) {
   }
 
   const supabase = getSupabaseAdmin();
+  // Judged by the project's CURRENT status (or its run), so moving it into any status is allowed.
+  await requireProjectEdit(supabase, await requireProjectMapAccess(), id);
   const now = new Date().toISOString();
 
   // Per-field normalizers — applied only when the caller passed that field.
@@ -1037,6 +1133,7 @@ export async function updateProjectPaymentInfo(projectId, updates) {
   if (id === null) throw new Error("projectId is required.");
 
   const supabase = getSupabaseAdmin();
+  await requireProjectEdit(supabase, await requireProjectMapAccess(), id);
   const now = new Date().toISOString();
 
   const payload = {
@@ -1083,6 +1180,7 @@ export async function loadPaidSheet(runId) {
  */
 export async function upsertPaidSheet(runId, fields) {
   const supabase = getSupabaseAdmin();
+  await requireRunEdit(supabase, await requireProjectMapAccess(), runId);
 
   const payload = {
     run_id: runId,
@@ -1124,6 +1222,7 @@ export async function deleteProject(projectId) {
   if (id === null) throw new Error("projectId is required.");
 
   const supabase = getSupabaseAdmin();
+  await requireProjectEdit(supabase, await requireProjectMapAccess(), id, { ownStatusOnly: true });
 
   // Remove the project's stored attachments (their rows cascade with the project)
   await removeStoredFiles(supabase, "project", id);
@@ -1242,6 +1341,7 @@ async function matchProjectStatusToRun(supabase, runId, projectId) {
 
 export async function createRun(runData) {
   const supabase = getSupabaseAdmin();
+  const access = await requireProjectMapAccess();
   const now = new Date().toISOString();
 
   const payload = {
@@ -1261,6 +1361,10 @@ export async function createRun(runData) {
     created_at: now,
     updated_at: now,
   };
+
+  if (!canEditRunStatus(access, payload.status)) {
+    throw new Error("You can only create runs in a status you can edit.");
+  }
 
   const { data: inserted, error: insertError } = await supabase.from("proj_t_runs").insert(payload).select("*").single();
   if (insertError) throw new Error(insertError.message);
@@ -1325,6 +1429,11 @@ export async function createRun(runData) {
  */
 export async function updateRun(runId, updates) {
   const supabase = getSupabaseAdmin();
+  // Judged by the run's CURRENT status, so moving it into any status is allowed.
+  // Route-estimate saves are bookkeeping and skip the check.
+  const access = await requireProjectMapAccess();
+  const bookkeepingOnly = Object.keys(updates || {}).every((key) => RUN_BOOKKEEPING_FIELDS.includes(key));
+  if (!bookkeepingOnly) await requireRunEdit(supabase, access, runId);
   const now = new Date().toISOString();
 
   // Read the run's current status before writing so the transition into
@@ -1479,6 +1588,7 @@ async function loadRunStopStatuses(supabase, runId) {
 
 export async function deleteRun(runId) {
   const supabase = getSupabaseAdmin();
+  await requireRunEdit(supabase, await requireProjectMapAccess(), runId);
 
   // Read the stops before they are removed, so the screen can ask which status each should have now.
   let releasedStops = [];
@@ -1504,6 +1614,7 @@ export async function deleteRun(runId) {
 
 export async function addProjectToRun(runId, projectId, stopSequence = 0) {
   const supabase = getSupabaseAdmin();
+  await requireRunEdit(supabase, await requireProjectMapAccess(), runId);
   const pid = Number(projectId);
 
   // Check if project is already assigned to ANY run (including this one)
@@ -1574,6 +1685,7 @@ export async function getProjectRunAssignment(projectId) {
 
 export async function removeProjectFromRun(runProjectId) {
   const supabase = getSupabaseAdmin();
+  await requireRunStopEdit(supabase, await requireProjectMapAccess(), runProjectId);
   const { error } = await supabase.from("proj_t_run_projects").delete().eq("id", runProjectId);
   if (error) throw new Error(error.message);
   return { success: true };
@@ -1581,6 +1693,7 @@ export async function removeProjectFromRun(runProjectId) {
 
 export async function updateStopSequence(runProjectId, stopSequence) {
   const supabase = getSupabaseAdmin();
+  await requireRunStopEdit(supabase, await requireProjectMapAccess(), runProjectId);
   const { data, error } = await supabase.from("proj_t_run_projects").update({ stop_sequence: Number(stopSequence) }).eq("id", runProjectId).select("*").single();
   if (error) throw new Error(error.message);
   return data;
@@ -1588,6 +1701,7 @@ export async function updateStopSequence(runProjectId, stopSequence) {
 
 export async function updateStopNote(runProjectId, notes) {
   const supabase = getSupabaseAdmin();
+  await requireRunStopEdit(supabase, await requireProjectMapAccess(), runProjectId);
   const normalizedNotes = notes || null;
 
   const { data, error } = await supabase
@@ -1612,6 +1726,8 @@ export async function updateStopNote(runProjectId, notes) {
 }
 
 export async function updateRunStopsCount(runId, count) {
+  // Bookkeeping saved whenever anyone opens a run, viewers included: role only.
+  await requireProjectMapAccess();
   const supabase = getSupabaseAdmin();
   const { error } = await supabase.from("proj_t_runs").update({ stops: count }).eq("id", runId);
   if (error) throw new Error(error.message);
@@ -1619,7 +1735,7 @@ export async function updateRunStopsCount(runId, count) {
 }
 
 export async function loadRuns() {
-  // Same rule as the page load: only runs in statuses this user's department may see.
+  // Same rule as the page load: only runs in statuses this user's Project Map roles may see.
   // Called from the browser, so access is always looked up here, never passed in.
   const access = await loadProjectStatusTabAccess();
   const statusNames = access.allowedRunStatusNames || [];
@@ -1678,7 +1794,7 @@ export async function loadRuns() {
 export async function loadProjects() {
   // Same rule as the page load (see ProjectMapPage): users who can see runs get
   // every project because the Runs tab needs them; everyone else gets only the
-  // statuses their department may see.
+  // statuses their Project Map roles may see.
   const access = await loadProjectStatusTabAccess();
   if (access.reason !== "ok") return [];
 
@@ -2018,6 +2134,7 @@ export async function loadFiles(ownerType, ownerId) {
  */
 export async function createFileUpload(ownerType, ownerId, file) {
   const { folder, id } = resolveFileOwner(ownerType, ownerId);
+  await requireFileOwnerEdit(getSupabaseAdmin(), await requireProjectMapAccess(), ownerType, id);
   return createSignedFileUpload({
     bucket: FILES_BUCKET,
     folder: `${folder}/${id}`,
@@ -2039,6 +2156,7 @@ export async function saveUploadedFile(ownerType, ownerId, storagePath, file) {
   }
 
   const supabase = getSupabaseAdmin();
+  await requireFileOwnerEdit(supabase, await requireProjectMapAccess(), ownerType, id);
   const { data, error } = await supabase
     .from("proj_t_files")
     .insert({
@@ -2074,9 +2192,13 @@ export async function deleteFile(fileId) {
   if (id === null) throw new Error("fileId is required.");
 
   const supabase = getSupabaseAdmin();
-  const { data: row, error } = await supabase.from("proj_t_files").select("storage_path").eq("id", id).maybeSingle();
+  const { data: row, error } = await supabase.from("proj_t_files").select("storage_path, project_id, run_id").eq("id", id).maybeSingle();
   if (error) throw new Error(error.message);
   if (!row) return { success: true };
+
+  const access = await requireProjectMapAccess();
+  if (row.project_id != null) await requireFileOwnerEdit(supabase, access, "project", row.project_id);
+  else if (row.run_id != null) await requireFileOwnerEdit(supabase, access, "run", row.run_id);
 
   await removeStorageObjects({ bucket: FILES_BUCKET, storagePaths: [row.storage_path] });
 
@@ -2161,6 +2283,8 @@ export async function addProjectComment(projectId, text, fallbackAuthor = null) 
     throw new Error(`Comment must be ${PROJECT_COMMENT_MAX_LENGTH} characters or fewer.`);
   }
 
+  // Comments are open to every Project Map user, whatever their status access.
+  await requireProjectMapAccess();
   const author = await resolveCommentAuthor(fallbackAuthor);
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
@@ -2191,6 +2315,7 @@ export async function deleteProjectComment(commentId, fallbackAuthor = null) {
   if (error) throw new Error(error.message);
   if (!row) return { success: true };
 
+  await requireProjectMapAccess();
   const author = await resolveCommentAuthor(fallbackAuthor);
   if (row.created_by == null || author.userId == null || Number(row.created_by) !== author.userId) {
     throw new Error("You can only delete your own comments.");
@@ -2236,6 +2361,7 @@ export async function loadProjectDealerOptions(projectId) {
 export async function setProjectDealerLink(projectId, dealerId) {
   const id = toIntOrNull(projectId);
   if (id === null) throw new Error("projectId is required.");
+  await requireProjectEdit(getSupabaseAdmin(), await requireProjectMapAccess(), id);
 
   if (!hasValue(dealerId)) {
     await unlinkRecordFromDealer({ moduleKey: DEALER_LINK_MODULE_KEY, recordId: id });
@@ -2252,22 +2378,22 @@ export async function setProjectDealerLink(projectId, dealerId) {
   return { linked: true, dealer };
 }
 
-// ─── Department Status Tabs ──────────────────────────────────
+// ─── Role Status Tabs ────────────────────────────────────────
 
-// Writes only the difference between what a department has and what it should have.
-async function replaceDepartmentStatusRows(table, deptId, statusIds) {
+// Writes only the difference between what a role has and what it should have.
+async function replaceRoleStatusRows(table, roleId, statusIds) {
   const session = await getCurrentSession();
   if (!session?.userId) throw new Error("Your sign-in has expired. Please sign in again.");
 
-  const departmentId = Number(deptId);
-  if (!departmentId) throw new Error("Department is required.");
+  const targetRoleId = Number(roleId);
+  if (!targetRoleId) throw new Error("Role is required.");
   const wanted = [...new Set((Array.isArray(statusIds) ? statusIds : []).map(Number).filter(Boolean))];
 
   const supabase = getSupabaseAdmin();
   const { data: current, error: loadError } = await supabase
     .from(table)
     .select("status_id")
-    .eq("dept_id", departmentId);
+    .eq("role_id", targetRoleId);
   if (loadError) throw new Error(loadError.message);
 
   const existing = (current || []).map((row) => Number(row.status_id));
@@ -2275,14 +2401,14 @@ async function replaceDepartmentStatusRows(table, deptId, statusIds) {
   const toRemove = existing.filter((id) => !wanted.includes(id));
 
   if (toRemove.length > 0) {
-    const { error } = await supabase.from(table).delete().eq("dept_id", departmentId).in("status_id", toRemove);
+    const { error } = await supabase.from(table).delete().eq("role_id", targetRoleId).in("status_id", toRemove);
     if (error) throw new Error(error.message);
   }
 
   if (toAdd.length > 0) {
     const { error } = await supabase
       .from(table)
-      .insert(toAdd.map((statusId) => ({ dept_id: departmentId, status_id: statusId })));
+      .insert(toAdd.map((statusId) => ({ role_id: targetRoleId, status_id: statusId })));
     if (error) throw new Error(error.message);
   }
 
@@ -2290,17 +2416,17 @@ async function replaceDepartmentStatusRows(table, deptId, statusIds) {
 }
 
 /**
- * Sets which project status tabs a department sees. `statusIds` is the full
- * list the department should end up with.
+ * Sets which project status tabs a Project Map role gives. `statusIds` is the
+ * full list the role should end up with.
  */
-export async function saveDepartmentStatusTabs(deptId, statusIds) {
-  return replaceDepartmentStatusRows("proj_m_department_project_status", deptId, statusIds);
+export async function saveRoleStatusTabs(roleId, statusIds) {
+  return replaceRoleStatusRows("proj_m_role_project_status", roleId, statusIds);
 }
 
 /**
- * Sets which run statuses a department sees. `statusIds` is the full list of
- * proj_s_run_status ids the department should end up with.
+ * Sets which run statuses a Project Map role gives. `statusIds` is the full
+ * list of proj_s_run_status ids the role should end up with.
  */
-export async function saveDepartmentRunStatuses(deptId, statusIds) {
-  return replaceDepartmentStatusRows("proj_m_department_run_status", deptId, statusIds);
+export async function saveRoleRunStatuses(roleId, statusIds) {
+  return replaceRoleStatusRows("proj_m_role_run_status", roleId, statusIds);
 }

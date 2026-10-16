@@ -102,7 +102,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
   const [routeLoading, setRouteLoading] = useState(false);
   const prevSearchRef = useRef("");
   const [loadedProjects, setProjects] = useState(initialProjects);
-  // `projects` is the Projects tab's list: only statuses this department may
+  // `projects` is the Projects tab's list: only statuses this user's roles may
   // see, so a project moved to another status drops out at once. The Runs tab
   // reads `loadedProjects` instead (project statuses do not apply there).
   // A missing prop means no restriction.
@@ -118,7 +118,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
 
   // Runs state — local copy so we can update it after mutations
   const [loadedRuns, setRuns] = useState(initialRuns);
-  // A run moved to a status this department cannot see drops out at once,
+  // A run moved to a status this user's roles cannot see drops out at once,
   // without waiting for the next sync. A missing prop means no restriction.
   const runs = useMemo(() => {
     const names = statusTabAccess?.allowedRunStatusNames;
@@ -143,7 +143,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
   const [showProjectSelector, setShowProjectSelector] = useState(false);
   const [runSegmentData, setRunSegmentData] = useState(null);
   const [showRouteErrorModal, setShowRouteErrorModal] = useState(false);
-  // Status tabs are shown per department. Users with none never reach this
+  // Status tabs are shown per Project Map role. Users with none never reach this
   // view (ProjectMapPage shows a blocked screen). A missing prop means no restriction.
   const visibleTabStatusIds = statusTabAccess ? statusTabAccess.allowedStatusIds : null;
   // Run statuses work the same way: null = no restriction, empty = no runs at all.
@@ -161,7 +161,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
   const [priceValue, setPriceValue] = useState("");
   const [allRunProjects, setAllRunProjects] = useState([]);
   // Opens on the "scheduled" run status (found by system_key, whatever it is
-  // named) when this department may see it; otherwise on "All".
+  // named) when this user's roles may see it; otherwise on "All".
   const [runFilters, setRunFilters] = useState(() => {
     const scheduledName = runStatusNameByKey(runStatuses, "scheduled");
     return {
@@ -229,7 +229,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
   const defaultStatusId = useMemo(() => {
     const status = statuses.find((s) => s.system_key === "new_dealer_order" && s.is_active !== false);
     const id = status ? String(status.status_id) : "";
-    // Only when this department has that tab; otherwise the page opens on "All".
+    // Only when this user's roles give that tab; otherwise the page opens on "All".
     return id && (visibleTabStatusIds === null || visibleTabStatusIds.includes(id)) ? id : "";
   }, [statuses, visibleTabStatusIds]);
 
@@ -554,13 +554,13 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
   const mapProjects = useMemo(() => {
     if (mode !== "runs") return projects;
     const selectedStatuses = Array.isArray(runFilters.status) ? runFilters.status : [];
-    // Every assignment, including runs this department cannot see.
+    // Every assignment, including runs this user's roles cannot see.
     const assignedProjectIds = new Set(allRunProjects.map((rp) => rp.project_id));
     // Runs tab: project statuses do not apply, so start from the full list.
     return loadedProjects.filter((p) => {
       const assignment = projectRunLookup.get(p.id);
       // No visible run: show it only when it is truly unassigned (always
-      // visible for run assignment). On a run this department cannot see, hide it.
+      // visible for run assignment). On a run this user's roles cannot see, hide it.
       if (!assignment) return !assignedProjectIds.has(p.id);
       if (selectedRunId) {
         // A run is open: keep its own stops, hide every other run's pins.
@@ -960,13 +960,13 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
 
   // Live multi-user sync (Supabase Realtime). No-op when the connection
   // cannot be established — see the hook's docs for the failure modes.
-  useProjectMapRealtime(handleRemoteSync);
+  const realtimeConnected = useProjectMapRealtime(handleRemoteSync);
 
-  // Polling safety net: if realtime is unavailable (CHANNEL_ERROR, network
-  // blocking websockets, RLS pending), changes are still picked up within
-  // ~30 seconds. Runs alongside realtime on purpose — when realtime is
-  // healthy, polling only rarely fires as a catch-up.
-  useProjectMapPolling(handleRemoteSync);
+  // Polling safety net: only while realtime is not connected (CHANNEL_ERROR,
+  // network blocking websockets, RLS pending, or still connecting), so changes
+  // are still picked up within ~30 seconds. Off while realtime is healthy to
+  // save server calls.
+  useProjectMapPolling(handleRemoteSync, !realtimeConnected);
 
   const handleAddProjectToRun = async (projectId) => {
     if (!selectedRunId) return;

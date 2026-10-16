@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { getCurrentSession } from "@/core/auth/session.service";
 import { getStatusTabGroupIds } from "./projectMap.data";
+import projectMapModule from "../index";
 
 function getSupabaseAdmin() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -103,16 +104,56 @@ export async function loadProjectMapSetup() {
 
 // ─── Status Tab Access ──────────────────────────────────────
 
-// Run status names mapped to a department (proj_m_department_run_status).
-// Runs store their status as the name, so names are what gets matched. A
-// failed lookup hides runs instead of blocking the whole page.
-async function loadDepartmentRunStatusNames(supabase, deptId) {
+// app_id of the Project Map application. Found by module_key because ids
+// differ between QAS and PROD.
+async function loadProjectMapAppId(supabase) {
+  const { data: app, error } = await supabase
+    .from("psb_s_application")
+    .select("app_id")
+    .eq("module_key", projectMapModule.module_key)
+    .eq("is_active", true)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!app) throw new Error(`No active application with module_key "${projectMapModule.module_key}"`);
+  return app.app_id;
+}
+
+// The signed-in user's active roles in the Project Map application. A role
+// counts only when both the user's assignment and the role itself are active.
+async function loadProjectMapRoles(supabase, userId) {
+  const appId = await loadProjectMapAppId(supabase);
+
+  const { data: assignments, error: assignmentError } = await supabase
+    .from("psb_m_userapproleaccess")
+    .select("role_id")
+    .eq("user_id", userId)
+    .eq("app_id", appId)
+    .eq("is_active", true);
+  if (assignmentError) throw new Error(assignmentError.message);
+
+  const roleIds = [...new Set((assignments || []).map((row) => row.role_id))];
+  if (roleIds.length === 0) return [];
+
+  const { data: roles, error: roleError } = await supabase
+    .from("psb_s_role")
+    .select("role_id, role_name")
+    .in("role_id", roleIds)
+    .eq("is_active", true)
+    .order("role_name", { ascending: true });
+  if (roleError) throw new Error(roleError.message);
+  return (roles || []).map((role) => ({ roleId: role.role_id, name: role.role_name || "" }));
+}
+
+// Run status names mapped to any of the given roles (proj_m_role_run_status),
+// as one combined list. Runs store their status as the name, so names are
+// what gets matched. A failed lookup hides runs instead of blocking the whole page.
+async function loadRoleRunStatusNames(supabase, roleIds) {
   const [mappingResult, statusesResult] = await Promise.all([
-    supabase.from("proj_m_department_run_status").select("status_id").eq("dept_id", deptId),
+    supabase.from("proj_m_role_run_status").select("status_id").in("role_id", roleIds),
     supabase.from("proj_s_run_status").select("status_id, status_name"),
   ]);
   if (mappingResult.error || statusesResult.error) {
-    console.error("[loadDepartmentRunStatusNames]", mappingResult.error?.message || statusesResult.error?.message);
+    console.error("[loadRoleRunStatusNames]", mappingResult.error?.message || statusesResult.error?.message);
     return [];
   }
   const mappedIds = new Set((mappingResult.data || []).map((row) => String(row.status_id)));
@@ -122,25 +163,35 @@ async function loadDepartmentRunStatusNames(supabase, deptId) {
 }
 
 /**
- * Which project status tabs the signed-in user may see.
+ * What the signed-in user may see and change in Project Map.
  *
- * Business rule: tabs are shown per department, from
- * proj_m_department_project_status. A user with no department, or a
- * department with no mapped statuses, cannot open the Project Map at all.
- * For users who do have tabs, `visibleProjectStatusIds` is every status whose
- * projects they may see (their tabs, plus the repair-flow statuses when they
- * have the "Repairs" tab); projects in any other status are never sent to them.
+ * Business rule: a user needs at least one active Project Map role
+ * (psb_m_userapproleaccess for the app whose module_key is "project-map");
+ * without one they cannot open the Project Map at all.
+ * Every Project Map user SEES every project and run status:
+ * `allowedStatusIds` / `visibleProjectStatusIds` hold every project status id,
+ * `allowedRunStatusNames` every run status name.
+ * What they may CHANGE comes from the statuses ticked for their roles in
+ * Setup → Role Tabs (proj_m_role_project_status / proj_m_role_run_status),
+ * all roles combined: `editableProjectStatusIds` (a ticked "Repairs" tab also
+ * covers the repair-flow statuses) and `editableRunStatusNames`. Empty lists
+ * mean view-only. The write actions in projectMap.actions.js enforce this.
  *
- * `allowedRunStatusNames` is the same idea for runs: the run statuses mapped
- * to the department. It is filled even when `reason` is "no-mapping", because
- * the Run Master List does not need project tabs. Empty means no runs at all.
- *
- * `reason` is "ok" when tabs are available; otherwise it says why not, and
- * the page shows it on a blocked screen the user can screenshot for the developers:
- * "no-session" | "no-user" | "no-department" | "no-mapping" | "error".
+ * `reason` is "ok" when the user may open Project Map; otherwise it says why
+ * not, and the page shows it on a blocked screen the user can screenshot for
+ * the developers: "no-session" | "no-user" | "no-role" | "error".
  */
 export async function loadProjectStatusTabAccess() {
-  const access = { reason: "ok", allowedStatusIds: [], visibleProjectStatusIds: [], allowedRunStatusNames: [], user: null, department: null };
+  const access = {
+    reason: "ok",
+    allowedStatusIds: [],
+    visibleProjectStatusIds: [],
+    allowedRunStatusNames: [],
+    editableProjectStatusIds: [],
+    editableRunStatusNames: [],
+    user: null,
+    roles: [],
+  };
 
   try {
     const session = await getCurrentSession();
@@ -149,7 +200,7 @@ export async function loadProjectStatusTabAccess() {
     const supabase = getSupabaseAdmin();
     const { data: user, error: userError } = await supabase
       .from("psb_s_user")
-      .select("user_id, username, email, first_name, last_name, dept_id")
+      .select("user_id, username, email, first_name, last_name")
       .eq("user_id", session.userId)
       .maybeSingle();
     if (userError) throw new Error(userError.message);
@@ -161,26 +212,32 @@ export async function loadProjectStatusTabAccess() {
       username: user.username || "",
       email: user.email || "",
     };
-    if (user.dept_id == null) return { ...access, reason: "no-department" };
+    access.roles = await loadProjectMapRoles(supabase, user.user_id);
+    if (access.roles.length === 0) return { ...access, reason: "no-role" };
+    const roleIds = access.roles.map((role) => role.roleId);
 
-    const [departmentResult, mappingResult, statusesResult] = await Promise.all([
-      supabase.from("psb_s_department").select("dept_id, dept_name").eq("dept_id", user.dept_id).maybeSingle(),
-      supabase.from("proj_m_department_project_status").select("status_id").eq("dept_id", user.dept_id),
+    const [mappingResult, statusesResult, runStatusesResult] = await Promise.all([
+      supabase.from("proj_m_role_project_status").select("status_id").in("role_id", roleIds),
       supabase.from("proj_s_project_status").select("status_id, status_name, is_active, system_key"),
+      supabase.from("proj_s_run_status").select("status_name"),
     ]);
-    if (departmentResult.error) throw new Error(departmentResult.error.message);
     if (mappingResult.error) throw new Error(mappingResult.error.message);
     if (statusesResult.error) throw new Error(statusesResult.error.message);
+    if (runStatusesResult.error) throw new Error(runStatusesResult.error.message);
 
-    access.department = { deptId: user.dept_id, name: departmentResult.data?.dept_name || "" };
-    access.allowedRunStatusNames = await loadDepartmentRunStatusNames(supabase, user.dept_id);
-    access.allowedStatusIds = (mappingResult.data || []).map((row) => String(row.status_id));
-    if (access.allowedStatusIds.length === 0) return { ...access, reason: "no-mapping" };
-
+    // Seeing: every Project Map user sees every project and run status.
     const statuses = statusesResult.data || [];
-    access.visibleProjectStatusIds = [
-      ...new Set(access.allowedStatusIds.flatMap((statusId) => getStatusTabGroupIds(statusId, statuses))),
+    access.allowedStatusIds = statuses.map((status) => String(status.status_id));
+    access.visibleProjectStatusIds = access.allowedStatusIds;
+    access.allowedRunStatusNames = (runStatusesResult.data || []).map((status) => status.status_name);
+
+    // Changing: only the statuses ticked for one of the user's roles. Several
+    // roles can tick the same status, so de-duplicate.
+    const tickedIds = [...new Set((mappingResult.data || []).map((row) => String(row.status_id)))];
+    access.editableProjectStatusIds = [
+      ...new Set(tickedIds.flatMap((statusId) => getStatusTabGroupIds(statusId, statuses))),
     ];
+    access.editableRunStatusNames = await loadRoleRunStatusNames(supabase, roleIds);
 
     return access;
   } catch (error) {
@@ -190,23 +247,32 @@ export async function loadProjectStatusTabAccess() {
 }
 
 /**
- * Data for the "Department Tabs" setup screen: every department, and every
- * department ↔ status row in the project and run mapping tables.
+ * Data for the "Role Tabs" setup screen: every Project Map role (psb_s_role
+ * rows of the app whose module_key is "project-map", switched on or off), and
+ * every role ↔ status row in the project and run mapping tables.
  */
-export async function loadDepartmentStatusMappings() {
+export async function loadRoleStatusMappings() {
   const supabase = getSupabaseAdmin();
-  const [departmentsResult, mappingsResult, runMappingsResult] = await Promise.all([
-    supabase.from("psb_s_department").select("dept_id, dept_name, is_active").order("dept_name", { ascending: true }),
-    supabase.from("proj_m_department_project_status").select("dept_id, status_id"),
-    supabase.from("proj_m_department_run_status").select("dept_id, status_id"),
+  let appId;
+  try {
+    appId = await loadProjectMapAppId(supabase);
+  } catch (error) {
+    console.error("[loadRoleStatusMappings] application:", error?.message);
+    return { roles: [], mappings: [], runMappings: [] };
+  }
+
+  const [rolesResult, mappingsResult, runMappingsResult] = await Promise.all([
+    supabase.from("psb_s_role").select("role_id, role_name, is_active").eq("app_id", appId).order("role_name", { ascending: true }),
+    supabase.from("proj_m_role_project_status").select("role_id, status_id"),
+    supabase.from("proj_m_role_run_status").select("role_id, status_id"),
   ]);
 
-  if (departmentsResult.error) console.error("[loadDepartmentStatusMappings] departments:", departmentsResult.error.message);
-  if (mappingsResult.error) console.error("[loadDepartmentStatusMappings] mappings:", mappingsResult.error.message);
-  if (runMappingsResult.error) console.error("[loadDepartmentStatusMappings] run mappings:", runMappingsResult.error.message);
+  if (rolesResult.error) console.error("[loadRoleStatusMappings] roles:", rolesResult.error.message);
+  if (mappingsResult.error) console.error("[loadRoleStatusMappings] mappings:", mappingsResult.error.message);
+  if (runMappingsResult.error) console.error("[loadRoleStatusMappings] run mappings:", runMappingsResult.error.message);
 
   return {
-    departments: departmentsResult.data || [],
+    roles: rolesResult.data || [],
     mappings: mappingsResult.data || [],
     runMappings: runMappingsResult.data || [],
   };
@@ -232,7 +298,7 @@ export async function loadAllRunStatuses() {
 // ─── Runs Loader ────────────────────────────────────────────
 
 export async function loadRuns(access) {
-  // Only runs in statuses this user's department may see. A page that has
+  // Only runs in statuses this user's Project Map roles may see. A page that has
   // already looked access up passes it in to save a second lookup.
   const runAccess = access || (await loadProjectStatusTabAccess());
   const statusNames = runAccess.allowedRunStatusNames || [];

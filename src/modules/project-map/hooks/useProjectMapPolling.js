@@ -23,16 +23,18 @@ import { getProjectMapVersion } from "../data/projectMap.actions";
  *
  * Business rules:
  * - Never writes data; only signals "data changed somewhere, re-fetch".
- * - Runs alongside the realtime hook on purpose: when realtime is healthy it
- *   provides the instant updates and polling becomes a rare catch-up for
- *   anything missed (e.g. deletes during a brief disconnect).
+ * - Only runs while `enabled` is true. The map page passes "realtime is not
+ *   connected", so polling (a Vercel server call every interval) stops while
+ *   realtime is healthy. Realtime does its own catch-up sync on reconnect.
  *
  * @param {Function} onSync — called when a change is detected. Latest
  *   identity always wins (same ref pattern as the realtime hook).
+ * @param {boolean} enabled — false stops polling; true starts it with a fresh
+ *   baseline check.
  * @param {number} intervalMs — poll interval; 30 s keeps DB load negligible
  *   (six head-only aggregate queries per user per interval).
  */
-export function useProjectMapPolling(onSync, intervalMs = 30000) {
+export function useProjectMapPolling(onSync, enabled = true, intervalMs = 30000) {
   const onSyncRef = useRef(onSync);
 
   // Keep the ref pointing at the latest callback (assigned in an effect, not
@@ -42,6 +44,7 @@ export function useProjectMapPolling(onSync, intervalMs = 30000) {
   }, [onSync]);
 
   useEffect(() => {
+    if (!enabled) return;
     let timer = null;
     let checking = false; // guard against overlapping async checks
     // null until the first (baseline) check completes — the baseline must not
@@ -78,5 +81,5 @@ export function useProjectMapPolling(onSync, intervalMs = 30000) {
       clearInterval(timer);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, [intervalMs]);
+  }, [enabled, intervalMs]);
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getSupabase } from "@/core/supabase/client";
 
 /**
@@ -38,9 +38,12 @@ import { getSupabase } from "@/core/supabase/client";
  *   tables changes. Its identity may change between renders; the latest
  *   version is always the one invoked, so callers can close over current
  *   state (e.g. the selected run) without re-subscribing.
+ * @returns {boolean} true while the realtime channel is SUBSCRIBED. The map
+ *   page uses this to run the polling fallback only while realtime is down.
  */
 export function useProjectMapRealtime(onSync) {
   const onSyncRef = useRef(onSync);
+  const [connected, setConnected] = useState(false);
 
   // Keep the ref pointing at the latest callback. Assigned in an effect (not
   // during render) per React's ref rules; the one-render delay is irrelevant
@@ -64,6 +67,8 @@ export function useProjectMapRealtime(onSync) {
     let debounceTimer = null;
     // One console error per failure streak, reset when the channel recovers.
     let errorLogged = false;
+    // True after the channel dropped, so the next SUBSCRIBED does a catch-up sync.
+    let wasDown = false;
     const scheduleSync = () => {
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => onSyncRef.current?.(), 800);
@@ -77,8 +82,21 @@ export function useProjectMapRealtime(onSync) {
       .subscribe((status) => {
         if (status === "SUBSCRIBED") {
           errorLogged = false;
+          setConnected(true);
+          // Back after a drop: changes made while disconnected never reached
+          // us, so run one catch-up sync.
+          if (wasDown) {
+            wasDown = false;
+            scheduleSync();
+          }
           console.info("[ProjectMapRealtime] Live sync connected.");
+        } else if (status === "CLOSED") {
+          // Closed by the server or by cleanup — no error log, polling takes over.
+          wasDown = true;
+          setConnected(false);
         } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          wasDown = true;
+          setConnected(false);
           // Log ONCE per failure streak (supabase-js retries with backoff, so
           // this would otherwise spam the console on every attempt).
           if (!errorLogged) {
@@ -101,4 +119,6 @@ export function useProjectMapRealtime(onSync) {
       supabase.removeChannel(channel);
     };
   }, []);
+
+  return connected;
 }

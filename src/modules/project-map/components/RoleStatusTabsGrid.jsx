@@ -6,14 +6,14 @@ import { Form } from "react-bootstrap";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faPen } from "@fortawesome/free-solid-svg-icons";
 import { Button, Modal, toastSuccess, toastError } from "@/shared/components/ui";
-import { saveDepartmentStatusTabs, saveDepartmentRunStatuses } from "../data/projectMap.actions";
+import { saveRoleStatusTabs, saveRoleRunStatuses } from "../data/projectMap.actions";
 import { isGroupedStatusTab } from "../data/projectMap.data";
 
-// dept_id -> status ids (as strings)
-function groupStatusIdsByDept(rows) {
+// role_id -> status ids (as strings)
+function groupStatusIdsByRole(rows) {
   const lookup = new Map();
   rows.forEach((row) => {
-    const key = String(row.dept_id);
+    const key = String(row.role_id);
     if (!lookup.has(key)) lookup.set(key, []);
     lookup.get(key).push(String(row.status_id));
   });
@@ -23,17 +23,18 @@ function groupStatusIdsByDept(rows) {
 const byDisplayOrder = (a, b) => Number(a.display_order ?? 0) - Number(b.display_order ?? 0);
 
 /**
- * DepartmentStatusTabsGrid — what each department sees on the Project Map:
- * project status tabs (proj_m_department_project_status) and run statuses
- * (proj_m_department_run_status).
+ * RoleStatusTabsGrid — what each Project Map role gives on the Project Map:
+ * project status tabs (proj_m_role_project_status) and run statuses
+ * (proj_m_role_run_status). A user with several roles sees all of their
+ * roles' statuses combined.
  *
- * A department with no project tabs cannot open the Project Map; one with no
- * run statuses loses the Runs buttons. Both are called out. Repair
+ * A user whose roles have no project tabs cannot open the Project Map; with
+ * no run statuses they lose the Runs buttons. Both are called out. Repair
  * sub-statuses are not listed: the "Repairs" tab covers them.
  */
-export default function DepartmentStatusTabsGrid({ departments = [], statuses = [], mappings = [], runStatuses = [], runMappings = [] }) {
+export default function RoleStatusTabsGrid({ roles = [], statuses = [], mappings = [], runStatuses = [], runMappings = [] }) {
   const router = useRouter();
-  const [editingDept, setEditingDept] = useState(null);
+  const [editingRole, setEditingRole] = useState(null);
   const [selected, setSelected] = useState([]);
   const [selectedRuns, setSelectedRuns] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -48,21 +49,21 @@ export default function DepartmentStatusTabsGrid({ departments = [], statuses = 
     [runStatuses]
   );
 
-  const statusIdsByDept = useMemo(() => groupStatusIdsByDept(mappings), [mappings]);
-  const runStatusIdsByDept = useMemo(() => groupStatusIdsByDept(runMappings), [runMappings]);
+  const statusIdsByRole = useMemo(() => groupStatusIdsByRole(mappings), [mappings]);
+  const runStatusIdsByRole = useMemo(() => groupStatusIdsByRole(runMappings), [runMappings]);
 
   const openEdit = useCallback(
-    (dept) => {
+    (role) => {
       // Start from every saved row, including ones not listed below, so saving never drops them silently.
-      setSelected(statusIdsByDept.get(String(dept.dept_id)) || []);
-      setSelectedRuns(runStatusIdsByDept.get(String(dept.dept_id)) || []);
-      setEditingDept(dept);
+      setSelected(statusIdsByRole.get(String(role.role_id)) || []);
+      setSelectedRuns(runStatusIdsByRole.get(String(role.role_id)) || []);
+      setEditingRole(role);
     },
-    [statusIdsByDept, runStatusIdsByDept]
+    [statusIdsByRole, runStatusIdsByRole]
   );
 
   const closeModal = useCallback(() => {
-    setEditingDept(null);
+    setEditingRole(null);
     setSelected([]);
     setSelectedRuns([]);
   }, []);
@@ -78,21 +79,21 @@ export default function DepartmentStatusTabsGrid({ departments = [], statuses = 
   };
 
   const handleSave = useCallback(async () => {
-    if (!editingDept) return;
+    if (!editingRole) return;
     setBusy(true);
     try {
-      await saveDepartmentStatusTabs(editingDept.dept_id, selected);
-      await saveDepartmentRunStatuses(editingDept.dept_id, selectedRuns);
-      toastSuccess("Department tabs saved.", "Department Tabs");
+      await saveRoleStatusTabs(editingRole.role_id, selected);
+      await saveRoleRunStatuses(editingRole.role_id, selectedRuns);
+      toastSuccess("Role tabs saved.", "Role Tabs");
       closeModal();
       router.refresh();
     } catch (err) {
-      toastError(err?.message || "Unable to save department tabs. Please try again.", "Department Tabs");
+      toastError(err?.message || "Unable to save role tabs. Please try again.", "Role Tabs");
       router.refresh();
     } finally {
       setBusy(false);
     }
-  }, [editingDept, selected, selectedRuns, closeModal, router]);
+  }, [editingRole, selected, selectedRuns, closeModal, router]);
 
   const renderChecklist = (title, listed, values, setter, idPrefix) => (
     <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
@@ -123,43 +124,43 @@ export default function DepartmentStatusTabsGrid({ departments = [], statuses = 
     <div className="oag-root">
       <div className="oag-toolbar">
         <div className="oag-toolbar__left">
-          <h2 className="oag-toolbar__title">Department Tabs</h2>
+          <h2 className="oag-toolbar__title">Role Tabs</h2>
           <span className="oag-toolbar__count">
-            {departments.length} department{departments.length !== 1 ? "s" : ""}
+            {roles.length} role{roles.length !== 1 ? "s" : ""}
           </span>
         </div>
       </div>
 
       <div className="oag-grid-wrap">
-        {departments.length === 0 ? (
+        {roles.length === 0 ? (
           <div className="oag-empty">
-            <p className="oag-empty__title">No Departments</p>
-            <p className="oag-empty__desc">Add departments in Company-Department Setup first.</p>
+            <p className="oag-empty__title">No Project Map Roles</p>
+            <p className="oag-empty__desc">Add roles for Project Map in Application Setup first.</p>
           </div>
         ) : (
           <table className="oag-table">
             <thead>
               <tr>
                 <th className="oag-col-actions">Actions</th>
-                <th className="oag-col-name">Department</th>
+                <th className="oag-col-name">Role</th>
                 <th>Visible Project Status Tabs</th>
                 <th>Visible Run Statuses</th>
               </tr>
             </thead>
             <tbody>
-              {departments.map((dept) => {
-                const ids = statusIdsByDept.get(String(dept.dept_id)) || [];
+              {roles.map((role) => {
+                const ids = statusIdsByRole.get(String(role.role_id)) || [];
                 const names = tabStatuses.filter((s) => ids.includes(String(s.status_id))).map((s) => s.status_name);
-                const runIds = runStatusIdsByDept.get(String(dept.dept_id)) || [];
+                const runIds = runStatusIdsByRole.get(String(role.role_id)) || [];
                 const runNames = activeRunStatuses.filter((s) => runIds.includes(String(s.status_id))).map((s) => s.status_name);
                 return (
-                  <tr key={dept.dept_id} className="oag-row">
+                  <tr key={role.role_id} className="oag-row">
                     <td className="oag-col-actions">
                       <div className="oag-actions">
                         <button
                           className="oag-action-btn oag-action-btn--edit"
                           title="Edit tabs"
-                          onClick={() => openEdit(dept)}
+                          onClick={() => openEdit(role)}
                           disabled={busy}
                         >
                           <FontAwesomeIcon icon={faPen} />
@@ -167,21 +168,21 @@ export default function DepartmentStatusTabsGrid({ departments = [], statuses = 
                       </div>
                     </td>
                     <td className="oag-col-name">
-                      <span className="oag-origin-name">{dept.dept_name}</span>
-                      {dept.is_active === false && <span style={{ marginLeft: "6px", fontSize: "11px", color: "#64748b" }}>(inactive)</span>}
+                      <span className="oag-origin-name">{role.role_name}</span>
+                      {role.is_active === false && <span style={{ marginLeft: "6px", fontSize: "11px", color: "#64748b" }}>(inactive)</span>}
                     </td>
                     <td>
                       {names.length > 0 ? (
                         <span className="oag-address">{names.join(", ")}</span>
                       ) : (
-                        <span style={{ color: "#b91c1c", fontWeight: 600 }}>None (blocked from Project Map)</span>
+                        <span style={{ color: "#b91c1c", fontWeight: 600 }}>None</span>
                       )}
                     </td>
                     <td>
                       {runNames.length > 0 ? (
                         <span className="oag-address">{runNames.join(", ")}</span>
                       ) : (
-                        <span style={{ color: "#b45309", fontWeight: 600 }}>None (Runs hidden)</span>
+                        <span style={{ color: "#b45309", fontWeight: 600 }}>None</span>
                       )}
                     </td>
                   </tr>
@@ -192,18 +193,18 @@ export default function DepartmentStatusTabsGrid({ departments = [], statuses = 
         )}
       </div>
 
-      <Modal show={!!editingDept} onHide={closeModal} title={`Tabs for ${editingDept?.dept_name || ""}`}>
+      <Modal show={!!editingRole} onHide={closeModal} title={`Tabs for ${editingRole?.role_name || ""}`}>
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-          {renderChecklist("Project status tabs", tabStatuses, selected, setSelected, "dept-tab")}
+          {renderChecklist("Project status tabs", tabStatuses, selected, setSelected, "role-tab")}
           {selected.length === 0 && (
             <p style={{ margin: 0, fontSize: "12px", color: "#b91c1c" }}>
-              With no project tabs selected, users in this department cannot open the Project Map.
+              With no project tabs selected, this role gives no Project Map tabs. Users with no other Project Map role cannot open the Project Map.
             </p>
           )}
-          {renderChecklist("Run statuses", activeRunStatuses, selectedRuns, setSelectedRuns, "dept-run")}
+          {renderChecklist("Run statuses", activeRunStatuses, selectedRuns, setSelectedRuns, "role-run")}
           {selectedRuns.length === 0 && (
             <p style={{ margin: 0, fontSize: "12px", color: "#b45309" }}>
-              With no run statuses selected, users in this department will not see Runs or the Run Master List.
+              With no run statuses selected, this role gives no runs. Users with no other Project Map role will not see Runs or the Run Master List.
             </p>
           )}
           <div className="oag-modal-actions">

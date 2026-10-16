@@ -15,7 +15,7 @@ export default function ProjectStatusTabs({
   statuses = [],
   selectedStatuses = [],
   onSelectStatus,
-  // Status ids (as strings) this user's department may see as tabs.
+  // Status ids (as strings) this user's Project Map roles may see as tabs.
   // null = no restriction (show every active status).
   visibleStatusIds = null,
 }) {

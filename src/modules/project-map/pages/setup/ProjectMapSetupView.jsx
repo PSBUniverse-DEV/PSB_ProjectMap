@@ -3,7 +3,7 @@
 import { useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Modal, TableZ, toastError, toastSuccess } from "@/shared/components/ui";
-import { createSetupRow, updateSetupRow, deleteSetupTableRow, createLookupRow, updateLookupRow, toggleLookupRowActive, reorderLookupRows, createProjectStatus, updateProjectStatus, toggleProjectStatusActive, reorderProjectStatuses, softDeleteProjectStatus, createState, updateState, toggleStateActive, reorderStates, softDeleteState } from "../../data/projectMap.actions";
+import { createSetupRow, updateSetupRow, deleteSetupTableRow, createLookupRow, updateLookupRow, toggleLookupRowActive, reorderLookupRows, createProjectStatus, updateProjectStatus, toggleProjectStatusActive, reorderProjectStatuses, createState, updateState, toggleStateActive, reorderStates } from "../../data/projectMap.actions";
 import SetupWorkspaceLayout from "./SetupWorkspaceLayout";
 import SetupSidebar from "./SetupSidebar";
 import SetupToolbar from "./SetupToolbar";

@@ -14,10 +14,9 @@ import RunCalendarView from "./RunCalendarView";
 export const dynamic = "force-dynamic";
 
 export default async function RunCalendarPage() {
-  // Same rule as the Run Master List: runs are shown per run status access;
-  // project tabs are not needed here.
+  // Same rule as the Run Master List: every Project Map user sees every run.
   const access = await loadProjectStatusTabAccess();
-  if (access.reason !== "ok" && access.reason !== "no-mapping") {
+  if (access.reason !== "ok") {
     return <ProjectMapAccessBlocked access={access} page="Run Calendar" />;
   }
   if (access.allowedRunStatusNames.length === 0) {

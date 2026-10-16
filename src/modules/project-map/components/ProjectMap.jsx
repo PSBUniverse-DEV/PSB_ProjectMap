@@ -688,6 +688,8 @@ export default function ProjectMap({
 
       // Only available in Runs mode with a selected run
       if (currentMode !== "runs" || !currentSelectedRunId) return;
+      // The view passes no callbacks when the selected run is view-only for the user.
+      if (!onAddToRunRef.current && !onRemoveFromRunRef.current) return;
 
       if (contextMenuPopupRef.current) {
         try { contextMenuPopupRef.current.remove(); } catch (ex) {}

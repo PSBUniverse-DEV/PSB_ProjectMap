@@ -31,7 +31,7 @@ function formatMileage(miles) {
   return `${Number(miles).toFixed(1)} mi`;
 }
 
-export default function RunDetailPanel({ run, runProjects = [], runSegmentData = null, onClose, onEdit, onDelete, onRemoveProject, onReorderStops, onRecalculate, recalculating = false, onEditStopNote, onEditStopDate, onEditStopInvoice, onEditProjectPrice, onProjectUpdated, isLoading = false, runStatuses = [], onStatusChange }) {
+export default function RunDetailPanel({ run, runProjects = [], runSegmentData = null, onClose, onEdit, onDelete, onRemoveProject, onReorderStops, onRecalculate, recalculating = false, onEditStopNote, onEditStopDate, onEditStopInvoice, onEditProjectPrice, onProjectUpdated, isLoading = false, runStatuses = [], onStatusChange, readOnly = false, canEditStopProject = null }) {
   const [dragIndex, setDragIndex] = useState(null);
   const [dragOverIndex, setDragOverIndex] = useState(null);
   const [isEditingStatus, setIsEditingStatus] = useState(false);
@@ -95,12 +95,12 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
 
   const actionButtons = useMemo(() => {
     const print = () => generateRunManifestPrint(run, runProjects, runSegmentData);
-    const btns = [{ label: "Edit", onClick: onEdit, variant: "secondary" }];
+    const btns = readOnly ? [] : [{ label: "Edit", onClick: onEdit, variant: "secondary" }];
     // Same print for every status; a run in progress gets the quieter button style.
     const inProgress = runStatusKeyByName(runStatuses, status) === "in_progress";
     btns.push({ label: "Print Record", onClick: print, variant: inProgress ? "secondary" : "primary" });
     return btns;
-  }, [status, onEdit, run, runProjects, runSegmentData, runStatuses]);
+  }, [status, onEdit, run, runProjects, runSegmentData, runStatuses, readOnly]);
 
   if (!run) return null;
 
@@ -122,6 +122,14 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
               <div style={{ fontSize: "10px", color: "#d97706", fontWeight: 600 }}>
                 Rescheduled from {formatDisplayDate(run.original_run_date)}
               </div>
+            )}
+            {readOnly && (
+              <span
+                title="Your Project Map roles cannot change runs in this status."
+                style={{ display: "inline-block", marginTop: "3px", fontSize: "10px", fontWeight: 600, color: "#64748b", background: "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "1px 8px" }}
+              >
+                View only
+              </span>
             )}
           </div>
           <button onClick={onClose} style={{ background: "none", border: "none", fontSize: "18px", cursor: "pointer", color: "#64748b", lineHeight: 1, padding: "0" }}>×</button>
@@ -172,8 +180,9 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
                   const color = getRunStatusColor(status, runStatuses);
                   return (
                     <button
-                      onClick={() => { setPendingStatus(status); setIsEditingStatus(true); }}
-                      title="Click to change status"
+                      onClick={readOnly ? undefined : () => { setPendingStatus(status); setIsEditingStatus(true); }}
+                      disabled={readOnly}
+                      title={readOnly ? "View only" : "Click to change status"}
                       style={{
                         display: "inline-flex",
                         alignItems: "center",
@@ -185,10 +194,10 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
                         background: `${color}20`,
                         color: color,
                         border: `1px solid ${color}40`,
-                        cursor: "pointer",
+                        cursor: readOnly ? "default" : "pointer",
                       }}
                     >
-                      Set as: {status}
+                      {readOnly ? status : `Set as: ${status}`}
                     </button>
                   );
                 })()
@@ -260,6 +269,9 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
                     const amount = getProjectAmountDisplay(proj);
                     const isDragging = dragIndex === idx;
                     const isDragOver = dragOverIndex === idx;
+                    // Date / invoice / price change the stop's project: allowed when the run
+                    // is editable, or when the user can edit that project's own status.
+                    const canEditStop = !readOnly || Boolean(canEditStopProject?.(rp));
 
                     return (
                       <div key={rp.id} style={{ marginBottom: "2px" }}>
@@ -272,7 +284,7 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
                             {(segment || idx === 0) && (
                               <div style={{ fontSize: "9px", color: hasError ? "#dc2626" : "#64748b", marginBottom: "4px", fontStyle: "italic" }}>{segDistance}{segDuration ? ` · ${segDuration}` : ""}</div>
                             )}
-                            <div draggable onDragStart={() => setDragIndex(idx)} onDragOver={(e) => { e.preventDefault(); setDragOverIndex(idx); }} onDragLeave={() => setDragOverIndex(null)} onDrop={() => { if (dragIndex !== null && dragIndex !== idx) { onReorderStops?.(dragIndex, idx); } setDragIndex(null); setDragOverIndex(null); }} onDragEnd={() => { setDragIndex(null); setDragOverIndex(null); }} style={{ padding: "5px 8px", background: isDragging ? "#fef3c7" : (isDragOver ? "#f0f9ff" : "#f8fafc"), border: `1px solid ${isDragOver ? "#93c5fd" : "#e2e8f0"}`, borderRadius: "3px", cursor: "grab", opacity: isDragging ? 0.7 : 1, transition: "all 0.15s", marginBottom: "6px" }}>
+                            <div draggable={!readOnly} onDragStart={() => setDragIndex(idx)} onDragOver={(e) => { e.preventDefault(); setDragOverIndex(idx); }} onDragLeave={() => setDragOverIndex(null)} onDrop={() => { if (dragIndex !== null && dragIndex !== idx) { onReorderStops?.(dragIndex, idx); } setDragIndex(null); setDragOverIndex(null); }} onDragEnd={() => { setDragIndex(null); setDragOverIndex(null); }} style={{ padding: "5px 8px", background: isDragging ? "#fef3c7" : (isDragOver ? "#f0f9ff" : "#f8fafc"), border: `1px solid ${isDragOver ? "#93c5fd" : "#e2e8f0"}`, borderRadius: "3px", cursor: readOnly ? "default" : "grab", opacity: isDragging ? 0.7 : 1, transition: "all 0.15s", marginBottom: "6px" }}>
                               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "4px" }}>
                                 <div style={{ flex: 1 }}>
                                   <div style={{ fontWeight: 600, fontSize: "11px", color: "#1e293b", marginBottom: "1px" }}>{idx + 1}. {proj.client_name || "Untitled"}</div>
@@ -280,7 +292,11 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
                                   <div style={{ fontSize: "9px", color: "#64748b", marginTop: "2px" }}>Status: {projectStatusLabel}</div>
                                   <div style={{ fontSize: "10px", color: amount.color, fontWeight: amount.isRepair ? 700 : 500, marginTop: "2px" }}>{amount.prefix}{sub}</div>
                                   <div style={{ marginTop: "3px", display: "flex", gap: "8px", alignItems: "center" }}>
-                                    <button onClick={() => onEditStopNote?.(rp)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "10px", padding: "0", color: rp.notes ? "#6366f1" : "#94a3b8", fontWeight: rp.notes ? 600 : 400 }} title={rp.notes ? "Edit note" : "Add note"}>{rp.notes ? "📝 Note" : "📄 Note"}</button>
+                                    {!readOnly && (
+                                      <button onClick={() => onEditStopNote?.(rp)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "10px", padding: "0", color: rp.notes ? "#6366f1" : "#94a3b8", fontWeight: rp.notes ? 600 : 400 }} title={rp.notes ? "Edit note" : "Add note"}>{rp.notes ? "📝 Note" : "📄 Note"}</button>
+                                    )}
+                                    {canEditStop && (
+                                    <>
                                     <button
                                       onClick={() => onEditStopDate?.(rp)}
                                       style={{ background: "none", border: "none", cursor: "pointer", fontSize: "10px", padding: "0", color: (rp.proj_t_projects?.install_start || rp.proj_t_projects?.install_end) ? "#6366f1" : "#94a3b8", fontWeight: (rp.proj_t_projects?.install_start || rp.proj_t_projects?.install_end) ? 600 : 400 }}
@@ -302,9 +318,16 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
                                     >
                                       💰 Price
                                     </button>
+                                    </>
+                                    )}
                                   </div>
+                                  {readOnly && rp.notes && (
+                                    <div style={{ fontSize: "9px", color: "#475569", marginTop: "3px", whiteSpace: "pre-wrap" }}>📝 {rp.notes}</div>
+                                  )}
                                 </div>
-                                <button onClick={() => onRemoveProject?.(rp.id)} style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: "12px", padding: "0", lineHeight: 1 }} title="Remove from run">×</button>
+                                {!readOnly && (
+                                  <button onClick={() => onRemoveProject?.(rp.id)} style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: "12px", padding: "0", lineHeight: 1 }} title="Remove from run">×</button>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -337,6 +360,7 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
               saveFile={(storagePath, meta) => saveUploadedFile("run", run.id, storagePath, meta)}
               getFileUrl={(file) => getFileUrl(file.id)}
               deleteFile={(file) => deleteFile(file.id)}
+              readOnly={readOnly}
               maxBytes={PROJECT_FILE_MAX_BYTES}
               accept={PROJECT_FILE_TYPES.join(",")}
             />
@@ -349,7 +373,7 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
           <button key={i} disabled={recalculating} onClick={btn.onClick} style={{ padding: "4px 10px", fontSize: "11px", borderRadius: "3px", border: "none", cursor: recalculating ? "not-allowed" : "pointer", fontWeight: 500, opacity: recalculating ? 0.5 : 1, background: btn.variant === "danger" ? "#fef2f2" : btn.variant === "primary" ? "#1e293b" : btn.variant === "success" ? "#16a34a" : "#fff", color: btn.variant === "danger" ? "#dc2626" : btn.variant === "primary" ? "#fff" : btn.variant === "success" ? "#fff" : "#1e293b", border: btn.variant === "secondary" || btn.variant === "danger" ? "1px solid #e2e8f0" : "none" }}>{btn.label}</button>
         ))}
         <div style={{ flex: 1 }} />
-        <button onClick={onRecalculate} disabled={recalculating} style={{ padding: "4px 10px", fontSize: "11px", borderRadius: "3px", border: "1px solid #6366f1", cursor: recalculating ? "not-allowed" : "pointer", fontWeight: 500, background: recalculating ? "#eef2ff" : "#eef2ff", color: recalculating ? "#94a3b8" : "#6366f1", opacity: recalculating ? 0.7 : 1 }}>{recalculating ? "⟳ Recalculating..." : "⟳ Recalculate Run"}</button>
+        {!readOnly && <button onClick={onRecalculate} disabled={recalculating} style={{ padding: "4px 10px", fontSize: "11px", borderRadius: "3px", border: "1px solid #6366f1", cursor: recalculating ? "not-allowed" : "pointer", fontWeight: 500, background: recalculating ? "#eef2ff" : "#eef2ff", color: recalculating ? "#94a3b8" : "#6366f1", opacity: recalculating ? 0.7 : 1 }}>{recalculating ? "⟳ Recalculating..." : "⟳ Recalculate Run"}</button>}
       </div>
 
       {recalculating && (

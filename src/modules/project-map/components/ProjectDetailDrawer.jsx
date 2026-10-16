@@ -19,7 +19,7 @@ import { loadFiles, createFileUpload, saveUploadedFile, getFileUrl, deleteFile }
  * the SAME removal flow used by the Runs tab's detail panel (same action, same
  * toasts, same refreshes) so every unassign path stays in sync.
  */
-export default function ProjectDetailDrawer({ project, statuses = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [], projectRunLookup = new Map(), onClose, onEdit, onDelete, onRemoveFromRun = null, routeInfo = null }) {
+export default function ProjectDetailDrawer({ project, statuses = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [], projectRunLookup = new Map(), onClose, onEdit = null, onDelete = null, onRemoveFromRun = null, routeInfo = null, readOnly = false }) {
   const statusName = useMemo(() => {
     if (!project) return "";
     return project.proj_s_project_status?.status_name || statuses.find((s) => s.status_id === project.status_id)?.status_name || "";
@@ -275,9 +275,10 @@ export default function ProjectDetailDrawer({ project, statuses = [], buildingCa
           deleteFile={(file) => deleteFile(file.id)}
           maxBytes={PROJECT_FILE_MAX_BYTES}
           accept={PROJECT_FILE_TYPES.join(",")}
+          readOnly={readOnly}
         />
 
-        {/* Comments */}
+        {/* Comments (open to every Project Map user, also on view-only projects) */}
         <ProjectComments key={`comments-${project.id}`} projectId={project.id} />
 
         {routeInfo && (
@@ -297,26 +298,38 @@ export default function ProjectDetailDrawer({ project, statuses = [], buildingCa
         justifyContent: "flex-end",
         background: "#fff",
       }}>
-        <button onClick={onEdit} style={{
-          padding: "5px 12px",
-          fontSize: "11px",
-          fontWeight: 600,
-          borderRadius: "4px",
-          border: "1px solid #e2e8f0",
-          background: "#fff",
-          cursor: "pointer",
-          color: "#1e293b",
-        }}>Edit</button>
-        <button onClick={onDelete} style={{
-          padding: "5px 12px",
-          fontSize: "11px",
-          fontWeight: 600,
-          borderRadius: "4px",
-          border: "1px solid #fecaca",
-          background: "#fef2f2",
-          color: "#dc2626",
-          cursor: "pointer",
-        }}>Delete</button>
+        {readOnly && (
+          <span
+            title="Your Project Map roles cannot change projects in this status."
+            style={{ marginRight: "auto", alignSelf: "center", fontSize: "10px", fontWeight: 600, color: "#64748b", background: "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "1px 8px" }}
+          >
+            View only
+          </span>
+        )}
+        {onEdit && (
+          <button onClick={onEdit} style={{
+            padding: "5px 12px",
+            fontSize: "11px",
+            fontWeight: 600,
+            borderRadius: "4px",
+            border: "1px solid #e2e8f0",
+            background: "#fff",
+            cursor: "pointer",
+            color: "#1e293b",
+          }}>Edit</button>
+        )}
+        {onDelete && (
+          <button onClick={onDelete} style={{
+            padding: "5px 12px",
+            fontSize: "11px",
+            fontWeight: 600,
+            borderRadius: "4px",
+            border: "1px solid #fecaca",
+            background: "#fef2f2",
+            color: "#dc2626",
+            cursor: "pointer",
+          }}>Delete</button>
+        )}
       </div>
     </div>
   );

@@ -5,15 +5,21 @@ import { Button, Modal, toastError, toastSuccess } from "@/shared/components/ui"
 import { createRun, updateRun, deleteRun } from "../data/projectMap.actions";
 import { resolveRunStatusOptions, runStatusNameByKey } from "../data/projectMap.data";
 
-export default function RunForm({ show, mode, run, origins = [], runStatuses = [], onClose, onSaved }) {
+export default function RunForm({ show, mode, run, origins = [], runStatuses = [], onClose, onSaved, editableRunStatusNames = null }) {
   const [busy, setBusy] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  // A new run may only start in a status the user can edit (null = no
+  // restriction). Editing offers every status so work can be handed on.
+  const statusOptions = useMemo(() => {
+    const all = resolveRunStatusOptions(runStatuses);
+    return mode !== "edit" && editableRunStatusNames ? all.filter((name) => editableRunStatusNames.includes(name)) : all;
+  }, [runStatuses, mode, editableRunStatusNames]);
   // New runs start on the "scheduled" run status (by system_key, whatever it
-  // is named), or the first active status if that one is missing.
-  const defaultRunStatus = useMemo(
-    () => runStatusNameByKey(runStatuses, "scheduled") || resolveRunStatusOptions(runStatuses)[0] || "",
-    [runStatuses]
-  );
+  // is named) when it is offered, otherwise on the first offered status.
+  const defaultRunStatus = useMemo(() => {
+    const scheduled = runStatusNameByKey(runStatuses, "scheduled");
+    return statusOptions.includes(scheduled) ? scheduled : statusOptions[0] || "";
+  }, [runStatuses, statusOptions]);
   const [form, setForm] = useState({
     run_name: "",
     origin_id: "",
@@ -213,7 +219,7 @@ export default function RunForm({ show, mode, run, origins = [], runStatuses = [
               onChange={(e) => handleChange("status", e.target.value)}
               style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px", background: "#fff" }}
             >
-              {resolveRunStatusOptions(runStatuses).map((statusName) => (
+              {statusOptions.map((statusName) => (
                 <option key={statusName} value={statusName}>{statusName}</option>
               ))}
             </select>

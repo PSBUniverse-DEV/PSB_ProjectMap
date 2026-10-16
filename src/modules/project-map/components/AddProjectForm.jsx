@@ -6,7 +6,7 @@ import { createProject, updateProject, loadProjectDealerOptions, setProjectDeale
 import { formatProjectDescription, parseProjectDescription } from "../data/projectMap.data";
 import LocationSearch from "./LocationSearch";
 
-export default function AddProjectForm({ show, mode, project, statuses = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [], onClose, onSaved, initialLocation = null }) {
+export default function AddProjectForm({ show, mode, project, statuses = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [], onClose, onSaved, initialLocation = null, editableStatusIds = null }) {
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({
     client_name: "",
@@ -96,6 +96,12 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
   // Setup tables remain fully loaded for administration, but project forms may
   // only assign active lookup records.
   const activeStatuses = useMemo(() => statuses.filter((item) => item?.is_active !== false), [statuses]);
+  // A new project may only start in a status the user can edit (null = no
+  // restriction). Editing offers every status so work can be handed on.
+  const statusChoices = useMemo(
+    () => (mode !== "edit" && editableStatusIds ? activeStatuses.filter((s) => editableStatusIds.includes(String(s.status_id))) : activeStatuses),
+    [activeStatuses, mode, editableStatusIds]
+  );
   const activeBuildingCategories = useMemo(() => buildingCategories.filter((item) => item?.is_active !== false), [buildingCategories]);
   const activePermitStatuses = useMemo(() => permitStatuses.filter((item) => item?.is_active !== false), [permitStatuses]);
   const activeWelcomeCallStatuses = useMemo(() => welcomeCallStatuses.filter((item) => item?.is_active !== false), [welcomeCallStatuses]);
@@ -504,7 +510,7 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
                 style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px", background: "#fff" }}
               >
                 <option value="">Select status...</option>
-                {activeStatuses.map((s) => (
+                {statusChoices.map((s) => (
                   <option key={s.status_id} value={String(s.status_id)}>{s.status_name}</option>
                 ))}
               </select>

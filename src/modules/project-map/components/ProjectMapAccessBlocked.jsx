@@ -1,9 +1,8 @@
 const REASON_MESSAGES = {
   "no-role": "Your user account has no active Project Map role, so Project Map cannot be shown.",
-  "no-mapping": "Your Project Map roles have no project statuses assigned yet, so Project Map cannot be shown.",
   "no-session": "Your sign-in could not be read, so Project Map cannot be shown.",
   "no-user": "Your user record could not be found, so Project Map cannot be shown.",
-  "no-run-mapping": "Your Project Map roles have no run statuses assigned yet, so runs cannot be shown.",
+  "no-run-mapping": "No run statuses are set up yet, so runs cannot be shown.",
   error: "Your Project Map access could not be checked.",
 };
 

@@ -20,7 +20,7 @@ import StopStatusPrompt from "../components/StopStatusPrompt";
 import FilterBar from "../components/FilterBar";
 import AddProjectForm from "../components/AddProjectForm";
 import MapSearch from "../components/MapSearch";
-import { splitRunAmounts, getStatusTabGroupIds, runStatusNameByKey } from "../data/projectMap.data";
+import { splitRunAmounts, getStatusTabGroupIds, runStatusNameByKey, canEditProjectStatusId, canEditRunStatusName, canEditProjectOrItsRun } from "../data/projectMap.data";
 import FilterChips from "../components/FilterChips";
 import RunFilterPanel from "../components/RunFilterPanel";
 import RunFilterChips from "../components/RunFilterChips";
@@ -478,6 +478,16 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
     return runs.find((r) => r.id === selectedRunId) || null;
   }, [selectedRunId, runs]);
 
+  // Edit rights for what is on screen (view-only otherwise). Same rule as the
+  // server's Edit Access checks; see the helpers in projectMap.data.js.
+  const selectedProjectRun = selectedProject ? projectRunLookup.get(selectedProject.id)?.run || null : null;
+  const canEditSelectedProject = selectedProject ? canEditProjectOrItsRun(statusTabAccess, selectedProject, selectedProjectRun) : false;
+  const canDeleteSelectedProject = selectedProject ? canEditProjectStatusId(statusTabAccess, selectedProject.status_id) : false;
+  const canRemoveSelectedProjectFromRun = selectedProjectRun ? canEditRunStatusName(statusTabAccess, selectedProjectRun.status) : false;
+  const canEditSelectedRun = selectedRun ? canEditRunStatusName(statusTabAccess, selectedRun.status) : false;
+  const canCreateProject = !statusTabAccess || (statusTabAccess.editableProjectStatusIds || []).length > 0;
+  const canCreateRun = !statusTabAccess || (statusTabAccess.editableRunStatusNames || []).length > 0;
+
   // Filter runs by search and filters
   const filteredRuns = useMemo(() => {
     return runs.filter((run) => {
@@ -596,6 +606,10 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
   };
 
   const handleMapRightClick = async (lng, lat) => {
+    if (!canCreateProject) {
+      toastError("Your Project Map roles cannot create projects.", "Project Map");
+      return;
+    }
     setTempMarker({ lat, lng, loading: true, error: null });
     
     const addressData = await reverseGeocode(lat, lng);
@@ -1473,14 +1487,16 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
         <div style={{ width: "240px", minWidth: "240px", flexShrink: 0, zIndex: 10, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           {mode === "projects" ? (
             <>
-              <FilterBar statuses={statuses} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} dealers={dealers} states={projectStates} filters={filters} onFilterChange={setFilters} onAddClick={() => { setEditingProject(null); setShowAddForm(true); }} />
+              <FilterBar statuses={statuses} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} dealers={dealers} states={projectStates} filters={filters} onFilterChange={setFilters} onAddClick={canCreateProject ? () => { setEditingProject(null); setShowAddForm(true); } : null} />
               <ProjectList projects={projects} selectedProjectId={selectedProjectId} onSelectProject={handleSelectProject} filters={filters} statuses={statuses} />
             </>
           ) : (
             <>
               <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "4px 10px", borderBottom: "1px solid #e2e8f0", background: "#fff", flexShrink: 0 }}>
                 <RunFilterPanel runFilters={runFilters} onFilterChange={setRunFilters} runStatuses={visibleRunStatuses} />
-                <button onClick={() => { setEditingRun(null); setShowRunForm(true); }} style={{ padding: "3px 10px", fontSize: "12px", borderRadius: "3px", border: "none", background: "#16a34a", color: "#fff", cursor: "pointer", whiteSpace: "nowrap" }}>+ New Run</button>
+                {canCreateRun && (
+                  <button onClick={() => { setEditingRun(null); setShowRunForm(true); }} style={{ padding: "3px 10px", fontSize: "12px", borderRadius: "3px", border: "none", background: "#16a34a", color: "#fff", cursor: "pointer", whiteSpace: "nowrap" }}>+ New Run</button>
+                )}
               </div>
               <RunList runs={filteredRuns} selectedRunId={selectedRunId} onSelectRun={handleSelectRun} isLoading={isLoadingRunDetails} />
             </>
@@ -1488,26 +1504,26 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
         </div>
 
         <div style={{ flex: 1, position: "relative", minHeight: 0, minWidth: 0 }}>
-          <ProjectMap projects={mapProjects} selectedProjectId={selectedProjectId} onSelectProject={handleSelectProject} filters={mapFilters} selectedOrigin={selectedOrigin} routeData={routeData} stateColorLookup={stateColorLookup} statuses={statuses} buildingCategories={buildingCategories} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} searchResults={searchResults} mode={mode} runs={runs} selectedRunId={selectedRunId} runProjects={runProjects} runRouteData={runRouteData} onAddToRun={handleAddProjectToRun} onRemoveFromRun={handleRemoveProjectFromRun} projectRunLookup={projectRunLookup} showLabels={showLabels} onMapRightClick={handleMapRightClick} tempMarker={tempMarker} searchMarker={searchMarker} onSearchMarkerClick={handleSearchMarkerClick} />
+          <ProjectMap projects={mapProjects} selectedProjectId={selectedProjectId} onSelectProject={handleSelectProject} filters={mapFilters} selectedOrigin={selectedOrigin} routeData={routeData} stateColorLookup={stateColorLookup} statuses={statuses} buildingCategories={buildingCategories} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} searchResults={searchResults} mode={mode} runs={runs} selectedRunId={selectedRunId} runProjects={runProjects} runRouteData={runRouteData} onAddToRun={canEditSelectedRun ? handleAddProjectToRun : null} onRemoveFromRun={canEditSelectedRun ? handleRemoveProjectFromRun : null} projectRunLookup={projectRunLookup} showLabels={showLabels} onMapRightClick={handleMapRightClick} tempMarker={tempMarker} searchMarker={searchMarker} onSearchMarkerClick={handleSearchMarkerClick} />
         </div>
 
         {mode === "projects" && selectedProject && (
-          <ProjectDetailDrawer project={selectedProject} statuses={statuses} buildingCategories={buildingCategories} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} projectRunLookup={projectRunLookup} onClose={handleCloseDrawer} onEdit={handleEdit} onDelete={() => setConfirmDeleteId(selectedProject.id)} onRemoveFromRun={handleRemoveProjectFromRunById} routeInfo={routeInfo} />
+          <ProjectDetailDrawer project={selectedProject} statuses={statuses} buildingCategories={buildingCategories} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} projectRunLookup={projectRunLookup} onClose={handleCloseDrawer} onEdit={canEditSelectedProject ? handleEdit : null} onDelete={canDeleteSelectedProject ? () => setConfirmDeleteId(selectedProject.id) : null} onRemoveFromRun={canRemoveSelectedProjectFromRun ? handleRemoveProjectFromRunById : null} readOnly={!canEditSelectedProject} routeInfo={routeInfo} />
         )}
         {/* Panel spinner = details fetch + OSRM route (loading contract is
             documented on the two effects above): it shows while either is in
             flight and hides only once ALL panel data is displayed. */}
         {mode === "runs" && selectedRun && (
-          <RunDetailPanel run={selectedRun} runProjects={runProjects} runSegmentData={runSegmentData} onClose={handleCloseRunDetail} onEdit={handleEditRun} onDelete={() => setConfirmDeleteRunId(selectedRun.id)} onRemoveProject={handleRemoveProjectFromRun} onReorderStops={handleReorderStops} onRecalculate={handleRecalculate} recalculating={recalculating} onEditStopNote={handleEditStopNote} onEditStopDate={handleEditStopDate} onEditStopInvoice={handleEditStopInvoice} onEditProjectPrice={handleEditProjectPrice} isLoading={isLoadingRunDetails || runRouteLoading} runStatuses={runStatuses} onStatusChange={handleRunStatusChange} />
+          <RunDetailPanel run={selectedRun} runProjects={runProjects} runSegmentData={runSegmentData} onClose={handleCloseRunDetail} onEdit={canEditSelectedRun ? handleEditRun : null} onDelete={canEditSelectedRun ? () => setConfirmDeleteRunId(selectedRun.id) : null} onRemoveProject={canEditSelectedRun ? handleRemoveProjectFromRun : null} onReorderStops={canEditSelectedRun ? handleReorderStops : null} onRecalculate={handleRecalculate} recalculating={recalculating} onEditStopNote={canEditSelectedRun ? handleEditStopNote : null} readOnly={!canEditSelectedRun} canEditStopProject={(rp) => canEditProjectStatusId(statusTabAccess, rp.proj_t_projects?.proj_s_project_status?.status_id)} onEditStopDate={handleEditStopDate} onEditStopInvoice={handleEditStopInvoice} onEditProjectPrice={handleEditProjectPrice} isLoading={isLoadingRunDetails || runRouteLoading} runStatuses={runStatuses} onStatusChange={handleRunStatusChange} />
         )}
       </div>
 
       {mode === "projects" && (
-        <AddProjectForm show={showAddForm} mode={editingProject ? "edit" : "add"} project={editingProject} statuses={statuses} buildingCategories={buildingCategories} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} onClose={handleCloseForm} onSaved={handleSaved} initialLocation={initialLocation} />
+        <AddProjectForm show={showAddForm} mode={editingProject ? "edit" : "add"} project={editingProject} statuses={statuses} buildingCategories={buildingCategories} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} onClose={handleCloseForm} onSaved={handleSaved} initialLocation={initialLocation} editableStatusIds={statusTabAccess ? statusTabAccess.editableProjectStatusIds || [] : null} />
       )}
 
       {mode === "runs" && (
-        <RunForm show={showRunForm} mode={editingRun ? "edit" : "add"} run={editingRun} origins={origins} runStatuses={runStatuses} onClose={handleCloseRunForm} onSaved={handleRunSaved} />
+        <RunForm show={showRunForm} mode={editingRun ? "edit" : "add"} run={editingRun} origins={origins} runStatuses={runStatuses} onClose={handleCloseRunForm} onSaved={handleRunSaved} editableRunStatusNames={statusTabAccess ? statusTabAccess.editableRunStatusNames || [] : null} />
       )}
 
       {mode === "projects" && (

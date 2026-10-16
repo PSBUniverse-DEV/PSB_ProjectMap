@@ -14,10 +14,9 @@ import RunMasterView from "./RunMasterView";
 export const dynamic = "force-dynamic";
 
 export default async function RunMasterPage() {
-  // Runs are shown per Project Map role. Project tabs are not needed on this page,
-  // so a user whose roles have run statuses but no project tabs ("no-mapping") gets in.
+  // Every Project Map user sees every run; their roles decide which runs they may change.
   const access = await loadProjectStatusTabAccess();
-  if (access.reason !== "ok" && access.reason !== "no-mapping") {
+  if (access.reason !== "ok") {
     return <ProjectMapAccessBlocked access={access} page="Run Master List" />;
   }
   if (access.allowedRunStatusNames.length === 0) {
@@ -36,6 +35,7 @@ export default async function RunMasterPage() {
       runStatuses={setup.runStatuses || []}
       paymentMethods={setup.paymentMethods || []}
       states={setup.states || []}
+      editAccess={{ editableProjectStatusIds: access.editableProjectStatusIds, editableRunStatusNames: access.editableRunStatusNames }}
     />
   );
 }

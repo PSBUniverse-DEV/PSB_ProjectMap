@@ -51,21 +51,23 @@ export default function FilterBar({ statuses = [], permitStatuses = [], welcomeC
         onFilterChange={onFilterChange}
       />
 
-      <button
-        onClick={onAddClick}
-        style={{
-          padding: "3px 10px",
-          fontSize: "12px",
-          borderRadius: "3px",
-          border: "none",
-          background: "#16a34a",
-          color: "#fff",
-          cursor: "pointer",
-          whiteSpace: "nowrap",
-        }}
-      >
-        + Add
-      </button>
+      {onAddClick && (
+        <button
+          onClick={onAddClick}
+          style={{
+            padding: "3px 10px",
+            fontSize: "12px",
+            borderRadius: "3px",
+            border: "none",
+            background: "#16a34a",
+            color: "#fff",
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+          }}
+        >
+          + Add
+        </button>
+      )}
     </div>
   );
 }

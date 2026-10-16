@@ -14,7 +14,7 @@ import { useRouter } from "next/navigation";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCircleInfo, faCheckCircle, faPrint, faMoneyCheckDollar, faPen, faPaperclip } from "@fortawesome/free-solid-svg-icons";
 import { Button, Modal, toastError, TableZ, FileAttachments } from "@/shared/components/ui";
-import { resolveRunStatusOptions, getRunStatusColor, formatProjectDescriptionForDisplay, stripTownshipLabel, parseStateRoute, getProjectAmountDisplay, splitRunAmounts, PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, formatDisplayDate } from "../data/projectMap.data";
+import { resolveRunStatusOptions, getRunStatusColor, formatProjectDescriptionForDisplay, stripTownshipLabel, parseStateRoute, getProjectAmountDisplay, splitRunAmounts, PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, formatDisplayDate, canEditProjectStatusId, canEditRunStatusName } from "../data/projectMap.data";
 import { loadRunDetails, loadRuns, loadPaidSheet, loadFiles, createFileUpload, saveUploadedFile, getFileUrl, deleteFile, loadProjectFileCounts } from "../data/projectMap.actions";
 import { generateRunManifestPrint } from "../utils/printRunManifest";
 import { generatePaidSheetPrint } from "../utils/printPaidSheet";
@@ -23,7 +23,7 @@ import RunForm from "../components/RunForm";
 import PaidSheetForm from "../components/PaidSheetForm";
 import "./run-master.css";
 
-export default function RunMasterView({ runs = [], origins = [], statuses = [], runStatuses = [], paymentMethods = [], states = [] }) {
+export default function RunMasterView({ runs = [], origins = [], statuses = [], runStatuses = [], paymentMethods = [], states = [], editAccess = null }) {
   const router = useRouter();
 
   // ---- State ----
@@ -572,6 +572,8 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
         label: "Edit",
         icon: "pen",
         type: "secondary",
+        // The paid sheet changes the run: only for runs the user's roles may change.
+        visible: (row) => canEditRunStatusName(editAccess, row.status),
         onClick: (row) => handleOpenPaidSheet(row),
       },
       {
@@ -592,7 +594,7 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
         onClick: (row) => handlePrintPaidSheet(row),
       },
     ],
-    [handleOpenPaidSheet, handlePrintManifest, handlePrintPaidSheet, canPrintPaidSheet, printingRunId]
+    [handleOpenPaidSheet, handlePrintManifest, handlePrintPaidSheet, canPrintPaidSheet, printingRunId, editAccess]
   );
 
   // ---- Render ----
@@ -682,6 +684,10 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
             saveFile={(storagePath, meta) => saveUploadedFile("project", filesProject.id, storagePath, meta)}
             getFileUrl={(file) => getFileUrl(file.id)}
             deleteFile={(file) => deleteFile(file.id)}
+            readOnly={
+              !canEditProjectStatusId(editAccess, filesProject.status_id ?? filesProject.proj_s_project_status?.status_id) &&
+              !canEditRunStatusName(editAccess, expandedDetail?.run?.status)
+            }
             maxBytes={PROJECT_FILE_MAX_BYTES}
             accept={PROJECT_FILE_TYPES.join(",")}
           />

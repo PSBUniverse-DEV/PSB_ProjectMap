@@ -34,6 +34,28 @@ export function getRunStatusColor(statusName, runStatuses = []) {
 // fixed system_key (draft, planned, scheduled, in_progress, completed,
 // cancelled) that never changes, so they can be renamed in setup.
 
+// Edit rights from loadProjectStatusTabAccess (editableProjectStatusIds /
+// editableRunStatusNames). The server actions enforce them (see "Edit Access"
+// in projectMap.actions.js); the screens use these to hide edit controls on
+// view-only projects and runs. A missing access object means no restriction.
+
+/** True when the user may change projects in this project status. */
+export function canEditProjectStatusId(access, statusId) {
+  if (!access) return true;
+  return statusId != null && (access.editableProjectStatusIds || []).includes(String(statusId));
+}
+
+/** True when the user may change runs in this run status (runs store the status name). */
+export function canEditRunStatusName(access, statusName) {
+  if (!access) return true;
+  return Boolean(statusName) && (access.editableRunStatusNames || []).includes(statusName);
+}
+
+/** True when the user may change this project: its own status is editable, or the run it is on is. */
+export function canEditProjectOrItsRun(access, project, run = null) {
+  return canEditProjectStatusId(access, project?.status_id) || (run ? canEditRunStatusName(access, run.status) : false);
+}
+
 /** Name of the run status with this system_key, or "". */
 export function runStatusNameByKey(runStatuses = [], key) {
   return runStatuses.find((s) => s.system_key === key)?.status_name || "";

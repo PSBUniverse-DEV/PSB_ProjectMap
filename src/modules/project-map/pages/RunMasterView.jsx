@@ -14,7 +14,7 @@ import { useRouter } from "next/navigation";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCircleInfo, faCheckCircle, faPrint, faMoneyCheckDollar, faPen, faPaperclip } from "@fortawesome/free-solid-svg-icons";
 import { Button, Modal, toastError, TableZ, FileAttachments } from "@/shared/components/ui";
-import { resolveRunStatusOptions, getRunStatusColor, formatProjectDescriptionForDisplay, stripTownshipLabel, parseStateRoute, getProjectAmountDisplay, splitRunAmounts, PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, formatDisplayDate, canEditProjectStatusId, canEditRunStatusName } from "../data/projectMap.data";
+import { resolveRunStatusOptions, getRunStatusColor, formatProjectDescriptionForDisplay, stripTownshipLabel, parseStateRoute, getProjectAmountDisplay, splitRunAmounts, PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, formatDisplayDate, canEditRunStatusName } from "../data/projectMap.data";
 import { loadRunDetails, loadRuns, loadPaidSheet, loadFiles, createFileUpload, saveUploadedFile, getFileUrl, deleteFile, loadProjectFileCounts } from "../data/projectMap.actions";
 import { generateRunManifestPrint } from "../utils/printRunManifest";
 import { generatePaidSheetPrint } from "../utils/printPaidSheet";
@@ -680,14 +680,12 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
           <FileAttachments
             key={filesProject.id}
             loadFiles={() => loadFiles("project", filesProject.id)}
-            createUpload={(meta) => createFileUpload("project", filesProject.id, meta)}
-            saveFile={(storagePath, meta) => saveUploadedFile("project", filesProject.id, storagePath, meta)}
+            createUpload={(meta) => createFileUpload("project", filesProject.id, meta, { viaRunId: expandedDetail?.run?.id })}
+            saveFile={(storagePath, meta) => saveUploadedFile("project", filesProject.id, storagePath, meta, { viaRunId: expandedDetail?.run?.id })}
             getFileUrl={(file) => getFileUrl(file.id)}
-            deleteFile={(file) => deleteFile(file.id)}
-            readOnly={
-              !canEditProjectStatusId(editAccess, filesProject.status_id ?? filesProject.proj_s_project_status?.status_id) &&
-              !canEditRunStatusName(editAccess, expandedDetail?.run?.status)
-            }
+            deleteFile={(file) => deleteFile(file.id, { viaRunId: expandedDetail?.run?.id })}
+            // Run Master is a Runs-tab view: the run's status decides.
+            readOnly={!canEditRunStatusName(editAccess, expandedDetail?.run?.status)}
             maxBytes={PROJECT_FILE_MAX_BYTES}
             accept={PROJECT_FILE_TYPES.join(",")}
           />

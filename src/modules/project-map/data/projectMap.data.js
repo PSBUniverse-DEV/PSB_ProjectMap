@@ -51,11 +51,6 @@ export function canEditRunStatusName(access, statusName) {
   return Boolean(statusName) && (access.editableRunStatusNames || []).includes(statusName);
 }
 
-/** True when the user may change this project: its own status is editable, or the run it is on is. */
-export function canEditProjectOrItsRun(access, project, run = null) {
-  return canEditProjectStatusId(access, project?.status_id) || (run ? canEditRunStatusName(access, run.status) : false);
-}
-
 /** Name of the run status with this system_key, or "". */
 export function runStatusNameByKey(runStatuses = [], key) {
   return runStatuses.find((s) => s.system_key === key)?.status_name || "";

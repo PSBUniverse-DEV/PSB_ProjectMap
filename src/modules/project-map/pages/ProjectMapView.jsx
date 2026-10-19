@@ -20,7 +20,7 @@ import StopStatusPrompt from "../components/StopStatusPrompt";
 import FilterBar from "../components/FilterBar";
 import AddProjectForm from "../components/AddProjectForm";
 import MapSearch from "../components/MapSearch";
-import { splitRunAmounts, getStatusTabGroupIds, runStatusNameByKey, canEditProjectStatusId, canEditRunStatusName, canEditProjectOrItsRun } from "../data/projectMap.data";
+import { splitRunAmounts, getStatusTabGroupIds, runStatusNameByKey, canEditProjectStatusId, canEditRunStatusName } from "../data/projectMap.data";
 import FilterChips from "../components/FilterChips";
 import RunFilterPanel from "../components/RunFilterPanel";
 import RunFilterChips from "../components/RunFilterChips";
@@ -481,7 +481,8 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
   // Edit rights for what is on screen (view-only otherwise). Same rule as the
   // server's Edit Access checks; see the helpers in projectMap.data.js.
   const selectedProjectRun = selectedProject ? projectRunLookup.get(selectedProject.id)?.run || null : null;
-  const canEditSelectedProject = selectedProject ? canEditProjectOrItsRun(statusTabAccess, selectedProject, selectedProjectRun) : false;
+  // Projects tab: only project status ticks count (run ticks apply on the Runs tab).
+  const canEditSelectedProject = selectedProject ? canEditProjectStatusId(statusTabAccess, selectedProject.status_id) : false;
   const canDeleteSelectedProject = selectedProject ? canEditProjectStatusId(statusTabAccess, selectedProject.status_id) : false;
   const canRemoveSelectedProjectFromRun = selectedProjectRun ? canEditRunStatusName(statusTabAccess, selectedProjectRun.status) : false;
   const canEditSelectedRun = selectedRun ? canEditRunStatusName(statusTabAccess, selectedRun.status) : false;
@@ -801,7 +802,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
   }, [selectedRunId, selectedRun, refreshRuns]);
 
   // Opens the status pop-up for the stops of a run that was cancelled or deleted.
-  const promptForReleasedStops = useCallback((stops, wasDeleted) => {
+  const promptForReleasedStops = useCallback((stops, wasDeleted, releaseToken) => {
     if (!Array.isArray(stops) || stops.length === 0) return;
     setStopPrompt({
       title: wasDeleted ? "Run Deleted" : "Run Cancelled",
@@ -809,6 +810,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
         ? "These projects are no longer on a run. Their statuses have not changed. Choose a new status for any of them, or keep them as they are."
         : "This run was cancelled. Its projects keep their current statuses. Choose a new status for any of them, or keep them as they are.",
       stops,
+      releaseToken,
     });
   }, []);
 
@@ -847,7 +849,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
 
       await refreshRuns();
       toastSuccess("Run status updated.", "Runs");
-      promptForReleasedStops(updatedRun?._releasedStops, false);
+      promptForReleasedStops(updatedRun?._releasedStops, false, updatedRun?._releaseToken);
     } catch (err) {
       console.error("[ProjectMapView] Failed to update run status:", err);
       toastError(err?.message || "Failed to update run status.", "Runs");
@@ -884,7 +886,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
       // Clear ALL run-related state
       clearRunState();
       await refreshRuns();
-      promptForReleasedStops(deleted?.releasedStops, true);
+      promptForReleasedStops(deleted?.releasedStops, true, deleted?.releaseToken);
     } catch (err) {
       toastError(err?.message || "Failed to delete run.", "Runs");
     } finally { setBusy(false); }
@@ -895,8 +897,8 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
     setShowRunForm(false);
     setEditingRun(null);
     refreshRuns();
-    if (result?.releasedStops) promptForReleasedStops(result.releasedStops, true);
-    else promptForReleasedStops(result?._releasedStops, false);
+    if (result?.releasedStops) promptForReleasedStops(result.releasedStops, true, result.releaseToken);
+    else promptForReleasedStops(result?._releasedStops, false, result?._releaseToken);
   };
   const handleCloseRunForm = () => { setShowRunForm(false); setEditingRun(null); };
 
@@ -1002,24 +1004,19 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
   const handleProjectSelectorSaved = () => { setShowProjectSelector(false); refreshRunData(); refreshProjects(); };
 
   const handleRemoveProjectFromRun = async (runProjectId) => {
-    // Read the project before the stop row is gone, for the status pop-up.
-    const assignment = allRunProjects.find((rp) => rp.id === runProjectId);
-    const project = assignment ? loadedProjects.find((p) => p.id === assignment.project_id) : null;
     setBusy(true);
     try {
-      await removeProjectFromRun(runProjectId);
+      // The server returns the released stop and a signed note for the status pop-up.
+      const removed = await removeProjectFromRun(runProjectId);
       toastSuccess("Project removed from run.", "Runs");
       await refreshRunData();
       await refreshRunProjects();
-      if (project) {
+      if (removed?.releasedStops?.length) {
         setStopPrompt({
           title: "Project Removed from Run",
           message: "This project is no longer on a run. Its status has not changed. Choose its status now, or keep it as is.",
-          stops: [{
-            projectId: project.id,
-            clientName: project.client_name || "This project",
-            statusId: project.status_id != null ? String(project.status_id) : "",
-          }],
+          stops: removed.releasedStops,
+          releaseToken: removed.releaseToken,
         });
       }
     } catch (err) {
@@ -1111,7 +1108,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
         install_start: editingStopDate.installStart || null,
         install_end: editingStopDate.installEnd || null,
         updated_by: null,
-      });
+      }, { viaRunId: selectedRunId });
 
       // Targeted local state patch so the UI reflects the change
       // immediately (button icon flips to "filled"), without a reload.
@@ -1153,7 +1150,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
       await updateProject(editingStopInvoice.projectId, {
         invoice_number: editingStopInvoice.invoiceNumber || null,
         updated_by: null,
-      });
+      }, { viaRunId: selectedRunId });
 
       // Targeted local state patch so the button's color/weight updates
       // immediately, without a full reload.
@@ -1201,7 +1198,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
       await updateProject(editingProjectPrice.projectId, {
         project_subtotal: numValue,
         updated_by: null,
-      });
+      }, { viaRunId: selectedRunId });
 
       // Targeted local state patch
       setProjects((prev) =>
@@ -1514,7 +1511,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
             documented on the two effects above): it shows while either is in
             flight and hides only once ALL panel data is displayed. */}
         {mode === "runs" && selectedRun && (
-          <RunDetailPanel run={selectedRun} runProjects={runProjects} runSegmentData={runSegmentData} onClose={handleCloseRunDetail} onEdit={canEditSelectedRun ? handleEditRun : null} onDelete={canEditSelectedRun ? () => setConfirmDeleteRunId(selectedRun.id) : null} onRemoveProject={canEditSelectedRun ? handleRemoveProjectFromRun : null} onReorderStops={canEditSelectedRun ? handleReorderStops : null} onRecalculate={handleRecalculate} recalculating={recalculating} onEditStopNote={canEditSelectedRun ? handleEditStopNote : null} readOnly={!canEditSelectedRun} canEditStopProject={(rp) => canEditProjectStatusId(statusTabAccess, rp.proj_t_projects?.proj_s_project_status?.status_id)} onEditStopDate={handleEditStopDate} onEditStopInvoice={handleEditStopInvoice} onEditProjectPrice={handleEditProjectPrice} isLoading={isLoadingRunDetails || runRouteLoading} runStatuses={runStatuses} onStatusChange={handleRunStatusChange} />
+          <RunDetailPanel run={selectedRun} runProjects={runProjects} runSegmentData={runSegmentData} onClose={handleCloseRunDetail} onEdit={canEditSelectedRun ? handleEditRun : null} onDelete={canEditSelectedRun ? () => setConfirmDeleteRunId(selectedRun.id) : null} onRemoveProject={canEditSelectedRun ? handleRemoveProjectFromRun : null} onReorderStops={canEditSelectedRun ? handleReorderStops : null} onRecalculate={handleRecalculate} recalculating={recalculating} onEditStopNote={canEditSelectedRun ? handleEditStopNote : null} readOnly={!canEditSelectedRun} onEditStopDate={handleEditStopDate} onEditStopInvoice={handleEditStopInvoice} onEditProjectPrice={handleEditProjectPrice} isLoading={isLoadingRunDetails || runRouteLoading} runStatuses={runStatuses} onStatusChange={handleRunStatusChange} />
         )}
       </div>
 

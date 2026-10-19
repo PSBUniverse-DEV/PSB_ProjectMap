@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Button, Modal, toastError, toastSuccess } from "@/shared/components/ui";
-import { updateProject } from "../data/projectMap.actions";
+import { saveReleasedStopStatuses } from "../data/projectMap.actions";
 
 /**
  * StopStatusPrompt — after stops leave a run (one stop removed, or the run
@@ -34,9 +34,11 @@ export default function StopStatusPrompt({ prompt, statuses = [], onClose, onSav
   const handleSave = async () => {
     setSaving(true);
     try {
-      for (const stop of changedStops) {
-        await updateProject(stop.projectId, { status_id: Number(choices[stop.projectId]) });
-      }
+      // The release's signed note allows exactly these projects (Runs-tab rule).
+      await saveReleasedStopStatuses(
+        prompt?.releaseToken,
+        changedStops.map((stop) => ({ projectId: stop.projectId, statusId: Number(choices[stop.projectId]) }))
+      );
       toastSuccess(changedStops.length === 1 ? "Project status updated." : `${changedStops.length} project statuses updated.`, "Runs");
       onSaved?.();
     } catch (err) {

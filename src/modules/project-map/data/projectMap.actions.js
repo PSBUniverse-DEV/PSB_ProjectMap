@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@supabase/supabase-js";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import {
   assertFileAllowed,
   createSignedFileUpload,
@@ -978,9 +979,24 @@ async function requireRunStopEdit(supabase, access, runProjectId) {
   await requireRunEdit(supabase, access, stop.run_id);
 }
 
-// Throws unless the user may change this project: its own status is editable,
-// or (unless ownStatusOnly) the run it is on is editable.
-async function requireProjectEdit(supabase, access, projectId, { ownStatusOnly = false } = {}) {
+// Throws unless the user may change this project.
+// - Projects tab (no viaRunId): its own project status must be ticked.
+// - Runs tab (viaRunId): it must be a stop on that run, and the run's status
+//   must be ticked. Project status ticks do not count there.
+async function requireProjectEdit(supabase, access, projectId, { viaRunId = null } = {}) {
+  if (viaRunId != null) {
+    const { data: stop, error: stopError } = await supabase
+      .from("proj_t_run_projects")
+      .select("run_id")
+      .eq("project_id", projectId)
+      .eq("run_id", viaRunId)
+      .maybeSingle();
+    if (stopError) throw new Error(stopError.message);
+    if (!stop) throw new Error("That project is not on this run.");
+    await requireRunEdit(supabase, access, viaRunId);
+    return;
+  }
+
   const { data: project, error } = await supabase
     .from("proj_t_projects")
     .select("id, status_id, proj_s_project_status!proj_t_projects_status_id_fkey(status_name)")
@@ -990,25 +1006,57 @@ async function requireProjectEdit(supabase, access, projectId, { ownStatusOnly =
   if (!project) throw new Error("Project not found.");
   if (canEditProjectStatus(access, project.status_id)) return;
 
-  if (!ownStatusOnly) {
-    const { data: stop, error: stopError } = await supabase
-      .from("proj_t_run_projects")
-      .select("proj_t_runs(status)")
-      .eq("project_id", projectId)
-      .maybeSingle();
-    if (stopError) throw new Error(stopError.message);
-    if (canEditRunStatus(access, stop?.proj_t_runs?.status)) return;
-  }
-
   const statusName = project.proj_s_project_status?.status_name || "no status";
   throw new Error(`Projects in "${statusName}" are view-only for you.`);
 }
 
 // Files belong to one project or one run; changing them follows that owner.
-async function requireFileOwnerEdit(supabase, access, ownerType, ownerId) {
-  if (ownerType === "project") return requireProjectEdit(supabase, access, ownerId);
+// A project's files opened from a run (Runs tab) pass viaRunId, so the run decides.
+async function requireFileOwnerEdit(supabase, access, ownerType, ownerId, viaRunId = null) {
+  if (ownerType === "project") return requireProjectEdit(supabase, access, ownerId, { viaRunId });
   if (ownerType === "run") return requireRunEdit(supabase, access, ownerId);
   throw new Error(`Unknown file owner type: "${ownerType}"`);
+}
+
+// Project fields a stop edit inside a run may change (run panel: date, invoice, price).
+const STOP_PROJECT_FIELDS = ["install_start", "install_end", "invoice_number", "project_subtotal", "updated_by"];
+
+// ─── Released stops ─────────────────────────────────────────
+// When stops leave a run (stop removed, run cancelled or deleted), the user who
+// did it may set those projects' statuses in the follow-up pop-up: a Runs-tab
+// action, so run ticks decide, and the release already checked them. The
+// release hands back a short-lived signed note listing exactly those projects;
+// saveReleasedStopStatuses only accepts that note.
+const RELEASE_NOTE_MINUTES = 30;
+
+function releaseNoteSecret() {
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!key) throw new Error("Missing Supabase admin configuration");
+  return `psb-project-map-release:${key}`;
+}
+
+function signReleaseNote(userId, projectIds) {
+  if (!projectIds.length) return null;
+  const body = Buffer.from(JSON.stringify({
+    u: String(userId),
+    p: projectIds.map(String),
+    e: Date.now() + RELEASE_NOTE_MINUTES * 60000,
+  })).toString("base64url");
+  const signature = createHmac("sha256", releaseNoteSecret()).update(body).digest("base64url");
+  return `${body}.${signature}`;
+}
+
+// The project ids a valid, unexpired note from this user allows.
+function readReleaseNote(note, userId) {
+  const expired = "This pop-up has expired. Close it and change the statuses from the projects instead.";
+  const [body, signature] = String(note || "").split(".");
+  if (!body || !signature) throw new Error(expired);
+  const expected = Buffer.from(createHmac("sha256", releaseNoteSecret()).update(body).digest("base64url"));
+  const given = Buffer.from(signature);
+  if (given.length !== expected.length || !timingSafeEqual(given, expected)) throw new Error(expired);
+  const data = JSON.parse(Buffer.from(body, "base64url").toString("utf8"));
+  if (data.u !== String(userId) || Date.now() > Number(data.e)) throw new Error(expired);
+  return new Set(data.p);
 }
 
 // ─── Project CRUD ──────────────────────────────────────────
@@ -1077,7 +1125,9 @@ export async function createProject(project) {
  * Fields that ARE passed still go through their normalizer below so empty
  * strings / blank inputs are stored as null exactly as before.
  */
-export async function updateProject(projectId, updates) {
+// `viaRunId`: the edit comes from that run (Runs tab: stop date / invoice / price).
+// The run's status decides then, and only STOP_PROJECT_FIELDS may change.
+export async function updateProject(projectId, updates, { viaRunId = null } = {}) {
   const id = toIntOrNull(projectId);
   if (id === null) throw new Error("projectId is required.");
   // Only checked when the caller sends a status; other partial updates are untouched.
@@ -1086,8 +1136,12 @@ export async function updateProject(projectId, updates) {
   }
 
   const supabase = getSupabaseAdmin();
-  // Judged by the project's CURRENT status (or its run), so moving it into any status is allowed.
-  await requireProjectEdit(supabase, await requireProjectMapAccess(), id);
+  if (viaRunId != null && Object.keys(updates || {}).some((key) => !STOP_PROJECT_FIELDS.includes(key))) {
+    throw new Error("Only the stop's date, invoice and price can be changed from a run.");
+  }
+  // Judged by the project's CURRENT status (Projects tab) or the run's (Runs tab),
+  // so moving it into any status is allowed.
+  await requireProjectEdit(supabase, await requireProjectMapAccess(), id, { viaRunId });
   const now = new Date().toISOString();
 
   // Per-field normalizers — applied only when the caller passed that field.
@@ -1133,7 +1187,12 @@ export async function updateProjectPaymentInfo(projectId, updates) {
   if (id === null) throw new Error("projectId is required.");
 
   const supabase = getSupabaseAdmin();
-  await requireProjectEdit(supabase, await requireProjectMapAccess(), id);
+  const access = await requireProjectMapAccess();
+  // Paid sheets are filled in from a run, so the run's status decides.
+  const { data: stop, error: stopError } = await supabase.from("proj_t_run_projects").select("run_id").eq("project_id", id).maybeSingle();
+  if (stopError) throw new Error(stopError.message);
+  if (stop?.run_id != null) await requireRunEdit(supabase, access, stop.run_id);
+  else await requireProjectEdit(supabase, access, id);
   const now = new Date().toISOString();
 
   const payload = {
@@ -1222,7 +1281,7 @@ export async function deleteProject(projectId) {
   if (id === null) throw new Error("projectId is required.");
 
   const supabase = getSupabaseAdmin();
-  await requireProjectEdit(supabase, await requireProjectMapAccess(), id, { ownStatusOnly: true });
+  await requireProjectEdit(supabase, await requireProjectMapAccess(), id);
 
   // Remove the project's stored attachments (their rows cascade with the project)
   await removeStoredFiles(supabase, "project", id);
@@ -1564,7 +1623,9 @@ export async function updateRun(runId, updates) {
   return {
     ...data,
     ...(cascadeResult ? { _cascadedStatusByProjectId: cascadeResult.statusByProjectId } : {}),
-    ...(releasedStops?.length ? { _releasedStops: releasedStops } : {}),
+    ...(releasedStops?.length
+      ? { _releasedStops: releasedStops, _releaseToken: signReleaseNote(access.user?.userId, releasedStops.map((stop) => stop.projectId)) }
+      : {}),
   };
 }
 
@@ -1588,7 +1649,8 @@ async function loadRunStopStatuses(supabase, runId) {
 
 export async function deleteRun(runId) {
   const supabase = getSupabaseAdmin();
-  await requireRunEdit(supabase, await requireProjectMapAccess(), runId);
+  const access = await requireProjectMapAccess();
+  await requireRunEdit(supabase, access, runId);
 
   // Read the stops before they are removed, so the screen can ask which status each should have now.
   let releasedStops = [];
@@ -1609,7 +1671,11 @@ export async function deleteRun(runId) {
   const { error } = await supabase.from("proj_t_runs").delete().eq("id", runId);
   if (error) throw new Error(error.message);
   
-  return { success: true, releasedStops };
+  return {
+    success: true,
+    releasedStops,
+    releaseToken: signReleaseNote(access.user?.userId, releasedStops.map((stop) => stop.projectId)),
+  };
 }
 
 export async function addProjectToRun(runId, projectId, stopSequence = 0) {
@@ -1685,9 +1751,53 @@ export async function getProjectRunAssignment(projectId) {
 
 export async function removeProjectFromRun(runProjectId) {
   const supabase = getSupabaseAdmin();
-  await requireRunStopEdit(supabase, await requireProjectMapAccess(), runProjectId);
+  const access = await requireProjectMapAccess();
+  await requireRunStopEdit(supabase, access, runProjectId);
+
+  // Read the stop's project before the row is gone, for the "choose a status" pop-up.
+  const { data: stop, error: stopError } = await supabase
+    .from("proj_t_run_projects")
+    .select("project_id, proj_t_projects(id, client_name, status_id)")
+    .eq("id", runProjectId)
+    .maybeSingle();
+  if (stopError) throw new Error(stopError.message);
+
   const { error } = await supabase.from("proj_t_run_projects").delete().eq("id", runProjectId);
   if (error) throw new Error(error.message);
+
+  const releasedStops = stop?.proj_t_projects
+    ? [{
+        projectId: stop.project_id,
+        clientName: stop.proj_t_projects.client_name || "This project",
+        statusId: stop.proj_t_projects.status_id != null ? String(stop.proj_t_projects.status_id) : "",
+      }]
+    : [];
+  return {
+    success: true,
+    releasedStops,
+    releaseToken: signReleaseNote(access.user?.userId, releasedStops.map((released) => released.projectId)),
+  };
+}
+
+/**
+ * Saves the statuses chosen in the "choose a status" pop-up after stops left
+ * a run. Only projects listed in that release's signed note can be changed.
+ * `choices`: [{ projectId, statusId }].
+ */
+export async function saveReleasedStopStatuses(releaseToken, choices) {
+  const access = await requireProjectMapAccess();
+  const allowed = readReleaseNote(releaseToken, access.user?.userId);
+  const supabase = getSupabaseAdmin();
+  const now = new Date().toISOString();
+
+  for (const choice of Array.isArray(choices) ? choices : []) {
+    const projectId = toIntOrNull(choice?.projectId);
+    const statusId = toIntOrNull(choice?.statusId);
+    if (projectId === null || statusId === null) throw new Error("Project status is required.");
+    if (!allowed.has(String(projectId))) throw new Error("That project was not part of this run.");
+    const { error } = await supabase.from("proj_t_projects").update({ status_id: statusId, updated_at: now }).eq("id", projectId);
+    if (error) throw new Error(error.message);
+  }
   return { success: true };
 }
 
@@ -2132,9 +2242,9 @@ export async function loadFiles(ownerType, ownerId) {
  * Step 1 of an upload: validates the file and returns a one-time signed
  * upload target. `file` is plain metadata: { name, type, size }.
  */
-export async function createFileUpload(ownerType, ownerId, file) {
+export async function createFileUpload(ownerType, ownerId, file, { viaRunId = null } = {}) {
   const { folder, id } = resolveFileOwner(ownerType, ownerId);
-  await requireFileOwnerEdit(getSupabaseAdmin(), await requireProjectMapAccess(), ownerType, id);
+  await requireFileOwnerEdit(getSupabaseAdmin(), await requireProjectMapAccess(), ownerType, id, viaRunId);
   return createSignedFileUpload({
     bucket: FILES_BUCKET,
     folder: `${folder}/${id}`,
@@ -2148,7 +2258,7 @@ export async function createFileUpload(ownerType, ownerId, file) {
  * Step 2 of an upload: records the uploaded file. The path must be inside
  * the owner's own folder so a row can never point at another owner's file.
  */
-export async function saveUploadedFile(ownerType, ownerId, storagePath, file) {
+export async function saveUploadedFile(ownerType, ownerId, storagePath, file, { viaRunId = null } = {}) {
   const { column, folder, id } = resolveFileOwner(ownerType, ownerId);
   assertFileAllowed(file, { maxBytes: PROJECT_FILE_MAX_BYTES, allowedTypes: PROJECT_FILE_TYPES });
   if (!String(storagePath || "").startsWith(`${folder}/${id}/`)) {
@@ -2156,7 +2266,7 @@ export async function saveUploadedFile(ownerType, ownerId, storagePath, file) {
   }
 
   const supabase = getSupabaseAdmin();
-  await requireFileOwnerEdit(supabase, await requireProjectMapAccess(), ownerType, id);
+  await requireFileOwnerEdit(supabase, await requireProjectMapAccess(), ownerType, id, viaRunId);
   const { data, error } = await supabase
     .from("proj_t_files")
     .insert({
@@ -2187,7 +2297,7 @@ export async function getFileUrl(fileId) {
 }
 
 /** Permanently deletes one file: the stored object first, then its row. */
-export async function deleteFile(fileId) {
+export async function deleteFile(fileId, { viaRunId = null } = {}) {
   const id = toIntOrNull(fileId);
   if (id === null) throw new Error("fileId is required.");
 
@@ -2197,7 +2307,7 @@ export async function deleteFile(fileId) {
   if (!row) return { success: true };
 
   const access = await requireProjectMapAccess();
-  if (row.project_id != null) await requireFileOwnerEdit(supabase, access, "project", row.project_id);
+  if (row.project_id != null) await requireFileOwnerEdit(supabase, access, "project", row.project_id, viaRunId);
   else if (row.run_id != null) await requireFileOwnerEdit(supabase, access, "run", row.run_id);
 
   await removeStorageObjects({ bucket: FILES_BUCKET, storagePaths: [row.storage_path] });

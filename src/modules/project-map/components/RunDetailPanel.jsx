@@ -31,7 +31,7 @@ function formatMileage(miles) {
   return `${Number(miles).toFixed(1)} mi`;
 }
 
-export default function RunDetailPanel({ run, runProjects = [], runSegmentData = null, onClose, onEdit, onDelete, onRemoveProject, onReorderStops, onRecalculate, recalculating = false, onEditStopNote, onEditStopDate, onEditStopInvoice, onEditProjectPrice, onProjectUpdated, isLoading = false, runStatuses = [], onStatusChange, readOnly = false, canEditStopProject = null }) {
+export default function RunDetailPanel({ run, runProjects = [], runSegmentData = null, onClose, onEdit, onDelete, onRemoveProject, onReorderStops, onRecalculate, recalculating = false, onEditStopNote, onEditStopDate, onEditStopInvoice, onEditProjectPrice, onProjectUpdated, isLoading = false, runStatuses = [], onStatusChange, readOnly = false }) {
   const [dragIndex, setDragIndex] = useState(null);
   const [dragOverIndex, setDragOverIndex] = useState(null);
   const [isEditingStatus, setIsEditingStatus] = useState(false);
@@ -269,9 +269,8 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
                     const amount = getProjectAmountDisplay(proj);
                     const isDragging = dragIndex === idx;
                     const isDragOver = dragOverIndex === idx;
-                    // Date / invoice / price change the stop's project: allowed when the run
-                    // is editable, or when the user can edit that project's own status.
-                    const canEditStop = !readOnly || Boolean(canEditStopProject?.(rp));
+                    // Date / invoice / price are Runs-tab edits: only the run's status decides.
+                    const canEditStop = !readOnly;
 
                     return (
                       <div key={rp.id} style={{ marginBottom: "2px" }}>

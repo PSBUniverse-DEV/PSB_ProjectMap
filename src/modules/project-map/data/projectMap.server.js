@@ -102,6 +102,63 @@ export async function loadProjectMapSetup() {
   return { ...result, sourceErrors: errors };
 }
 
+// ─── Page Access (card lock) ────────────────────────────────
+
+// Any card route_path as a plain path: "module:key/a/b" → "/a/b", a full URL → its path.
+function normalizeRoutePath(value) {
+  let text = String(value || "").trim();
+  if (!text || text === "#") return "";
+  if (text.startsWith("module:")) {
+    const rest = text.slice("module:".length);
+    const slash = rest.indexOf("/");
+    text = slash === -1 ? "/" : rest.slice(slash);
+  } else if (/^https?:\/\//i.test(text)) {
+    try { text = new URL(text).pathname; } catch { return ""; }
+  }
+  text = text.split(/[?#]/)[0];
+  if (!text.startsWith("/")) text = `/${text}`;
+  return text.length > 1 ? text.replace(/\/+$/, "") : text;
+}
+
+/**
+ * True when the signed-in user has an active role mapped (Card Module Setup)
+ * to an active card for this page. Same tables the dashboard uses to show
+ * cards. A page with no card is locked for everyone.
+ */
+export async function loadPageAccess(routePath) {
+  const target = normalizeRoutePath(routePath);
+  if (!target) return false;
+  const session = await getCurrentSession();
+  if (!session?.userId) return false;
+
+  const supabase = getSupabaseAdmin();
+  const [{ data: assignments, error: assignmentError }, { data: cards, error: cardError }] = await Promise.all([
+    supabase.from("psb_m_userapproleaccess").select("role_id, is_active").eq("user_id", session.userId),
+    supabase.from("psb_s_appcard").select("card_id, route_path, is_active"),
+  ]);
+  if (assignmentError || cardError) {
+    console.error("[loadPageAccess]", assignmentError?.message || cardError?.message);
+    return false;
+  }
+
+  const cardIds = (cards || [])
+    .filter((card) => card.is_active !== false && normalizeRoutePath(card.route_path) === target)
+    .map((card) => card.card_id);
+  const assignedRoleIds = [...new Set((assignments || []).filter((row) => row.is_active !== false).map((row) => row.role_id))];
+  if (cardIds.length === 0 || assignedRoleIds.length === 0) return false;
+
+  const [{ data: roles, error: roleError }, { data: mappings, error: mappingError }] = await Promise.all([
+    supabase.from("psb_s_role").select("role_id, is_active").in("role_id", assignedRoleIds),
+    supabase.from("psb_m_appcardroleaccess").select("card_id, role_id, is_active").in("card_id", cardIds),
+  ]);
+  if (roleError || mappingError) {
+    console.error("[loadPageAccess]", roleError?.message || mappingError?.message);
+    return false;
+  }
+  const activeRoleIds = new Set((roles || []).filter((role) => role.is_active !== false).map((role) => String(role.role_id)));
+  return (mappings || []).some((mapping) => mapping.is_active !== false && activeRoleIds.has(String(mapping.role_id)));
+}
+
 // ─── Status Tab Access ──────────────────────────────────────
 
 // app_id of the Project Map application. Found by module_key because ids

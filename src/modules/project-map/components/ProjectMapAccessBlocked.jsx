@@ -3,6 +3,7 @@ const REASON_MESSAGES = {
   "no-session": "Your sign-in could not be read, so Project Map cannot be shown.",
   "no-user": "Your user record could not be found, so Project Map cannot be shown.",
   "no-run-mapping": "No run statuses are set up yet, so runs cannot be shown.",
+  "no-page-access": "Your role does not have this page. Ask an administrator to add your role to its card in Card Module Setup.",
   error: "Your Project Map access could not be checked.",
 };
 

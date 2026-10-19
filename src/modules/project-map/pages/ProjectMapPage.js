@@ -1,4 +1,5 @@
-import { loadProjectMapSetup, loadProjectStatusTabAccess, loadRuns } from "../data/projectMap.server";
+import { loadPageAccess, loadProjectMapSetup, loadProjectStatusTabAccess, loadRuns } from "../data/projectMap.server";
+import { PROJECT_MAP_PAGES } from "../data/projectMap.data";
 import ProjectMapAccessBlocked from "../components/ProjectMapAccessBlocked";
 import ProjectMapView from "./ProjectMapView";
 
@@ -9,6 +10,10 @@ export default async function ProjectMapPage() {
   const statusTabAccess = await loadProjectStatusTabAccess();
   if (statusTabAccess.reason !== "ok") {
     return <ProjectMapAccessBlocked access={statusTabAccess} />;
+  }
+  // Only roles that have this page's card (also when the address is typed in).
+  if (!(await loadPageAccess(PROJECT_MAP_PAGES.map))) {
+    return <ProjectMapAccessBlocked access={{ ...statusTabAccess, reason: "no-page-access" }} />;
   }
 
   const [setup, runs] = await Promise.all([

@@ -8,9 +8,9 @@ import {
   getSignedFileUrl,
   removeStoredFiles as removeStorageObjects,
 } from "@/core/storage/files.service";
-import { PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, REPAIR_STATUS_KEYS, PROJECT_COMMENT_MAX_LENGTH } from "./projectMap.data";
+import { PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, REPAIR_STATUS_KEYS, PROJECT_COMMENT_MAX_LENGTH, PROJECT_MAP_PAGES } from "./projectMap.data";
 import { getCurrentSession } from "@/core/auth/session.service";
-import { loadProjectStatusTabAccess } from "./projectMap.server";
+import { loadPageAccess, loadProjectStatusTabAccess } from "./projectMap.server";
 import projectMapModule from "../index";
 import {
   getDealerLink,
@@ -70,7 +70,15 @@ function resolveSetupTable(key) {
   return entry;
 }
 
+// Setup actions run only for roles that have the setup page's card (same rule as the page).
+async function requireSetupAccess() {
+  if (!(await loadPageAccess(PROJECT_MAP_PAGES.setup))) {
+    throw new Error("Your role does not have access to Project Map Setup.");
+  }
+}
+
 export async function createSetupRow(tableKey, row) {
+  await requireSetupAccess();
   const { table, pk } = resolveSetupTable(tableKey);
   if (!row || typeof row !== "object") throw new Error("Row data is required.");
 
@@ -84,6 +92,7 @@ export async function createSetupRow(tableKey, row) {
 }
 
 export async function updateSetupRow(tableKey, id, updates) {
+  await requireSetupAccess();
   const { table, pk } = resolveSetupTable(tableKey);
   if (id == null) throw new Error(`${pk} is required.`);
   if (!updates || typeof updates !== "object") throw new Error("Update data is required.");
@@ -98,6 +107,7 @@ export async function updateSetupRow(tableKey, id, updates) {
 }
 
 export async function deleteSetupRow(tableKey, id) {
+  await requireSetupAccess();
   const { table, pk } = resolveSetupTable(tableKey);
   if (id == null) throw new Error(`${pk} is required.`);
 
@@ -138,6 +148,7 @@ const SETUP_ROW_USAGE = {
  * message says how many); the Active switch is the way to retire those.
  */
 export async function deleteSetupTableRow(tableKey, id) {
+  await requireSetupAccess();
   const session = await getCurrentSession();
   if (!session?.userId) throw new Error("Your sign-in has expired. Please sign in again.");
 
@@ -185,6 +196,7 @@ export async function deleteSetupTableRow(tableKey, id) {
 // ─── Project Status Specific Actions ─────────────────────────
 
 export async function createProjectStatus(data) {
+  await requireSetupAccess();
   const supabase = getSupabaseAdmin();
 
   // Validate required fields
@@ -232,6 +244,7 @@ export async function createProjectStatus(data) {
 }
 
 export async function updateProjectStatus(statusId, data) {
+  await requireSetupAccess();
   const supabase = getSupabaseAdmin();
   const id = Number(statusId);
   if (!id) throw new Error("status_id is required.");
@@ -275,6 +288,7 @@ export async function updateProjectStatus(statusId, data) {
 }
 
 export async function toggleProjectStatusActive(statusId, isActive) {
+  await requireSetupAccess();
   const supabase = getSupabaseAdmin();
   const id = Number(statusId);
   if (!id) throw new Error("status_id is required.");
@@ -293,6 +307,7 @@ export async function toggleProjectStatusActive(statusId, isActive) {
 }
 
 export async function reorderProjectStatuses(updates) {
+  await requireSetupAccess();
   if (!Array.isArray(updates) || updates.length === 0) {
     throw new Error("At least one update is required.");
   }
@@ -325,6 +340,7 @@ export async function reorderProjectStatuses(updates) {
 }
 
 export async function softDeleteProjectStatus(statusId) {
+  await requireSetupAccess();
   const supabase = getSupabaseAdmin();
   const id = Number(statusId);
   if (!id) throw new Error("status_id is required.");
@@ -353,6 +369,7 @@ export async function softDeleteProjectStatus(statusId) {
 // ─── Origin Address Specific Actions ─────────────────────────
 
 export async function createOriginAddress(data) {
+  await requireSetupAccess();
   const supabase = getSupabaseAdmin();
 
   // Validate required fields
@@ -409,6 +426,7 @@ export async function createOriginAddress(data) {
 }
 
 export async function updateOriginAddress(id, data) {
+  await requireSetupAccess();
   const supabase = getSupabaseAdmin();
   const originId = Number(id);
   if (!originId) throw new Error("id is required.");
@@ -462,10 +480,12 @@ export async function updateOriginAddress(id, data) {
 
 // Saves the drag-and-drop order of the Origin Addresses setup grid.
 export async function reorderOriginAddresses(updates) {
+  await requireSetupAccess();
   return reorderLookupRows("originAddresses", updates);
 }
 
 export async function toggleOriginAddressActive(id, isActive) {
+  await requireSetupAccess();
   const supabase = getSupabaseAdmin();
   const originId = Number(id);
   if (!originId) throw new Error("id is required.");
@@ -484,6 +504,7 @@ export async function toggleOriginAddressActive(id, isActive) {
 }
 
 export async function deleteOriginAddress(id) {
+  await requireSetupAccess();
   const supabase = getSupabaseAdmin();
   const originId = Number(id);
   if (!originId) throw new Error("id is required.");
@@ -519,6 +540,7 @@ export async function deleteOriginAddress(id) {
 // ─── States Specific Actions ────────────────────────────────
 
 export async function createState(data) {
+  await requireSetupAccess();
   const supabase = getSupabaseAdmin();
 
   // Validate required fields
@@ -580,6 +602,7 @@ export async function createState(data) {
 }
 
 export async function updateState(id, data) {
+  await requireSetupAccess();
   const supabase = getSupabaseAdmin();
   const stateId = Number(id);
   if (!stateId) throw new Error("id is required.");
@@ -639,6 +662,7 @@ export async function updateState(id, data) {
 }
 
 export async function toggleStateActive(id, isActive) {
+  await requireSetupAccess();
   const supabase = getSupabaseAdmin();
   const stateId = Number(id);
   if (!stateId) throw new Error("id is required.");
@@ -657,6 +681,7 @@ export async function toggleStateActive(id, isActive) {
 }
 
 export async function reorderStates(updates) {
+  await requireSetupAccess();
   if (!Array.isArray(updates) || updates.length === 0) {
     throw new Error("At least one update is required.");
   }
@@ -687,6 +712,7 @@ export async function reorderStates(updates) {
 }
 
 export async function softDeleteState(id) {
+  await requireSetupAccess();
   const supabase = getSupabaseAdmin();
   const stateId = Number(id);
   if (!stateId) throw new Error("id is required.");
@@ -731,6 +757,7 @@ function resolveLookupTable(tableKey) {
 }
 
 export async function createLookupRow(tableKey, data) {
+  await requireSetupAccess();
   const { table, pk, nameField, descField } = resolveLookupTable(tableKey);
   const supabase = getSupabaseAdmin();
 
@@ -788,6 +815,7 @@ export async function createLookupRow(tableKey, data) {
 }
 
 export async function updateLookupRow(tableKey, id, data) {
+  await requireSetupAccess();
   const { table, pk, nameField, descField } = resolveLookupTable(tableKey);
   const supabase = getSupabaseAdmin();
   const rowId = Number(id);
@@ -840,6 +868,7 @@ export async function updateLookupRow(tableKey, id, data) {
 }
 
 export async function toggleLookupRowActive(tableKey, id, isActive) {
+  await requireSetupAccess();
   const { table, pk } = resolveLookupTable(tableKey);
   const supabase = getSupabaseAdmin();
   const rowId = Number(id);
@@ -853,6 +882,7 @@ export async function toggleLookupRowActive(tableKey, id, isActive) {
 }
 
 export async function reorderLookupRows(tableKey, updates) {
+  await requireSetupAccess();
   const { table, pk } = resolveLookupTable(tableKey);
   if (!Array.isArray(updates) || updates.length === 0) {
     throw new Error("At least one update is required.");
@@ -882,6 +912,7 @@ export async function reorderLookupRows(tableKey, updates) {
 }
 
 export async function softDeleteLookupRow(tableKey, id) {
+  await requireSetupAccess();
   const { table, pk } = resolveLookupTable(tableKey);
   const supabase = getSupabaseAdmin();
   const rowId = Number(id);
@@ -2530,6 +2561,7 @@ async function replaceRoleStatusRows(table, roleId, statusIds) {
  * full list the role should end up with.
  */
 export async function saveRoleStatusTabs(roleId, statusIds) {
+  await requireSetupAccess();
   return replaceRoleStatusRows("proj_m_role_project_status", roleId, statusIds);
 }
 
@@ -2538,5 +2570,6 @@ export async function saveRoleStatusTabs(roleId, statusIds) {
  * list of proj_s_run_status ids the role should end up with.
  */
 export async function saveRoleRunStatuses(roleId, statusIds) {
+  await requireSetupAccess();
   return replaceRoleStatusRows("proj_m_role_run_status", roleId, statusIds);
 }

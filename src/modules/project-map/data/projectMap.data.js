@@ -99,6 +99,16 @@ export function formatDisplayDate(value, empty = "—") {
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
+// Project Map page addresses, as in index.js routes and as Card Module Setup
+// stores them in psb_s_appcard.route_path. Each page opens only for roles that
+// have its card (loadPageAccess in projectMap.server.js).
+export const PROJECT_MAP_PAGES = {
+  map: "/project-map",
+  setup: "/project-map/setup",
+  runMaster: "/project-map/run-master",
+  calendar: "/project-map/calendar",
+};
+
 export function formatRunCode(runNumber) {
   if (runNumber == null) return null;
   return `PSBR-${String(runNumber).padStart(6, "0")}`;

@@ -73,6 +73,8 @@ export default function RunCalendarView({ runs = [], runStatuses = [] }) {
   const [printing, setPrinting] = useState(false);
   // The run picked in the list, outlined on the calendar until another is picked.
   const [focusedRunId, setFocusedRunId] = useState(null);
+  // Left column (run list) open or folded away.
+  const [listOpen, setListOpen] = useState(true);
   const calendarRef = useRef(null);
 
   // Every dated run with its worked-out labels.
@@ -231,9 +233,70 @@ export default function RunCalendarView({ runs = [], runStatuses = [] }) {
           <button type="button" style={navButtonStyle} onClick={() => shiftMonth(-1)}>‹ Prev</button>
           <button type="button" style={navButtonStyle} onClick={goToToday}>Today</button>
           <button type="button" style={navButtonStyle} onClick={() => shiftMonth(1)}>Next ›</button>
+          {/* Jump to any month. */}
+          <input
+            type="month"
+            aria-label="Pick a month"
+            value={`${monthStart.getFullYear()}-${String(monthStart.getMonth() + 1).padStart(2, "0")}`}
+            onChange={(e) => {
+              const match = String(e.target.value || "").match(/^(\d{4})-(\d{2})$/);
+              if (match) setMonthStart(new Date(Number(match[1]), Number(match[2]) - 1, 1));
+            }}
+            style={{ border: "1px solid #e2e8f0", borderRadius: "3px", padding: "2px 6px", fontSize: "12px", background: "#fff", color: "#1e293b" }}
+          />
           <strong style={{ fontSize: "13px", color: "#1e293b", minWidth: "130px", textAlign: "right" }}>{monthLabel}</strong>
         </div>
       </div>
+      {/* Two columns: run list on the left (~20%, can be folded), calendar on the right. */}
+      <div style={{ display: "flex", gap: "10px", alignItems: "flex-start" }}>
+        {listOpen ? (
+          <aside style={{ flex: "0 0 20%", minWidth: "220px", maxHeight: "calc(100vh - 200px)", display: "flex", flexDirection: "column", background: "#fff", border: "1px solid #e2e8f0", borderRadius: "4px" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "6px", padding: "6px 8px", borderBottom: "1px solid #e2e8f0" }}>
+              <strong style={{ fontSize: "12px", color: "#1e293b" }}>
+                {FILTERS.find((f) => f.key === filter)?.label}: {filteredList.length} run{filteredList.length === 1 ? "" : "s"}
+              </strong>
+              <button type="button" onClick={() => setListOpen(false)} title="Hide the run list" aria-label="Hide the run list" style={{ border: "1px solid #e2e8f0", background: "#fff", borderRadius: "3px", padding: "0 6px", fontSize: "12px", cursor: "pointer" }}>«</button>
+            </div>
+            <div style={{ padding: "4px 8px", fontSize: "11px", color: "#64748b" }}>
+              Click a run to show it on the calendar.
+              {filter === "all" && undatedCount > 0 && (
+                <> {undatedCount} run{undatedCount === 1 ? " has" : "s have"} no date and {undatedCount === 1 ? "is" : "are"} not shown.</>
+              )}
+            </div>
+            <div style={{ overflowY: "auto", padding: "0 8px 8px", display: "flex", flexDirection: "column", gap: "4px" }}>
+              {filteredList.length === 0 ? (
+                <div style={{ fontSize: "12px", color: "#64748b" }}>No runs.</div>
+              ) : (
+                filteredList.map(({ run }) => (
+                  <button
+                    key={run.id}
+                    type="button"
+                    onClick={() => showOnCalendar(run)}
+                    // The whole border is set every time: removing only borderColor turns it black.
+                    style={{ display: "flex", flexDirection: "column", gap: "1px", textAlign: "left", background: run.id === focusedRunId ? "#eff6ff" : "#fff", border: `1px solid ${run.id === focusedRunId ? "#2563eb" : "#e2e8f0"}`, borderRadius: "3px", padding: "4px 6px", fontSize: "11px", cursor: "pointer" }}
+                  >
+                    <span style={{ display: "flex", justifyContent: "space-between", gap: "6px", width: "100%" }}>
+                      <span style={{ color: "#64748b" }}>{formatDateKey(run.run_date)}</span>
+                      <span style={{ color: getRunStatusColor(run.status, runStatuses) }}>{run.status}</span>
+                    </span>
+                    <strong style={{ color: "#1e293b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>{runTitle(run)}</strong>
+                  </button>
+                ))
+              )}
+            </div>
+          </aside>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setListOpen(true)}
+            title="Show the run list"
+            style={{ flex: "0 0 auto", writingMode: "vertical-rl", border: "1px solid #e2e8f0", background: "#fff", borderRadius: "4px", padding: "10px 4px", fontSize: "12px", color: "#1e293b", cursor: "pointer" }}
+          >
+            » Runs ({filteredList.length})
+          </button>
+        )}
+
+        <div style={{ flex: 1, minWidth: 0 }}>
       {/* Month grid */}
       <div ref={calendarRef} style={{ overflowX: "auto", scrollMarginTop: "70px" }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(110px, 1fr))", background: "#e2e8f0", gap: "1px", border: "1px solid #e2e8f0", borderRadius: "4px", minWidth: "780px" }}>
@@ -267,36 +330,8 @@ export default function RunCalendarView({ runs = [], runStatuses = [] }) {
         </div>
       </div>
 
-      {/* Every run matching the picked label, any month */}
-      {(
-        <div style={{ marginTop: "10px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: "4px", padding: "8px" }}>
-          <div style={{ fontSize: "12px", fontWeight: 600, color: "#1e293b", marginBottom: "6px" }}>
-            {FILTERS.find((f) => f.key === filter)?.label}: {filteredList.length} run{filteredList.length === 1 ? "" : "s"}
-            <span style={{ fontWeight: 400, color: "#64748b" }}> · Click a run to show it on the calendar.</span>
-            {filter === "all" && undatedCount > 0 && (
-              <span style={{ fontWeight: 400, color: "#64748b" }}> {undatedCount} run{undatedCount === 1 ? " has" : "s have"} no date and {undatedCount === 1 ? "is" : "are"} not shown.</span>
-            )}
-          </div>
-          {filteredList.length === 0 ? (
-            <div style={{ fontSize: "12px", color: "#64748b" }}>No runs.</div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-              {filteredList.map(({ run }) => (
-                <button
-                  key={run.id}
-                  type="button"
-                  onClick={() => showOnCalendar(run)}
-                  style={{ display: "flex", gap: "10px", alignItems: "center", textAlign: "left", background: "#fff", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px", cursor: "pointer", ...(run.id === focusedRunId ? { borderColor: "#2563eb" } : {}) }}
-                >
-                  <span style={{ minWidth: "95px", color: "#64748b" }}>{formatDateKey(run.run_date)}</span>
-                  <strong style={{ color: "#1e293b" }}>{runTitle(run)}</strong>
-                  <span style={{ color: getRunStatusColor(run.status, runStatuses) }}>{run.status}</span>
-                </button>
-              ))}
-            </div>
-          )}
         </div>
-      )}
+      </div>
       {/* Run details */}
       <Modal show={!!selected} onHide={() => setSelectedRunId(null)} title={selected ? runTitle(selected.run) : ""}>
         {selected && (

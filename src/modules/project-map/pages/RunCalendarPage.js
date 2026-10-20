@@ -32,5 +32,13 @@ export default async function RunCalendarPage() {
     loadRuns(access),
     loadProjectMapSetup(),
   ]);
-  return <RunCalendarView runs={runs} runStatuses={setup.runStatuses || []} />;
+  return (
+    <RunCalendarView
+      runs={runs}
+      runStatuses={setup.runStatuses || []}
+      statuses={setup.projectStatuses || []}
+      paymentMethods={setup.paymentMethods || []}
+      editAccess={{ editableRunStatusNames: access.editableRunStatusNames }}
+    />
+  );
 }

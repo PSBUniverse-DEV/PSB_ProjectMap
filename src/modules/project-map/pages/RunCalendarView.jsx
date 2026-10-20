@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Modal, toastError } from "@/shared/components/ui";
 import { startNavbarLoader } from "@/shared/utils/navbar-loader";
@@ -17,6 +17,8 @@ const FILTERS = [
   { key: "onTrack", label: "On Track", color: "#16a34a" },
   { key: "behind", label: "Behind", color: "#dc2626" },
   { key: "rescheduled", label: "Rescheduled", color: "#d97706" },
+  // Completed or cancelled runs: in "All" but neither on track nor behind.
+  { key: "finished", label: "Completed / Cancelled", color: "#64748b" },
 ];
 
 // "YYYY-MM-DD" for a date, in the viewer's own time zone.
@@ -69,6 +71,9 @@ export default function RunCalendarView({ runs = [], runStatuses = [] }) {
   const [filter, setFilter] = useState("all");
   const [selectedRunId, setSelectedRunId] = useState(null);
   const [printing, setPrinting] = useState(false);
+  // The run picked in the list, outlined on the calendar until another is picked.
+  const [focusedRunId, setFocusedRunId] = useState(null);
+  const calendarRef = useRef(null);
 
   // Every dated run with its worked-out labels.
   const items = useMemo(
@@ -85,7 +90,11 @@ export default function RunCalendarView({ runs = [], runStatuses = [] }) {
     onTrack: items.filter((item) => item.state.onTrack).length,
     behind: items.filter((item) => item.state.behind).length,
     rescheduled: items.filter((item) => item.state.rescheduled).length,
+    finished: items.filter((item) => item.state.finished).length,
   }), [items]);
+
+  // Runs with no run date cannot sit on the calendar; shown as a count only.
+  const undatedCount = useMemo(() => runs.filter((run) => !run.run_date).length, [runs]);
 
   // "YYYY-MM-DD" → runs on that day (after the filter).
   const itemsByDay = useMemo(() => {
@@ -98,13 +107,19 @@ export default function RunCalendarView({ runs = [], runStatuses = [] }) {
     return lookup;
   }, [items, matches]);
 
-  // With a label picked, every matching run is also listed, so one in another month is not missed.
+  // Every run of the picked tab, any month, by date, so one in another month is not missed.
   const filteredList = useMemo(
-    () => (filter === "all"
-      ? []
-      : items.filter(matches).sort((a, b) => String(a.run.run_date).localeCompare(String(b.run.run_date)))),
-    [items, matches, filter]
+    () => items.filter(matches).sort((a, b) => String(a.run.run_date).localeCompare(String(b.run.run_date))),
+    [items, matches]
   );
+
+  // A run picked in the list: open its month, outline it, and bring the calendar into view.
+  const showOnCalendar = (run) => {
+    const match = String(run.run_date || "").match(/^(\d{4})-(\d{2})/);
+    if (match) setMonthStart(new Date(Number(match[1]), Number(match[2]) - 1, 1));
+    setFocusedRunId(run.id);
+    calendarRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   const days = useMemo(() => buildMonthDays(monthStart), [monthStart]);
   const monthLabel = monthStart.toLocaleDateString("en-US", { month: "long", year: "numeric" });
@@ -161,6 +176,8 @@ export default function RunCalendarView({ runs = [], runStatuses = [] }) {
         fontSize: "10px",
         color: "#1e293b",
         cursor: "pointer",
+        // Outlined when picked in the list below.
+        ...(run.id === focusedRunId ? { outline: "2px solid #2563eb", outlineOffset: "1px", background: "#eff6ff" } : {}),
       }}
     >
       <span style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>{runTitle(run)}</span>
@@ -218,7 +235,7 @@ export default function RunCalendarView({ runs = [], runStatuses = [] }) {
         </div>
       </div>
       {/* Month grid */}
-      <div style={{ overflowX: "auto" }}>
+      <div ref={calendarRef} style={{ overflowX: "auto", scrollMarginTop: "70px" }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(110px, 1fr))", background: "#e2e8f0", gap: "1px", border: "1px solid #e2e8f0", borderRadius: "4px", minWidth: "780px" }}>
           {WEEKDAYS.map((weekday) => (
             <div key={weekday} style={{ background: "#f8fafc", padding: "4px 6px", fontSize: "11px", fontWeight: 600, color: "#64748b" }}>{weekday}</div>
@@ -251,10 +268,14 @@ export default function RunCalendarView({ runs = [], runStatuses = [] }) {
       </div>
 
       {/* Every run matching the picked label, any month */}
-      {filter !== "all" && (
+      {(
         <div style={{ marginTop: "10px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: "4px", padding: "8px" }}>
           <div style={{ fontSize: "12px", fontWeight: 600, color: "#1e293b", marginBottom: "6px" }}>
             {FILTERS.find((f) => f.key === filter)?.label}: {filteredList.length} run{filteredList.length === 1 ? "" : "s"}
+            <span style={{ fontWeight: 400, color: "#64748b" }}> · Click a run to show it on the calendar.</span>
+            {filter === "all" && undatedCount > 0 && (
+              <span style={{ fontWeight: 400, color: "#64748b" }}> {undatedCount} run{undatedCount === 1 ? " has" : "s have"} no date and {undatedCount === 1 ? "is" : "are"} not shown.</span>
+            )}
           </div>
           {filteredList.length === 0 ? (
             <div style={{ fontSize: "12px", color: "#64748b" }}>No runs.</div>
@@ -264,8 +285,8 @@ export default function RunCalendarView({ runs = [], runStatuses = [] }) {
                 <button
                   key={run.id}
                   type="button"
-                  onClick={() => setSelectedRunId(run.id)}
-                  style={{ display: "flex", gap: "10px", alignItems: "center", textAlign: "left", background: "#fff", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px", cursor: "pointer" }}
+                  onClick={() => showOnCalendar(run)}
+                  style={{ display: "flex", gap: "10px", alignItems: "center", textAlign: "left", background: "#fff", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px", cursor: "pointer", ...(run.id === focusedRunId ? { borderColor: "#2563eb" } : {}) }}
                 >
                   <span style={{ minWidth: "95px", color: "#64748b" }}>{formatDateKey(run.run_date)}</span>
                   <strong style={{ color: "#1e293b" }}>{runTitle(run)}</strong>

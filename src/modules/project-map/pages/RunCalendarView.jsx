@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Modal, FileAttachments, toastError, toastSuccess } from "@/shared/components/ui";
+import AppIcon from "@/shared/components/ui/AppIcon";
 import { startNavbarLoader } from "@/shared/utils/navbar-loader";
 import { loadRunDetails, updateRun, loadPaidSheet, loadFiles, createFileUpload, saveUploadedFile, getFileUrl, deleteFile } from "../data/projectMap.actions";
 import { formatRunCode, getRunStatusColor, getRunScheduleState, formatDisplayDate, splitRunAmounts, runStatusKeyByName, resolveRunStatusOptions, canEditRunStatusName, PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES } from "../data/projectMap.data";
@@ -60,6 +61,40 @@ function Tag({ color, children }) {
 }
 
 const money = (value) => Number(value || 0).toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+
+// Run pop-up styles
+const POPUP_CARD = { border: "1px solid #e2e8f0", borderRadius: "8px", padding: "12px 14px", background: "#fff" };
+const POPUP_SECTION_TITLE = { fontSize: "12px", fontWeight: 600, color: "#0f172a", marginBottom: "8px" };
+const POPUP_FIELD_LABEL = { display: "block", fontSize: "11px", color: "#64748b", marginBottom: "3px" };
+const POPUP_INPUT = { flex: 1, minWidth: 0, border: "1px solid #e2e8f0", borderRadius: "6px", padding: "5px 8px", fontSize: "12px", background: "#fff" };
+
+// Soft rounded pill in a status colour. Setup colours are hex; anything else shows grey.
+function Pill({ color = "#64748b", children }) {
+  const hex = /^#[0-9a-f]{6}$/i.test(String(color)) ? color : "#64748b";
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", fontSize: "11px", fontWeight: 600, lineHeight: "18px", color: hex, background: `${hex}1A`, border: `1px solid ${hex}33`, borderRadius: "999px", padding: "0 8px", whiteSpace: "nowrap" }}>
+      {children}
+    </span>
+  );
+}
+
+// One figure in the pop-up's stat row.
+function StatCard({ label, value, valueColor = "#0f172a", sub = null, subColor = "#64748b" }) {
+  return (
+    <div style={{ background: "#f8fafc", border: "1px solid #f1f5f9", borderRadius: "8px", padding: "10px 12px" }}>
+      <div style={{ fontSize: "11px", color: "#64748b" }}>{label}</div>
+      <div style={{ fontSize: "18px", fontWeight: 600, color: valueColor, lineHeight: 1.3 }}>{value}</div>
+      {sub && <div style={{ fontSize: "11px", color: subColor }}>{sub}</div>}
+    </div>
+  );
+}
+
+function formatDriveTime(seconds) {
+  if (seconds == null || Number.isNaN(Number(seconds))) return "—";
+  const mins = Math.round(Number(seconds) / 60);
+  if (mins < 60) return `${mins} min`;
+  return `${Math.floor(mins / 60)} hr ${mins % 60} min`;
+}
 
 /**
  * Totals for a set of calendar items: runs, behind, cancelled, stops, route
@@ -212,6 +247,22 @@ export default function RunCalendarView({ runs = [], runStatuses = [], statuses 
   const selectedRun = selected?.run || null;
   // Changes follow the run's status ticks (the server checks them too).
   const canChangeSelectedRun = selectedRun ? canEditRunStatusName(editAccess, selectedRun.status) : false;
+
+  // Stat cards of the run pop-up. Uses the loaded stops when ready, else the
+  // stops that came with the run list. Repairs are never revenue.
+  const selectedTotals = useMemo(() => {
+    if (!selectedRun) return null;
+    const listStops = Array.isArray(selectedRun.proj_t_run_projects) ? selectedRun.proj_t_run_projects : [];
+    const stops = !stopsLoading && runStops.length > 0 ? runStops : listStops;
+    const { revenue, repairs } = splitRunAmounts(stops, statuses);
+    return {
+      stops: stops.length,
+      miles: selectedRun.estimated_distance != null ? Number(selectedRun.estimated_distance) / 1609.344 : null,
+      seconds: selectedRun.estimated_duration != null ? Number(selectedRun.estimated_duration) : null,
+      revenue,
+      repairs,
+    };
+  }, [selectedRun, runStops, stopsLoading, statuses]);
 
   const loadSelectedStops = useCallback(async (runId) => {
     setStopsLoading(true);
@@ -531,110 +582,162 @@ export default function RunCalendarView({ runs = [], runStatuses = [], statuses 
       </Modal>
 
       {/* Run details: stops, status, reschedule, prints, files */}
-      <Modal show={!!selected} onHide={() => setSelectedRunId(null)} title={selected ? runTitle(selected.run) : ""} size="lg">
-        {selected && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "10px", fontSize: "13px", color: "#1e293b" }}>
-            <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", alignItems: "center" }}>
-              {selected.state.onTrack && <Tag color="#16a34a">On Track</Tag>}
-              {selected.state.behind && <Tag color="#dc2626">Behind</Tag>}
-              {selected.state.rescheduled && <Tag color="#d97706">Rescheduled</Tag>}
-              {!canChangeSelectedRun && <Tag color="#64748b">View only</Tag>}
+      <Modal
+        show={!!selected}
+        onHide={() => setSelectedRunId(null)}
+        size="lg"
+        title={selected ? (
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+              <span style={{ fontSize: "18px", fontWeight: 600, color: "#0f172a" }}>{runTitle(selected.run)}</span>
+              {selected.run.status && <Pill color={getRunStatusColor(selected.run.status, runStatuses)}>{selected.run.status}</Pill>}
+              {selected.state.onTrack && <Pill color="#16a34a">On Track</Pill>}
+              {selected.state.behind && <Pill color="#dc2626">Behind</Pill>}
+              {selected.state.rescheduled && <Pill color="#d97706">Rescheduled</Pill>}
+              {!canChangeSelectedRun && <Pill color="#64748b">View only</Pill>}
             </div>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <tbody>
-                {[
-                  ["Run code", selected.run.run_code || formatRunCode(selected.run.run_number) || "—"],
-                  ["Status", selected.run.status || "—"],
-                  ["Run date", formatDateKey(selected.run.run_date)],
-                  ...(selected.state.rescheduled ? [["Originally", formatDateKey(selected.run.original_run_date)]] : []),
-                  ["Origin", selected.run.proj_s_origin_addresses?.origin_name || "—"],
-                  ["Team", selected.run.team_assigned || "—"],
-                  ["Vehicle", selected.run.vehicle_assigned || "—"],
-                  ["Notes", selected.run.notes || "—"],
-                ].map(([label, value]) => (
-                  <tr key={label}>
-                    <td style={{ padding: "3px 8px 3px 0", fontSize: "11px", fontWeight: 600, color: "#64748b", width: "110px", verticalAlign: "top" }}>{label}</td>
-                    <td style={{ padding: "3px 0", fontSize: "12px" }}>{String(value)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            {/* Change status / reschedule (run status ticks decide; the server checks too) */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-              <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-                <select
-                  value={pendingStatus}
-                  onChange={(e) => setPendingStatus(e.target.value)}
-                  disabled={!canChangeSelectedRun || savingRun}
-                  aria-label="Run status"
-                  style={{ flex: 1, border: "1px solid #e2e8f0", borderRadius: "3px", padding: "5px 8px", fontSize: "12px", background: "#fff" }}
-                >
-                  {resolveRunStatusOptions(runStatuses).map((name) => (
-                    <option key={name} value={name}>{name}</option>
-                  ))}
-                </select>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  loading={savingRun}
-                  disabled={!canChangeSelectedRun || !pendingStatus || pendingStatus === selected.run.status}
-                  onClick={() => saveRunChange({ status: pendingStatus }, "Run status updated.")}
-                >
-                  Set Status
-                </Button>
+            <div style={{ fontSize: "12px", fontWeight: 400, color: "#64748b", marginTop: "4px" }}>
+              {[
+                selected.run.run_code || formatRunCode(selected.run.run_number),
+                selected.run.run_date ? formatDateKey(selected.run.run_date) : null,
+                selected.run.proj_s_origin_addresses?.origin_name,
+              ].filter(Boolean).join(" · ")}
+            </div>
+          </div>
+        ) : ""}
+        footer={selected ? (
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px", flexWrap: "wrap", width: "100%" }}>
+            <Button variant="secondary" onClick={() => setSelectedRunId(null)}>Close</Button>
+            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+              <Button variant="secondary" loading={printingPaidSheet} onClick={() => handlePrintPaidSheet(selected.run)}>
+                <AppIcon icon="receipt" style={{ marginRight: "6px" }} />Print Paid Sheet
+              </Button>
+              <Button variant="primary" loading={printing} onClick={() => handlePrintManifest(selected.run)}>
+                <AppIcon icon="print" style={{ marginRight: "6px" }} />Print Manifest
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      >
+        {selected && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "16px", fontSize: "13px", color: "#1e293b" }}>
+            {/* Key figures */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "10px" }}>
+              <StatCard label="Stops" value={stopsLoading ? "…" : String(selectedTotals?.stops ?? 0)} />
+              <StatCard label="Distance" value={selectedTotals?.miles != null ? `${Math.round(selectedTotals.miles).toLocaleString("en-US")} mi` : "—"} />
+              <StatCard label="Drive time" value={formatDriveTime(selectedTotals?.seconds)} />
+              <StatCard
+                label="Revenue"
+                value={money(selectedTotals?.revenue)}
+                valueColor="#16a34a"
+                sub={selectedTotals?.repairs > 0 ? `Repairs ${money(selectedTotals.repairs)}` : null}
+                subColor="#dc2626"
+              />
+            </div>
+            {/* Details + update (run status ticks decide; the server checks too) */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "12px" }}>
+              <div style={POPUP_CARD}>
+                <div style={POPUP_SECTION_TITLE}>Details</div>
+                <div style={{ display: "grid", gridTemplateColumns: "80px minmax(0, 1fr)", rowGap: "6px", columnGap: "8px", fontSize: "12px" }}>
+                  {[
+                    ...(selected.state.rescheduled ? [["Originally", formatDateKey(selected.run.original_run_date)]] : []),
+                    ["Team", selected.run.team_assigned],
+                    ["Vehicle", selected.run.vehicle_assigned],
+                    ["Notes", selected.run.notes],
+                  ].flatMap(([label, value]) => [
+                    <span key={`${label}-label`} style={{ color: "#64748b" }}>{label}</span>,
+                    <span key={`${label}-value`} style={{ color: value ? "#1e293b" : "#94a3b8", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                      {value ? String(value) : label === "Notes" ? "No notes" : "Not set"}
+                    </span>,
+                  ])}
+                </div>
               </div>
-              <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-                <input
-                  type="date"
-                  value={pendingDate}
-                  onChange={(e) => setPendingDate(e.target.value)}
-                  disabled={!canChangeSelectedRun || savingRun}
-                  aria-label="Run date"
-                  style={{ flex: 1, border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px", background: "#fff" }}
-                />
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  loading={savingRun}
-                  disabled={!canChangeSelectedRun || !pendingDate || pendingDate === String(selected.run.run_date || "").slice(0, 10)}
-                  onClick={() => saveRunChange({ run_date: pendingDate }, "Run rescheduled.")}
-                >
-                  Reschedule
-                </Button>
+
+              <div style={POPUP_CARD}>
+                <div style={POPUP_SECTION_TITLE}>Update run</div>
+                {!canChangeSelectedRun && (
+                  <div style={{ fontSize: "11px", color: "#64748b", marginBottom: "8px" }}>Your roles can&apos;t change this run.</div>
+                )}
+                <label style={POPUP_FIELD_LABEL} htmlFor="run-popup-status">Status</label>
+                <div style={{ display: "flex", gap: "6px", alignItems: "center", marginBottom: "10px" }}>
+                  <select
+                    id="run-popup-status"
+                    value={pendingStatus}
+                    onChange={(e) => setPendingStatus(e.target.value)}
+                    disabled={!canChangeSelectedRun || savingRun}
+                    style={POPUP_INPUT}
+                  >
+                    {resolveRunStatusOptions(runStatuses).map((name) => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
+                  </select>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    loading={savingRun}
+                    disabled={!canChangeSelectedRun || !pendingStatus || pendingStatus === selected.run.status}
+                    onClick={() => saveRunChange({ status: pendingStatus }, "Run status updated.")}
+                  >
+                    Set Status
+                  </Button>
+                </div>
+                <label style={POPUP_FIELD_LABEL} htmlFor="run-popup-date">Run date</label>
+                <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                  <input
+                    id="run-popup-date"
+                    type="date"
+                    value={pendingDate}
+                    onChange={(e) => setPendingDate(e.target.value)}
+                    disabled={!canChangeSelectedRun || savingRun}
+                    style={POPUP_INPUT}
+                  />
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    loading={savingRun}
+                    disabled={!canChangeSelectedRun || !pendingDate || pendingDate === String(selected.run.run_date || "").slice(0, 10)}
+                    onClick={() => saveRunChange({ run_date: pendingDate }, "Run rescheduled.")}
+                  >
+                    Reschedule
+                  </Button>
+                </div>
               </div>
             </div>
 
             {/* Stops */}
             <div>
-              <div style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", marginBottom: "4px" }}>
-                Stops ({stopsLoading ? "…" : runStops.length})
+              <div style={POPUP_SECTION_TITLE}>
+                Stops <span style={{ fontWeight: 400, color: "#64748b" }}>{stopsLoading ? "…" : runStops.length}</span>
               </div>
               {stopsLoading ? (
                 <div style={{ fontSize: "12px", color: "#64748b" }}>Loading stops…</div>
               ) : runStops.length === 0 ? (
                 <div style={{ fontSize: "12px", color: "#64748b" }}>No stops on this run.</div>
               ) : (
-                <div style={{ maxHeight: "220px", overflowY: "auto", border: "1px solid #e2e8f0", borderRadius: "3px" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
-                    <tbody>
-                      {runStops.map((stop, index) => {
-                        const project = stop.proj_t_projects || {};
-                        return (
-                          <tr key={stop.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
-                            <td style={{ padding: "4px 6px", color: "#64748b", width: "28px" }}>{index + 1}</td>
-                            <td style={{ padding: "4px 6px", fontWeight: 600 }}>{project.client_name || "Untitled"}</td>
-                            <td style={{ padding: "4px 6px", color: "#64748b" }}>{[project.city, project.state_code].filter(Boolean).join(", ") || "—"}</td>
-                            <td style={{ padding: "4px 6px" }}>{project.proj_s_project_status?.status_name || "—"}</td>
-                            <td style={{ padding: "4px 6px", textAlign: "right", whiteSpace: "nowrap" }}>{project.project_subtotal != null ? money(project.project_subtotal) : "—"}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                <div style={{ maxHeight: "260px", overflowY: "auto", border: "1px solid #e2e8f0", borderRadius: "8px" }}>
+                  {runStops.map((stop, index) => {
+                    const project = stop.proj_t_projects || {};
+                    const status = project.proj_s_project_status;
+                    return (
+                      <div key={stop.id} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "8px 12px", borderTop: index === 0 ? "none" : "1px solid #f1f5f9" }}>
+                        <span style={{ flexShrink: 0, width: "22px", height: "22px", borderRadius: "50%", background: "#f1f5f9", color: "#475569", fontSize: "11px", fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          {index + 1}
+                        </span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: "13px", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{project.client_name || "Untitled"}</div>
+                          <div style={{ fontSize: "11px", color: "#64748b" }}>{[project.city, project.state_code].filter(Boolean).join(", ") || "—"}</div>
+                        </div>
+                        {status?.status_name && <Pill color={status.display_color || "#64748b"}>{status.status_name}</Pill>}
+                        <span style={{ flexShrink: 0, width: "90px", textAlign: "right", fontSize: "13px", whiteSpace: "nowrap" }}>
+                          {project.project_subtotal != null ? money(project.project_subtotal) : "—"}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
+
             {/* Run files */}
             <FileAttachments
               key={selected.run.id}
@@ -647,12 +750,6 @@ export default function RunCalendarView({ runs = [], runStatuses = [], statuses 
               maxBytes={PROJECT_FILE_MAX_BYTES}
               accept={PROJECT_FILE_TYPES.join(",")}
             />
-
-            <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", flexWrap: "wrap" }}>
-              <Button variant="secondary" onClick={() => setSelectedRunId(null)}>Close</Button>
-              <Button variant="secondary" loading={printingPaidSheet} onClick={() => handlePrintPaidSheet(selected.run)}>Print Paid Sheet</Button>
-              <Button variant="primary" loading={printing} onClick={() => handlePrintManifest(selected.run)}>Print Manifest</Button>
-            </div>
           </div>
         )}
       </Modal>

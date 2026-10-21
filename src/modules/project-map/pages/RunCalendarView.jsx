@@ -102,17 +102,31 @@ function formatDriveTime(seconds) {
  * are counted but left out of stops, miles and money.
  */
 function summarize(list, runStatuses) {
-  const totals = { runs: 0, behind: 0, cancelled: 0, stops: 0, miles: 0, revenue: 0, repairs: 0 };
+  const totals = {
+    runs: 0, behind: 0, onTrack: 0, rescheduled: 0, finished: 0, cancelled: 0,
+    stops: 0, miles: 0, seconds: 0, revenue: 0, repairs: 0,
+    byStatus: {}, byOrigin: {}, byDay: {},
+  };
   list.forEach(({ run, state }) => {
     totals.runs += 1;
     if (state.behind) totals.behind += 1;
+    if (state.onTrack) totals.onTrack += 1;
+    if (state.rescheduled) totals.rescheduled += 1;
+    if (state.finished) totals.finished += 1;
+    const statusName = run.status || "No status";
+    totals.byStatus[statusName] = (totals.byStatus[statusName] || 0) + 1;
+    const dayKey = String(run.run_date || "").slice(0, 10);
+    if (dayKey) totals.byDay[dayKey] = (totals.byDay[dayKey] || 0) + 1;
     if (runStatusKeyByName(runStatuses, run.status) === "cancelled") {
       totals.cancelled += 1;
       return;
     }
+    const origin = run.proj_s_origin_addresses?.origin_name || "No origin";
+    totals.byOrigin[origin] = (totals.byOrigin[origin] || 0) + 1;
     const stops = Array.isArray(run.proj_t_run_projects) ? run.proj_t_run_projects : null;
     totals.stops += stops ? stops.length : Number(run.stops) || 0;
     totals.miles += run.estimated_distance != null ? Number(run.estimated_distance) / 1609.344 : 0;
+    totals.seconds += run.estimated_duration != null ? Number(run.estimated_duration) || 0 : 0;
     const amounts = stops ? splitRunAmounts(stops) : { revenue: Number(run.estimated_subtotal) || 0, repairs: 0 };
     totals.revenue += amounts.revenue;
     totals.repairs += amounts.repairs;
@@ -135,6 +149,131 @@ function SummaryLine({ totals, compact = false }) {
     <span style={{ display: "flex", flexDirection: compact ? "column" : "row", flexWrap: "wrap", gap: compact ? "1px" : "10px", fontSize: compact ? "10px" : "12px" }}>
       {parts.map(([text, color]) => <span key={text} style={{ color, fontWeight: color === "#1e293b" ? 600 : 400 }}>{text}</span>)}
     </span>
+  );
+}
+
+const SHORT_DATE = { month: "short", day: "numeric" };
+
+// The week column: the week's dates and its figures, stacked for the narrow column.
+function WeekSummary({ weekDays, totals }) {
+  const first = weekDays[0];
+  const last = weekDays[weekDays.length - 1];
+  const range = first.getMonth() === last.getMonth()
+    ? `${first.toLocaleDateString("en-US", SHORT_DATE)} – ${last.getDate()}`
+    : `${first.toLocaleDateString("en-US", SHORT_DATE)} – ${last.toLocaleDateString("en-US", SHORT_DATE)}`;
+  const line = (text, color = "#475569", bold = false) => (
+    <span style={{ color, fontWeight: bold ? 600 : 400 }}>{text}</span>
+  );
+  const schedule = [
+    totals.onTrack > 0 && [`${totals.onTrack} on track`, "#16a34a"],
+    totals.behind > 0 && [`${totals.behind} behind`, "#dc2626"],
+    totals.rescheduled > 0 && [`${totals.rescheduled} resched.`, "#d97706"],
+  ].filter(Boolean);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "1px", fontSize: "10px", lineHeight: 1.45, width: "100%" }}>
+      <span style={{ color: "#94a3b8", marginBottom: "2px" }}>{range}</span>
+      {totals.runs === 0 ? (
+        <span style={{ color: "#94a3b8" }}>No runs</span>
+      ) : (
+        <>
+          {line(`${totals.runs} run${totals.runs === 1 ? "" : "s"}`, "#1e293b", true)}
+          {schedule.length > 0 && (
+            <span>
+              {schedule.map(([text, color], i) => (
+                <span key={text} style={{ color }}>{i > 0 ? " · " : ""}{text}</span>
+              ))}
+            </span>
+          )}
+          {line(`${totals.stops} stop${totals.stops === 1 ? "" : "s"} · ${Math.round(totals.miles).toLocaleString("en-US")} mi`)}
+          {totals.seconds > 0 && line(`${formatDriveTime(totals.seconds)} driving`)}
+          <span style={{ borderTop: "1px solid #e2e8f0", margin: "3px 0" }} />
+          {line(money(totals.revenue), "#16a34a", true)}
+          {totals.repairs > 0 && line(`Repairs ${money(totals.repairs)}`, "#dc2626")}
+
+          {totals.cancelled > 0 && line(`${totals.cancelled} cancelled`, "#64748b")}
+        </>
+      )}
+    </div>
+  );
+}
+
+const MONTH_BIG = { fontSize: "20px", fontWeight: 600, color: "#0f172a", marginBottom: "4px" };
+
+// Section under the calendar: the shown month's runs, route and money (selected
+// tab), its busiest day, and breakdowns by run status and origin.
+function MonthSummary({ label, filterLabel, totals, runStatuses }) {
+  const activeRuns = totals.runs - totals.cancelled;
+  const busiest = Object.entries(totals.byDay).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0];
+  const statusRows = Object.entries(totals.byStatus).sort((a, b) => b[1] - a[1]);
+  const originRows = Object.entries(totals.byOrigin).sort((a, b) => b[1] - a[1]);
+  const row = (name, value, color = "#1e293b") => (
+    <div key={name} style={{ display: "flex", justifyContent: "space-between", gap: "8px", fontSize: "12px", padding: "2px 0" }}>
+      <span style={{ color: "#64748b" }}>{name}</span>
+      <span style={{ color, fontWeight: 600, whiteSpace: "nowrap" }}>{value}</span>
+    </div>
+  );
+  return (
+    <section style={{ marginTop: "12px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "12px 14px" }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: "8px", flexWrap: "wrap", marginBottom: "10px" }}>
+        <strong style={{ fontSize: "14px", color: "#0f172a" }}>{label} summary</strong>
+        <span style={{ fontSize: "11px", color: "#64748b" }}>{filterLabel} runs · cancelled runs are left out of stops, miles and money</span>
+      </div>
+      {totals.runs === 0 ? (
+        <div style={{ fontSize: "12px", color: "#64748b" }}>No runs in {label}.</div>
+      ) : (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "10px" }}>
+            <div style={POPUP_CARD}>
+              <div style={POPUP_SECTION_TITLE}>Runs</div>
+              <div style={MONTH_BIG}>{totals.runs}</div>
+              {row("On track", totals.onTrack, "#16a34a")}
+              {row("Behind", totals.behind, totals.behind > 0 ? "#dc2626" : "#1e293b")}
+              {row("Rescheduled", totals.rescheduled, totals.rescheduled > 0 ? "#d97706" : "#1e293b")}
+              {row("Completed / cancelled", totals.finished, "#64748b")}
+            </div>
+            <div style={POPUP_CARD}>
+              <div style={POPUP_SECTION_TITLE}>Route</div>
+              <div style={MONTH_BIG}>{Math.round(totals.miles).toLocaleString("en-US")} mi</div>
+              {row("Stops", totals.stops)}
+              {row("Drive time", totals.seconds > 0 ? formatDriveTime(totals.seconds) : "—")}
+              {row("Stops per run", activeRuns > 0 ? (totals.stops / activeRuns).toFixed(1) : "—")}
+              {row("Miles per run", activeRuns > 0 ? Math.round(totals.miles / activeRuns).toLocaleString("en-US") : "—")}
+            </div>
+            <div style={POPUP_CARD}>
+              <div style={POPUP_SECTION_TITLE}>Revenue</div>
+              <div style={{ fontSize: "11px", color: "#64748b" }}>Total revenue</div>
+              <div style={{ ...MONTH_BIG, color: "#16a34a" }}>{money(totals.revenue)}</div>
+              <div style={{ fontSize: "11px", color: "#64748b" }}>Total repair cost</div>
+              <div style={{ ...MONTH_BIG, color: totals.repairs > 0 ? "#dc2626" : "#0f172a", marginBottom: 0 }}>{money(totals.repairs)}</div>
+            </div>
+            <div style={POPUP_CARD}>
+              <div style={POPUP_SECTION_TITLE}>Busiest day</div>
+              <div style={MONTH_BIG}>{busiest ? formatDateKey(busiest[0]) : "—"}</div>
+              {busiest && row("Runs that day", busiest[1])}
+              {row("Days with runs", Object.keys(totals.byDay).length)}
+            </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "10px", marginTop: "10px" }}>
+            <div style={POPUP_CARD}>
+              <div style={POPUP_SECTION_TITLE}>By run status</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                {statusRows.map(([name, count]) => (
+                  <Pill key={name} color={getRunStatusColor(name, runStatuses)}>{name} · {count}</Pill>
+                ))}
+              </div>
+            </div>
+            <div style={POPUP_CARD}>
+              <div style={POPUP_SECTION_TITLE}>By origin</div>
+              {originRows.length === 0 ? (
+                <div style={{ fontSize: "12px", color: "#64748b" }}>Only cancelled runs this month.</div>
+              ) : (
+                originRows.map(([name, count]) => row(name, `${count} run${count === 1 ? "" : "s"}`))
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </section>
   );
 }
 
@@ -475,12 +614,6 @@ export default function RunCalendarView({ runs = [], runStatuses = [], statuses 
           <strong style={{ fontSize: "13px", color: "#1e293b", minWidth: "130px", textAlign: "right" }}>{monthLabel}</strong>
         </div>
       </div>
-      {/* Month summary (selected tab). */}
-      <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", background: "#fff", border: "1px solid #e2e8f0", borderRadius: "4px", padding: "6px 10px", marginBottom: "8px" }}>
-        <strong style={{ fontSize: "12px", color: "#1e293b" }}>{monthLabel}:</strong>
-        <SummaryLine totals={monthTotals} />
-      </div>
-
       {/* Two columns: run list on the left (~20%, can be folded), calendar on the right. */}
       <div style={{ display: "flex", gap: "10px", alignItems: "flex-start" }}>
         {listOpen ? (
@@ -557,7 +690,7 @@ export default function RunCalendarView({ runs = [], runStatuses = [], statuses 
         <div style={{ flex: 1, minWidth: 0 }}>
       {/* Month grid */}
       <div ref={calendarRef} style={{ overflowX: "auto", scrollMarginTop: "70px" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(110px, 1fr)) 110px", background: "#e2e8f0", gap: "1px", border: "1px solid #e2e8f0", borderRadius: "4px", minWidth: "890px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(110px, 1fr)) 130px", background: "#e2e8f0", gap: "1px", border: "1px solid #e2e8f0", borderRadius: "4px", minWidth: "910px" }}>
           {WEEKDAYS.map((weekday) => (
             <div key={weekday} style={{ background: "#f8fafc", padding: "4px 6px", fontSize: "11px", fontWeight: 600, color: "#64748b" }}>{weekday}</div>
           ))}
@@ -596,11 +729,19 @@ export default function RunCalendarView({ runs = [], runStatuses = [], statuses 
               );
             }),
             <div key={`week-${toDateKey(weekDays[0])}`} style={{ background: "#f8fafc", padding: "6px", display: "flex", alignItems: "flex-start" }}>
-              {totals.runs > 0 ? <SummaryLine totals={totals} compact /> : <span style={{ fontSize: "10px", color: "#94a3b8" }}>No runs</span>}
+              <WeekSummary weekDays={weekDays} totals={totals} />
             </div>,
           ])}
         </div>
       </div>
+
+      {/* Month summary (selected tab), its own section under the calendar. */}
+      <MonthSummary
+        label={monthLabel}
+        filterLabel={FILTERS.find((f) => f.key === filter)?.label || "All"}
+        totals={monthTotals}
+        runStatuses={runStatuses}
+      />
 
         </div>
       </div>

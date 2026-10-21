@@ -206,9 +206,10 @@ export default function RunCalendarView({ runs = [], runStatuses = [], statuses 
     return lookup;
   }, [items, matches]);
 
-  // Every run of the picked tab, any month, by date, so one in another month is not missed.
+  // Every run of the picked tab, any month, newest date first, so one in another month is not missed.
   const filteredList = useMemo(
-    () => items.filter(matches).sort((a, b) => String(a.run.run_date).localeCompare(String(b.run.run_date))),
+    () => items.filter(matches).sort((a, b) =>
+      String(b.run.run_date).localeCompare(String(a.run.run_date)) || (Number(b.run.run_number) || 0) - (Number(a.run.run_number) || 0)),
     [items, matches]
   );
 

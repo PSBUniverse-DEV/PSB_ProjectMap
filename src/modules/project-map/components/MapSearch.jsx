@@ -3,6 +3,47 @@
 import { useState, useEffect, useRef } from "react";
 import { forwardGeocode, reverseGeocode, parseCoordinateString } from "../utils/geocoding";
 
+/**
+ * Pulls a coordinate pair out of a pasted map link (Google Maps and similar).
+ * Prefers the exact pin (!3d…!4d…), then ?q= / ?query= / ?ll=, then the view
+ * centre (@lat,lng). Returns { lat, lng } or null.
+ */
+function parseMapLink(text) {
+  if (!/^https?:\/\//i.test(text)) return null;
+  let decoded = text;
+  try { decoded = decodeURIComponent(text); } catch (e) {}
+  const patterns = [
+    /!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/,
+    /[?&](?:q|query|ll|destination)=(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)/,
+    /@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/,
+  ];
+  for (const pattern of patterns) {
+    const match = decoded.match(pattern);
+    if (match) {
+      const lat = parseFloat(match[1]);
+      const lng = parseFloat(match[2]);
+      if (Math.abs(lat) <= 90 && Math.abs(lng) <= 180) return { lat, lng };
+    }
+  }
+  return null;
+}
+
+/** Result for a coordinate with no street address, so it can still be pinned. */
+function coordinateOnlyResult(lat, lng) {
+  const label = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+  return {
+    formatted_address: label,
+    address_line_1: label,
+    city: "",
+    state: "",
+    state_code: "",
+    postal_code: "",
+    country: "",
+    latitude: lat,
+    longitude: lng,
+  };
+}
+
 export default function MapSearch({ value, onChange, onSelect, results = [] }) {
   const [query, setQuery] = useState(value || "");
   const [showDropdown, setShowDropdown] = useState(false);
@@ -38,10 +79,13 @@ export default function MapSearch({ value, onChange, onSelect, results = [] }) {
     setSearched(true);
     setShowDropdown(true);
     try {
-      const coords = parseCoordinateString(query.trim());
+      const text = query.trim();
+      const coords = parseMapLink(text) || parseCoordinateString(text);
       const data = coords
-        ? [await reverseGeocode(coords.lat, coords.lng)].filter(Boolean)
-        : await forwardGeocode(query.trim(), 50);
+        ? [(await reverseGeocode(coords.lat, coords.lng)) || coordinateOnlyResult(coords.lat, coords.lng)]
+        : /^https?:\/\//i.test(text)
+          ? []
+          : await forwardGeocode(text, 50);
       // Call parent's onChange with results
       if (onChange) {
         onChange(query, data);
@@ -104,11 +148,12 @@ export default function MapSearch({ value, onChange, onSelect, results = [] }) {
         <div style={{ position: "relative", flex: 1 }}>
           <input
             type="text"
-            placeholder="🔍 Search address, city, ZIP, place..."
+            placeholder="🔍 Search by address, city, ZIP, place name, coordinates, degrees or a pasted Google Maps link"
+            title="Search by address, city, ZIP, place name, coordinates, or a pasted Google Maps link"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            onFocus={() => results.length > 0 && setShowDropdown(true)}
+            onFocus={() => setShowDropdown(true)}
             disabled={loading}
             style={{
               width: "100%",
@@ -217,6 +262,11 @@ export default function MapSearch({ value, onChange, onSelect, results = [] }) {
                     .filter(Boolean)
                     .join(", ")}
                 </div>
+                {r.latitude != null && r.longitude != null && (
+                  <div style={{ fontSize: "10px", color: "#94a3b8" }}>
+                    {Number(r.latitude).toFixed(5)}, {Number(r.longitude).toFixed(5)}
+                  </div>
+                )}
               </div>
             ))
           ) : searched ? (
@@ -227,10 +277,23 @@ export default function MapSearch({ value, onChange, onSelect, results = [] }) {
                 <br />• Complete address
                 <br />• ZIP code
                 <br />• Landmark
-                <br />• City + Country
+                <br />• City + State
+                <br />• Coordinates: 40.8612, -82.3201
+                <br />• A Google Maps link (copy it from the browser bar)
               </div>
             </div>
-          ) : null}
+          ) : (
+            <div style={{ padding: "12px", fontSize: "11px", color: "#64748b", lineHeight: 1.7 }}>
+              <div style={{ fontWeight: 600, color: "#1e293b", marginBottom: "4px" }}>You can search by:</div>
+              • Address: <span style={{ color: "#1e293b" }}>1234 Main St, Ashland, OH</span>
+              <br />• City or ZIP: <span style={{ color: "#1e293b" }}>Ashland, OH</span> / <span style={{ color: "#1e293b" }}>44805</span>
+              <br />• Place name: <span style={{ color: "#1e293b" }}>Ashland University</span>
+              <br />• Coordinates (lat, lng): <span style={{ color: "#1e293b" }}>40.8612, -82.3201</span>
+              <br />• Degrees: <span style={{ color: "#1e293b" }}>{`40°51'40.3"N 82°19'12.4"W`}</span>
+              <br />• A Google Maps link pasted from the browser bar
+              <div style={{ marginTop: "6px", color: "#94a3b8" }}>Press Enter or Search. Pick a result to drop a pin, then use Create Project.</div>
+            </div>
+          )}
         </div>
       )}
     </div>

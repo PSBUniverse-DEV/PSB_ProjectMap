@@ -169,6 +169,9 @@ export default function ProjectMap({
   const isContextMenuOpenRef = useRef(false);
   const searchMarkerRef = useRef(null);
   const searchMarkerPopupRef = useRef(null);
+  // Project the map last flew to on the Projects tab ("" = none). Keeps data
+  // refreshes from re-flying, and is cleared on tab change so returning re-centres.
+  const lastProjectFlyRef = useRef("");
   
   // Refs for closure-dependent values used in marker event handlers
   const modeRef = useRef(mode);
@@ -995,6 +998,14 @@ export default function ProjectMap({
     }
   }, [filteredProjects, stateColorLookup, searchResults, projectRunLookup, statuses, buildingCategories, permitStatuses, welcomeCallStatuses]);
 
+  // Tab changed: forget what was last framed so the new tab frames its own
+  // content (Runs → selected run's full route, Projects → selected project).
+  // Declared before the route effect so the reset happens before it runs.
+  useEffect(() => {
+    lastRouteFitSignatureRef.current = "";
+    lastProjectFlyRef.current = "";
+  }, [mode]);
+
   // Update origin marker (plain MapLibre default marker, no custom HTML)
   useEffect(() => {
     const map = mapRef.current;
@@ -1086,7 +1097,8 @@ export default function ProjectMap({
   // Center on selected project
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !selectedProjectId || routeData) return;
+    if (!map || mode !== "projects" || !selectedProjectId || routeData) return;
+    if (lastProjectFlyRef.current === String(selectedProjectId)) return;
 
     const project = projects.find((p) => p.id === selectedProjectId);
     if (!project) return;
@@ -1095,8 +1107,9 @@ export default function ProjectMap({
     const lng = project.site_longitude || project.address_longitude;
     if (lat == null || lng == null) return;
 
+    lastProjectFlyRef.current = String(selectedProjectId);
     try { map.flyTo({ center: [lng, lat], zoom: 14 }); } catch (e) {}
-  }, [selectedProjectId, projects, routeData]);
+  }, [mode, selectedProjectId, projects, routeData]);
 
   // Handle temporary marker for "Add Project from Map" (right-click - orange)
   useEffect(() => {
@@ -1151,6 +1164,9 @@ export default function ProjectMap({
         })
           .setLngLat([searchMarker.lng, searchMarker.lat])
           .addTo(map);
+
+        // Bring the searched place into view (its popup opens below the pin)
+        map.flyTo({ center: [searchMarker.lng, searchMarker.lat], zoom: 15 });
 
         // Create popup with location info and Create Project button
         const popupContent = document.createElement("div");

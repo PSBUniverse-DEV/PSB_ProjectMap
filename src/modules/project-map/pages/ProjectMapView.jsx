@@ -682,6 +682,10 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
       setSearchMarker(null);
       return;
     }
+    if (!canCreateProject) {
+      toastError("Your Project Map roles cannot create projects.", "Project Map");
+      return;
+    }
 
     // For search results, the searched location IS the exact site location,
     // so both site and address coordinates are the same.
@@ -1484,7 +1488,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
         <div style={{ width: "240px", minWidth: "240px", flexShrink: 0, zIndex: 10, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           {mode === "projects" ? (
             <>
-              <FilterBar statuses={statuses} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} dealers={dealers} states={projectStates} filters={filters} onFilterChange={setFilters} onAddClick={canCreateProject ? () => { setEditingProject(null); setShowAddForm(true); } : null} />
+              <FilterBar statuses={statuses} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} dealers={dealers} states={projectStates} filters={filters} onFilterChange={setFilters} />
               <ProjectList projects={projects} selectedProjectId={selectedProjectId} onSelectProject={handleSelectProject} filters={filters} statuses={statuses} />
             </>
           ) : (

@@ -219,6 +219,14 @@ async function loadRoleRunStatusNames(supabase, roleIds) {
     .map((status) => status.status_name);
 }
 
+// Switch for environments whose Role Tabs are not set up yet.
+// PROJECT_MAP_STATUS_ACCESS_ALL unset or "true": every Project Map user may
+// change every status (Role Tabs ticks ignored). "false": the ticks decide.
+// Does not affect the role requirement or the page lock.
+function isStatusAccessAll() {
+  return String(process.env.PROJECT_MAP_STATUS_ACCESS_ALL ?? "true").trim().toLowerCase() !== "false";
+}
+
 /**
  * What the signed-in user may see and change in Project Map.
  *
@@ -233,6 +241,8 @@ async function loadRoleRunStatusNames(supabase, roleIds) {
  * all roles combined: `editableProjectStatusIds` (a ticked "Repairs" tab also
  * covers the repair-flow statuses) and `editableRunStatusNames`. Empty lists
  * mean view-only. The write actions in projectMap.actions.js enforce this.
+ * While PROJECT_MAP_STATUS_ACCESS_ALL is not "false" (see isStatusAccessAll),
+ * the ticks are ignored and every status is editable.
  *
  * `reason` is "ok" when the user may open Project Map; otherwise it says why
  * not, and the page shows it on a blocked screen the user can screenshot for
@@ -295,6 +305,11 @@ export async function loadProjectStatusTabAccess() {
       ...new Set(tickedIds.flatMap((statusId) => getStatusTabGroupIds(statusId, statuses))),
     ];
     access.editableRunStatusNames = await loadRoleRunStatusNames(supabase, roleIds);
+
+    if (isStatusAccessAll()) {
+      access.editableProjectStatusIds = access.allowedStatusIds;
+      access.editableRunStatusNames = access.allowedRunStatusNames;
+    }
 
     return access;
   } catch (error) {

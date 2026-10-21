@@ -159,6 +159,8 @@ export default function RunCalendarView({ runs = [], runStatuses = [], statuses 
   const [focusedRunId, setFocusedRunId] = useState(null);
   // Left column (run list) open or folded away.
   const [listOpen, setListOpen] = useState(true);
+  // Text typed in the run list's search box (narrows the list only).
+  const [listSearch, setListSearch] = useState("");
   // "YYYY-MM-DD" of the day whose summary pop-up is open.
   const [summaryDayKey, setSummaryDayKey] = useState(null);
   // Run pop-up: its stops (loaded when opened), the status / date being edited, busy flags.
@@ -209,6 +211,31 @@ export default function RunCalendarView({ runs = [], runStatuses = [], statuses 
     () => items.filter(matches).sort((a, b) => String(a.run.run_date).localeCompare(String(b.run.run_date))),
     [items, matches]
   );
+
+  // The list after the search box: every typed word must appear in the run's
+  // name, code, status, origin, team, vehicle, notes, date or stop names.
+  const searchedList = useMemo(() => {
+    const words = listSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (words.length === 0) return filteredList;
+    return filteredList.filter(({ run }) => {
+      const stopNames = (Array.isArray(run.proj_t_run_projects) ? run.proj_t_run_projects : [])
+        .map((rp) => [rp?.proj_t_projects?.client_name, rp?.proj_t_projects?.city].filter(Boolean).join(" "));
+      const text = [
+        runTitle(run),
+        run.run_code,
+        formatRunCode(run.run_number),
+        run.status,
+        run.proj_s_origin_addresses?.origin_name,
+        run.team_assigned,
+        run.vehicle_assigned,
+        run.notes,
+        formatDateKey(run.run_date),
+        String(run.run_date || "").slice(0, 10),
+        ...stopNames,
+      ].filter(Boolean).join(" ").toLowerCase();
+      return words.every((word) => text.includes(word));
+    });
+  }, [filteredList, listSearch]);
 
   // A run picked in the list: open its month, outline it, and bring the calendar into view.
   const showOnCalendar = (run) => {
@@ -459,7 +486,7 @@ export default function RunCalendarView({ runs = [], runStatuses = [], statuses 
           <aside style={{ flex: "0 0 20%", minWidth: "220px", maxHeight: "calc(100vh - 200px)", display: "flex", flexDirection: "column", background: "#fff", border: "1px solid #e2e8f0", borderRadius: "4px" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "6px", padding: "6px 8px", borderBottom: "1px solid #e2e8f0" }}>
               <strong style={{ fontSize: "12px", color: "#1e293b" }}>
-                {FILTERS.find((f) => f.key === filter)?.label}: {filteredList.length} run{filteredList.length === 1 ? "" : "s"}
+                {FILTERS.find((f) => f.key === filter)?.label}: {listSearch.trim() ? `${searchedList.length} of ${filteredList.length}` : filteredList.length} run{filteredList.length === 1 ? "" : "s"}
               </strong>
               <button type="button" onClick={() => setListOpen(false)} title="Hide the run list" aria-label="Hide the run list" style={{ border: "1px solid #e2e8f0", background: "#fff", borderRadius: "3px", padding: "0 6px", fontSize: "12px", cursor: "pointer" }}>«</button>
             </div>
@@ -469,11 +496,35 @@ export default function RunCalendarView({ runs = [], runStatuses = [], statuses 
                 <> {undatedCount} run{undatedCount === 1 ? " has" : "s have"} no date and {undatedCount === 1 ? "is" : "are"} not shown.</>
               )}
             </div>
+            <div style={{ position: "relative", padding: "0 8px 6px" }}>
+              <input
+                type="text"
+                value={listSearch}
+                onChange={(e) => setListSearch(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Escape") setListSearch(""); }}
+                placeholder="Search runs, customers, team…"
+                aria-label="Search runs"
+                style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "4px", padding: "5px 26px 5px 8px", fontSize: "12px", outline: "none", background: "#fff" }}
+              />
+              {listSearch && (
+                <button
+                  type="button"
+                  onClick={() => setListSearch("")}
+                  title="Clear search"
+                  aria-label="Clear search"
+                  style={{ position: "absolute", right: "12px", top: "3px", border: "none", background: "none", color: "#94a3b8", fontSize: "15px", lineHeight: 1, padding: "2px 4px", cursor: "pointer" }}
+                >
+                  ×
+                </button>
+              )}
+            </div>
             <div style={{ overflowY: "auto", padding: "0 8px 8px", display: "flex", flexDirection: "column", gap: "4px" }}>
-              {filteredList.length === 0 ? (
-                <div style={{ fontSize: "12px", color: "#64748b" }}>No runs.</div>
+              {searchedList.length === 0 ? (
+                <div style={{ fontSize: "12px", color: "#64748b" }}>
+                  {listSearch.trim() ? `No runs match "${listSearch.trim()}".` : "No runs."}
+                </div>
               ) : (
-                filteredList.map(({ run }) => (
+                searchedList.map(({ run }) => (
                   <button
                     key={run.id}
                     type="button"

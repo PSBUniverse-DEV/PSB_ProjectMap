@@ -1,5 +1,10 @@
+import { cache } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { getCurrentSession } from "@/core/auth/session.service";
+
+// One session lookup per page request, shared by loadPageAccess and
+// loadProjectStatusTabAccess (locally a lookup is 3 database trips).
+const getSession = cache(getCurrentSession);
 import { getStatusTabGroupIds } from "./projectMap.data";
 import projectMapModule from "../index";
 
@@ -102,6 +107,25 @@ export async function loadProjectMapSetup() {
   return { ...result, sourceErrors: errors };
 }
 
+// Only the lookup tables the Run Calendar uses (no projects list), so the
+// calendar does not wait on the heavy projects query of loadProjectMapSetup.
+export async function loadRunCalendarSetup() {
+  const supabase = getSupabaseAdmin();
+  const [projectStatuses, runStatuses, paymentMethods] = await Promise.all([
+    supabase.from("proj_s_project_status").select("*").order("display_order", { ascending: true }).order("status_name", { ascending: true }),
+    supabase.from("proj_s_run_status").select("*").eq("is_active", true).order("display_order", { ascending: true }),
+    supabase.from("proj_s_payment_method").select("*").order("display_order", { ascending: true }).order("method_name", { ascending: true }),
+  ]);
+  [["projectStatuses", projectStatuses], ["runStatuses", runStatuses], ["paymentMethods", paymentMethods]].forEach(([key, result]) => {
+    if (result.error) console.error(`[loadRunCalendarSetup] Query "${key}" failed:`, result.error.message);
+  });
+  return {
+    projectStatuses: projectStatuses.data || [],
+    runStatuses: runStatuses.data || [],
+    paymentMethods: paymentMethods.data || [],
+  };
+}
+
 // ─── Page Access (card lock) ────────────────────────────────
 
 // Any card route_path as a plain path: "module:key/a/b" → "/a/b", a full URL → its path.
@@ -128,7 +152,7 @@ function normalizeRoutePath(value) {
 export async function loadPageAccess(routePath) {
   const target = normalizeRoutePath(routePath);
   if (!target) return false;
-  const session = await getCurrentSession();
+  const session = await getSession();
   if (!session?.userId) return false;
 
   const supabase = getSupabaseAdmin();
@@ -178,17 +202,21 @@ async function loadProjectMapAppId(supabase) {
 // The signed-in user's active roles in the Project Map application. A role
 // counts only when both the user's assignment and the role itself are active.
 async function loadProjectMapRoles(supabase, userId) {
-  const appId = await loadProjectMapAppId(supabase);
-
-  const { data: assignments, error: assignmentError } = await supabase
-    .from("psb_m_userapproleaccess")
-    .select("role_id")
-    .eq("user_id", userId)
-    .eq("app_id", appId)
-    .eq("is_active", true);
+  // The app id and the user's active assignments (all apps) are fetched
+  // together, then narrowed to Project Map, which saves a round trip.
+  const [appId, { data: assignments, error: assignmentError }] = await Promise.all([
+    loadProjectMapAppId(supabase),
+    supabase
+      .from("psb_m_userapproleaccess")
+      .select("role_id, app_id")
+      .eq("user_id", userId)
+      .eq("is_active", true),
+  ]);
   if (assignmentError) throw new Error(assignmentError.message);
 
-  const roleIds = [...new Set((assignments || []).map((row) => row.role_id))];
+  const roleIds = [...new Set((assignments || [])
+    .filter((row) => String(row.app_id) === String(appId))
+    .map((row) => row.role_id))];
   if (roleIds.length === 0) return [];
 
   const { data: roles, error: roleError } = await supabase
@@ -199,24 +227,6 @@ async function loadProjectMapRoles(supabase, userId) {
     .order("role_name", { ascending: true });
   if (roleError) throw new Error(roleError.message);
   return (roles || []).map((role) => ({ roleId: role.role_id, name: role.role_name || "" }));
-}
-
-// Run status names mapped to any of the given roles (proj_m_role_run_status),
-// as one combined list. Runs store their status as the name, so names are
-// what gets matched. A failed lookup hides runs instead of blocking the whole page.
-async function loadRoleRunStatusNames(supabase, roleIds) {
-  const [mappingResult, statusesResult] = await Promise.all([
-    supabase.from("proj_m_role_run_status").select("status_id").in("role_id", roleIds),
-    supabase.from("proj_s_run_status").select("status_id, status_name"),
-  ]);
-  if (mappingResult.error || statusesResult.error) {
-    console.error("[loadRoleRunStatusNames]", mappingResult.error?.message || statusesResult.error?.message);
-    return [];
-  }
-  const mappedIds = new Set((mappingResult.data || []).map((row) => String(row.status_id)));
-  return (statusesResult.data || [])
-    .filter((status) => mappedIds.has(String(status.status_id)))
-    .map((status) => status.status_name);
 }
 
 // Switch for environments whose Role Tabs are not set up yet.
@@ -261,16 +271,24 @@ export async function loadProjectStatusTabAccess() {
   };
 
   try {
-    const session = await getCurrentSession();
+    const session = await getSession();
     if (!session?.userId) return { ...access, reason: "no-session" };
 
     const supabase = getSupabaseAdmin();
-    const { data: user, error: userError } = await supabase
-      .from("psb_s_user")
-      .select("user_id, username, email, first_name, last_name")
-      .eq("user_id", session.userId)
-      .maybeSingle();
-    if (userError) throw new Error(userError.message);
+    // Lookups that don't depend on each other run together; only the tick
+    // mappings below wait for the roles. Each round trip counts on page load.
+    const [userResult, roles, statusesResult, runStatusesResult] = await Promise.all([
+      supabase
+        .from("psb_s_user")
+        .select("user_id, username, email, first_name, last_name")
+        .eq("user_id", session.userId)
+        .maybeSingle(),
+      loadProjectMapRoles(supabase, session.userId),
+      supabase.from("proj_s_project_status").select("status_id, status_name, is_active, system_key"),
+      supabase.from("proj_s_run_status").select("status_id, status_name"),
+    ]);
+    if (userResult.error) throw new Error(userResult.error.message);
+    const user = userResult.data;
     if (!user) return { ...access, reason: "no-user", user: { userId: session.userId, name: "", username: "", email: session.email || "" } };
 
     access.user = {
@@ -279,24 +297,24 @@ export async function loadProjectStatusTabAccess() {
       username: user.username || "",
       email: user.email || "",
     };
-    access.roles = await loadProjectMapRoles(supabase, user.user_id);
+    access.roles = roles;
     if (access.roles.length === 0) return { ...access, reason: "no-role" };
-    const roleIds = access.roles.map((role) => role.roleId);
-
-    const [mappingResult, statusesResult, runStatusesResult] = await Promise.all([
-      supabase.from("proj_m_role_project_status").select("status_id").in("role_id", roleIds),
-      supabase.from("proj_s_project_status").select("status_id, status_name, is_active, system_key"),
-      supabase.from("proj_s_run_status").select("status_name"),
-    ]);
-    if (mappingResult.error) throw new Error(mappingResult.error.message);
     if (statusesResult.error) throw new Error(statusesResult.error.message);
     if (runStatusesResult.error) throw new Error(runStatusesResult.error.message);
+    const roleIds = access.roles.map((role) => role.roleId);
+
+    const [mappingResult, runMappingResult] = await Promise.all([
+      supabase.from("proj_m_role_project_status").select("status_id").in("role_id", roleIds),
+      supabase.from("proj_m_role_run_status").select("status_id").in("role_id", roleIds),
+    ]);
+    if (mappingResult.error) throw new Error(mappingResult.error.message);
 
     // Seeing: every Project Map user sees every project and run status.
     const statuses = statusesResult.data || [];
+    const runStatuses = runStatusesResult.data || [];
     access.allowedStatusIds = statuses.map((status) => String(status.status_id));
     access.visibleProjectStatusIds = access.allowedStatusIds;
-    access.allowedRunStatusNames = (runStatusesResult.data || []).map((status) => status.status_name);
+    access.allowedRunStatusNames = runStatuses.map((status) => status.status_name);
 
     // Changing: only the statuses ticked for one of the user's roles. Several
     // roles can tick the same status, so de-duplicate.
@@ -304,7 +322,17 @@ export async function loadProjectStatusTabAccess() {
     access.editableProjectStatusIds = [
       ...new Set(tickedIds.flatMap((statusId) => getStatusTabGroupIds(statusId, statuses))),
     ];
-    access.editableRunStatusNames = await loadRoleRunStatusNames(supabase, roleIds);
+    // Runs store their status as the name, so run ticks are turned into names.
+    // A failed run-tick lookup leaves runs view-only instead of blocking the page.
+    if (runMappingResult.error) {
+      console.error("[loadProjectStatusTabAccess] run ticks:", runMappingResult.error.message);
+      access.editableRunStatusNames = [];
+    } else {
+      const tickedRunIds = new Set((runMappingResult.data || []).map((row) => String(row.status_id)));
+      access.editableRunStatusNames = runStatuses
+        .filter((status) => tickedRunIds.has(String(status.status_id)))
+        .map((status) => status.status_name);
+    }
 
     if (isStatusAccessAll()) {
       access.editableProjectStatusIds = access.allowedStatusIds;
@@ -380,7 +408,7 @@ export async function loadRuns(access) {
 
   const { data, error } = await supabase
     .from("proj_t_runs")
-    .select("*, proj_s_origin_addresses(*), proj_t_run_projects(id, proj_t_projects(payment_method_type, project_subtotal, proj_s_project_status!proj_t_projects_status_id_fkey(status_name, system_key)))")
+    .select("*, proj_s_origin_addresses(*), proj_t_run_projects(id, proj_t_projects(client_name, city, payment_method_type, project_subtotal, proj_s_project_status!proj_t_projects_status_id_fkey(status_name, system_key)))")
     .in("status", statusNames)
     .order("run_date", { ascending: false });
 

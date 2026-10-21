@@ -2045,7 +2045,81 @@ export async function loadRunDetails(runId) {
 
 }
 
-// ─── OSRM Route Calculation ─────────────────────────────────
+// ─── Route Calculation (Geoapify; OSRM demo server only as fallback) ───
+
+const GEOAPIFY_ROUTING_URL = "https://api.geoapify.com/v1/routing";
+const OSRM_DEMO_URL = "https://router.project-osrm.org/route/v1/driving";
+
+// Geoapify returns one line per leg (MultiLineString); the map draws one LineString.
+function toLineString(geometry) {
+  if (!geometry) return null;
+  if (geometry.type === "LineString") return geometry;
+  if (geometry.type === "MultiLineString" && Array.isArray(geometry.coordinates)) {
+    const coordinates = [];
+    geometry.coordinates.forEach((line, index) => {
+      // Each leg starts where the previous one ended; skip the repeated point.
+      coordinates.push(...(index === 0 ? line : line.slice(1)));
+    });
+    return { type: "LineString", coordinates };
+  }
+  return null;
+}
+
+/**
+ * One driving route through `coords` ([{ lat, lng }], in order), as
+ * { distance (m), duration (s), geometry (GeoJSON LineString), legs: [{ distance, duration }] }.
+ * Uses Geoapify with the server-only key GEOAPIFY_SERVER_API_KEY. Falls back
+ * to the public OSRM demo server (not meant for production) only when the key
+ * is missing or Geoapify fails, so routes keep working.
+ */
+async function fetchDrivingRoute(coords) {
+  const key = process.env.GEOAPIFY_SERVER_API_KEY;
+  if (key) {
+    try {
+      const url = new URL(GEOAPIFY_ROUTING_URL);
+      url.searchParams.set("waypoints", coords.map((c) => `${c.lat},${c.lng}`).join("|"));
+      url.searchParams.set("mode", "drive");
+      url.searchParams.set("apiKey", key);
+      const response = await fetch(url.toString());
+      if (response.ok) {
+        const data = await response.json();
+        const feature = data.features?.[0];
+        const geometry = toLineString(feature?.geometry);
+        if (feature?.properties && geometry) {
+          return {
+            distance: feature.properties.distance,
+            duration: feature.properties.time,
+            geometry,
+            legs: (feature.properties.legs || []).map((leg) => ({ distance: leg.distance, duration: leg.time })),
+          };
+        }
+        console.error("[Routing] Geoapify returned no usable route; using the OSRM demo server.");
+      } else {
+        console.error(`[Routing] Geoapify request failed (${response.status}); using the OSRM demo server.`);
+      }
+    } catch (err) {
+      console.error("[Routing] Geoapify request failed; using the OSRM demo server:", err?.message);
+    }
+  } else {
+    console.warn("[Routing] GEOAPIFY_SERVER_API_KEY is not set; using the OSRM demo server.");
+  }
+
+  const coordsStr = coords.map((c) => `${c.lng},${c.lat}`).join(";");
+  const response = await fetch(`${OSRM_DEMO_URL}/${coordsStr}?overview=full&geometries=geojson&steps=false`);
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(`Route request failed (${response.status}): ${text || response.statusText}`);
+  }
+  const data = await response.json();
+  const route = data.routes?.[0];
+  if (!route) throw new Error("No route found between the selected points.");
+  return {
+    distance: route.distance,
+    duration: route.duration,
+    geometry: route.geometry,
+    legs: (route.legs || []).map((leg) => ({ distance: leg.distance, duration: leg.duration })),
+  };
+}
 
 export async function calculateRoute(originLat, originLng, destLat, destLng) {
   if (originLat == null || originLng == null || destLat == null || destLng == null) {
@@ -2061,21 +2135,7 @@ export async function calculateRoute(originLat, originLng, destLat, destLng) {
     throw new Error("Invalid coordinates provided. Ensure all projects have valid latitude/longitude values.");
   }
 
-  const url = `https://router.project-osrm.org/route/v1/driving/${oLng},${oLat};${dLng},${dLat}?overview=full&geometries=geojson&steps=false`;
-
-  const response = await fetch(url);
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(`OSRM request failed (${response.status}): ${text || response.statusText}`);
-  }
-
-  const data = await response.json();
-
-  if (!data.routes || data.routes.length === 0) {
-    throw new Error("No route found between the selected points.");
-  }
-
-  const route = data.routes[0];
+  const route = await fetchDrivingRoute([{ lat: oLat, lng: oLng }, { lat: dLat, lng: dLng }]);
   return {
     distance: route.distance,          // meters
     duration: route.duration,          // seconds
@@ -2107,21 +2167,7 @@ export async function calculateMultiStopRoute(coordinates) {
     throw new Error("At least 2 valid coordinates are required.");
   }
 
-  const coordsStr = validCoords.map((c) => `${c.lng},${c.lat}`).join(";");
-  const url = `https://router.project-osrm.org/route/v1/driving/${coordsStr}?overview=full&geometries=geojson&steps=false`;
-
-  const response = await fetch(url);
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(`OSRM request failed (${response.status}): ${text || response.statusText}`);
-  }
-  const data = await response.json();
-
-  if (!data.routes || data.routes.length === 0) {
-    throw new Error("No route found between the selected points.");
-  }
-
-  const route = data.routes[0];
+  const route = await fetchDrivingRoute(validCoords);
   return {
     distance: route.distance,
     duration: route.duration,
@@ -2152,27 +2198,16 @@ export async function calculateSegmentRoutes(coordinates) {
     throw new Error("At least 2 valid coordinates are required.");
   }
 
-  // Single OSRM request for the whole multi-stop route. OSRM returns
-  // per-leg distance/duration via routes[0].legs[] AND the full route
-  // geometry in the same response — no need for N separate per-leg
-  // requests plus a final full-route request (that was the previous
-  // approach, and it's why the line took longer to appear as stop
-  // count grew: N+1 sequential round-trips instead of 1).
+  // One request for the whole multi-stop route: it returns per-leg
+  // distance/duration (legs[]) AND the full route line, so there are no N
+  // separate per-leg requests (fetchDrivingRoute: Geoapify, OSRM fallback).
   const legCount = validCoords.length - 1;
-  const fullCoordsStr = validCoords.map((c) => `${c.lng},${c.lat}`).join(";");
-  const fullUrl = `https://router.project-osrm.org/route/v1/driving/${fullCoordsStr}?overview=full&geometries=geojson&steps=false`;
 
   let fullRoute = null;
   try {
-    const response = await fetch(fullUrl);
-    if (response.ok) {
-      const data = await response.json();
-      fullRoute = data.routes?.[0] || null;
-    } else {
-      console.error(`[OSRM] Route request failed: ${response.status}`);
-    }
+    fullRoute = await fetchDrivingRoute(validCoords);
   } catch (err) {
-    console.error("[OSRM] Route fetch failed:", err.message);
+    console.error("[Routing] Route fetch failed:", err.message);
   }
 
   if (!fullRoute) {

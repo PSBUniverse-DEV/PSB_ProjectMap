@@ -28,6 +28,37 @@ function parseMapLink(text) {
   return null;
 }
 
+/** Place name in a Google Maps link ("/maps/place/LARROZA+Residence/@..."), or "". */
+function parseMapLinkPlaceName(text) {
+  const match = String(text || "").match(/\/maps\/place\/([^/@?]+)/);
+  if (!match) return "";
+  let name = match[1].replace(/\+/g, " ");
+  try { name = decodeURIComponent(name); } catch (e) {}
+  name = name.trim();
+  // "/maps/place/7.08,125.60/" is a coordinate, not a name
+  return name && !parseCoordinateString(name) ? name : "";
+}
+
+/**
+ * Search result for a coordinate search. The pin stays exactly on the
+ * searched point; the nearest known address (reverse geocode, may be a shop
+ * next door) only supplies city / state / ZIP / country. A place name from a
+ * Google Maps link becomes the label and address line 1.
+ */
+function pinnedResult(coords, place, placeName) {
+  const base = place || coordinateOnlyResult(coords.lat, coords.lng);
+  const label = placeName
+    ? [placeName, base.city, base.state, base.country].filter(Boolean).join(", ")
+    : base.formatted_address;
+  return {
+    ...base,
+    formatted_address: label,
+    address_line_1: placeName || base.address_line_1,
+    latitude: coords.lat,
+    longitude: coords.lng,
+  };
+}
+
 /** Result for a coordinate with no street address, so it can still be pinned. */
 function coordinateOnlyResult(lat, lng) {
   const label = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
@@ -82,7 +113,7 @@ export default function MapSearch({ value, onChange, onSelect, results = [] }) {
       const text = query.trim();
       const coords = parseMapLink(text) || parseCoordinateString(text);
       const data = coords
-        ? [(await reverseGeocode(coords.lat, coords.lng)) || coordinateOnlyResult(coords.lat, coords.lng)]
+        ? [pinnedResult(coords, await reverseGeocode(coords.lat, coords.lng), parseMapLinkPlaceName(text))]
         : /^https?:\/\//i.test(text)
           ? []
           : await forwardGeocode(text, 50);

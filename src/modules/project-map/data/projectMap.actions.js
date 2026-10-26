@@ -70,11 +70,17 @@ function resolveSetupTable(key) {
   return entry;
 }
 
-// Setup actions run only for roles that have the setup page's card (same rule as the page).
+// Shown when a read-only user tries to change something (see readOnly in loadProjectStatusTabAccess).
+const READ_ONLY_MESSAGE = "Your Project Map roles are view only, so nothing can be changed.";
+
+// Setup actions run only for roles that have the setup page's card (same rule as the page),
+// and never for read-only users (they may open Setup but change nothing).
 async function requireSetupAccess() {
   if (!(await loadPageAccess(PROJECT_MAP_PAGES.setup))) {
     throw new Error("Your role does not have access to Project Map Setup.");
   }
+  const access = await loadProjectStatusTabAccess();
+  if (access.readOnly) throw new Error(READ_ONLY_MESSAGE);
 }
 
 export async function createSetupRow(tableKey, row) {
@@ -2459,8 +2465,9 @@ export async function addProjectComment(projectId, text, fallbackAuthor = null) 
     throw new Error(`Comment must be ${PROJECT_COMMENT_MAX_LENGTH} characters or fewer.`);
   }
 
-  // Comments are open to every Project Map user, whatever their status access.
-  await requireProjectMapAccess();
+  // Comments are open to every Project Map user who is not read only, whatever their status access.
+  const access = await requireProjectMapAccess();
+  if (access.readOnly) throw new Error(READ_ONLY_MESSAGE);
   const author = await resolveCommentAuthor(fallbackAuthor);
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
@@ -2491,7 +2498,8 @@ export async function deleteProjectComment(commentId, fallbackAuthor = null) {
   if (error) throw new Error(error.message);
   if (!row) return { success: true };
 
-  await requireProjectMapAccess();
+  const access = await requireProjectMapAccess();
+  if (access.readOnly) throw new Error(READ_ONLY_MESSAGE);
   const author = await resolveCommentAuthor(fallbackAuthor);
   if (row.created_by == null || author.userId == null || Number(row.created_by) !== author.userId) {
     throw new Error("You can only delete your own comments.");

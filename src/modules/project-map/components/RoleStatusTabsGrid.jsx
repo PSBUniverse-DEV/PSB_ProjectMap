@@ -28,8 +28,8 @@ const byDisplayOrder = (a, b) => Number(a.display_order ?? 0) - Number(b.display
  * (proj_m_role_run_status). A user with several roles sees all of their
  * roles' statuses combined.
  *
- * A user whose roles have no project tabs cannot open the Project Map; with
- * no run statuses they lose the Runs buttons. Both are called out. Repair
+ * Every Project Map user SEES every status; these ticks decide what a role
+ * may CHANGE. A role with nothing ticked is view only (e.g. "Viewer"). Repair
  * sub-statuses are not listed: the "Repairs" tab covers them.
  */
 export default function RoleStatusTabsGrid({ roles = [], statuses = [], mappings = [], runStatuses = [], runMappings = [] }) {
@@ -143,8 +143,8 @@ export default function RoleStatusTabsGrid({ roles = [], statuses = [], mappings
               <tr>
                 <th className="oag-col-actions">Actions</th>
                 <th className="oag-col-name">Role</th>
-                <th>Visible Project Status Tabs</th>
-                <th>Visible Run Statuses</th>
+                <th>Can Edit Projects In</th>
+                <th>Can Edit Runs In</th>
               </tr>
             </thead>
             <tbody>
@@ -175,14 +175,14 @@ export default function RoleStatusTabsGrid({ roles = [], statuses = [], mappings
                       {names.length > 0 ? (
                         <span className="oag-address">{names.join(", ")}</span>
                       ) : (
-                        <span style={{ color: "#b91c1c", fontWeight: 600 }}>None</span>
+                        <span style={{ color: "#64748b", fontWeight: 600 }}>None (view only)</span>
                       )}
                     </td>
                     <td>
                       {runNames.length > 0 ? (
                         <span className="oag-address">{runNames.join(", ")}</span>
                       ) : (
-                        <span style={{ color: "#b45309", fontWeight: 600 }}>None</span>
+                        <span style={{ color: "#64748b", fontWeight: 600 }}>None (view only)</span>
                       )}
                     </td>
                   </tr>
@@ -193,18 +193,18 @@ export default function RoleStatusTabsGrid({ roles = [], statuses = [], mappings
         )}
       </div>
 
-      <Modal show={!!editingRole} onHide={closeModal} title={`Tabs for ${editingRole?.role_name || ""}`}>
+      <Modal show={!!editingRole} onHide={closeModal} title={`What ${editingRole?.role_name || ""} can edit`}>
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-          {renderChecklist("Project status tabs", tabStatuses, selected, setSelected, "role-tab")}
+          {renderChecklist("Can edit projects in these statuses", tabStatuses, selected, setSelected, "role-tab")}
           {selected.length === 0 && (
-            <p style={{ margin: 0, fontSize: "12px", color: "#b91c1c" }}>
-              With no project tabs selected, this role gives no Project Map tabs. Users with no other Project Map role cannot open the Project Map.
+            <p style={{ margin: 0, fontSize: "12px", color: "#64748b" }}>
+              Nothing ticked: this role can view every project but change none. A user with another Project Map role still gets that role&apos;s edit rights.
             </p>
           )}
-          {renderChecklist("Run statuses", activeRunStatuses, selectedRuns, setSelectedRuns, "role-run")}
+          {renderChecklist("Can edit runs in these statuses", activeRunStatuses, selectedRuns, setSelectedRuns, "role-run")}
           {selectedRuns.length === 0 && (
-            <p style={{ margin: 0, fontSize: "12px", color: "#b45309" }}>
-              With no run statuses selected, this role gives no runs. Users with no other Project Map role will not see Runs or the Run Master List.
+            <p style={{ margin: 0, fontSize: "12px", color: "#64748b" }}>
+              Nothing ticked: this role can view every run but change none. A user with another Project Map role still gets that role&apos;s edit rights.
             </p>
           )}
           <div className="oag-modal-actions">

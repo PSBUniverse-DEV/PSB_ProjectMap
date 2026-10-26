@@ -266,6 +266,7 @@ export async function loadProjectStatusTabAccess() {
     allowedRunStatusNames: [],
     editableProjectStatusIds: [],
     editableRunStatusNames: [],
+    readOnly: false,
     user: null,
     roles: [],
   };
@@ -338,6 +339,11 @@ export async function loadProjectStatusTabAccess() {
       access.editableProjectStatusIds = access.allowedStatusIds;
       access.editableRunStatusNames = access.allowedRunStatusNames;
     }
+
+    // Read only: the user's roles tick nothing in Role Tabs (e.g. a "Viewer"
+    // role with no ticks). They may open every page their cards allow, but
+    // change nothing: no edits, files, comments or Setup changes.
+    access.readOnly = access.editableProjectStatusIds.length === 0 && access.editableRunStatusNames.length === 0;
 
     return access;
   } catch (error) {

@@ -6,13 +6,18 @@ import { Button, Modal, FileAttachments, toastError, toastSuccess } from "@/shar
 import AppIcon from "@/shared/components/ui/AppIcon";
 import { startNavbarLoader } from "@/shared/utils/navbar-loader";
 import { loadRunDetails, updateRun, loadPaidSheet, loadFiles, createFileUpload, saveUploadedFile, getFileUrl, deleteFile } from "../data/projectMap.actions";
-import { formatRunCode, getRunStatusColor, getRunScheduleState, formatDisplayDate, splitRunAmounts, runStatusKeyByName, resolveRunStatusOptions, canEditRunStatusName, PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES } from "../data/projectMap.data";
+import { formatRunCode, getRunStatusColor, getRunScheduleState, formatDisplayDate, splitRunAmounts, runStatusKeyByName, resolveRunStatusOptions, canEditRunStatusName, PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, FINISHED_RUN_STATUS_KEYS, PROJECT_MAP_PAGES } from "../data/projectMap.data";
 import { computeRunSegmentData } from "../utils/runSegments";
 import { generateRunManifestPrint } from "../utils/printRunManifest";
 import { generatePaidSheetPrint } from "../utils/printPaidSheet";
 import StopStatusPrompt from "../components/StopStatusPrompt";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+// Lines of the month grid: every cell draws its own right and bottom line, the
+// grid itself the top and left one. (1px gaps over a grey background vanished
+// between some columns when the browser rounded the column widths.)
+const CELL_LINES = { borderRight: "1px solid #e2e8f0", borderBottom: "1px solid #e2e8f0" };
 
 // Filter tabs. Labels are worked out by getRunScheduleState, never stored.
 const FILTERS = [
@@ -284,7 +289,7 @@ function MonthSummary({ label, filterLabel, totals, runStatuses }) {
  * status cascade), reschedule, prints and files; changes follow the run's
  * status ticks.
  */
-export default function RunCalendarView({ runs = [], runStatuses = [], statuses = [], paymentMethods = [], editAccess = null, pageAccess = null }) {
+export default function RunCalendarView({ runs = [], runStatuses = [], statuses = [], paymentMethods = [], editAccess = null, pageAccess = null, finishedRange = "recent", finishedFrom = null }) {
   const router = useRouter();
   const todayKey = toDateKey(new Date());
   const [monthStart, setMonthStart] = useState(() => {
@@ -417,6 +422,22 @@ export default function RunCalendarView({ runs = [], runStatuses = [], statuses 
   // Buttons to other Project Map pages show only for roles that have that
   // page's card (loadPageAccess). A missing prop means no restriction.
   const canOpenPage = (key) => !pageAccess || pageAccess[key] === true;
+
+  // Completed / cancelled runs are loaded from `finishedFrom` on (RunCalendarPage):
+  // "recent" = this month and the two before it, "year" = this calendar year.
+  // Open runs are always all loaded, so Behind and On Track stay complete.
+  // The label is built from the run statuses that end a run (by system_key).
+  const finishedLabel = useMemo(
+    () => runStatuses.filter((s) => FINISHED_RUN_STATUS_KEYS.includes(s.system_key)).map((s) => s.status_name).join(" / ") || "Finished",
+    [runStatuses]
+  );
+  // True when the shown weeks start before the loaded finished runs do.
+  const showsUnloadedFinished = Boolean(finishedFrom) && days.length > 0 && toDateKey(days[0]) < finishedFrom;
+  const changeFinishedRange = (range) => {
+    if (range === finishedRange) return;
+    startNavbarLoader();
+    router.replace(range === "year" ? `${PROJECT_MAP_PAGES.calendar}?range=year` : PROJECT_MAP_PAGES.calendar);
+  };
 
   // Stat cards of the run pop-up. Uses the loaded stops when ready, else the
   // stops that came with the run list. Repairs are never revenue.
@@ -619,8 +640,23 @@ export default function RunCalendarView({ runs = [], runStatuses = [], statuses 
             style={{ border: "1px solid #e2e8f0", borderRadius: "3px", padding: "2px 6px", fontSize: "12px", background: "#fff", color: "#1e293b" }}
           />
           <strong style={{ fontSize: "13px", color: "#1e293b", minWidth: "130px", textAlign: "right" }}>{monthLabel}</strong>
+          {/* How far back completed / cancelled runs are loaded. */}
+          <select
+            aria-label={`${finishedLabel} runs to load`}
+            value={finishedRange}
+            onChange={(e) => changeFinishedRange(e.target.value)}
+            style={{ border: "1px solid #e2e8f0", borderRadius: "3px", padding: "2px 6px", fontSize: "12px", background: "#fff", color: "#1e293b" }}
+          >
+            <option value="recent">{finishedLabel}: last 3 months</option>
+            <option value="year">{finishedLabel}: this year</option>
+          </select>
         </div>
       </div>
+      {showsUnloadedFinished && (
+        <div style={{ margin: "0 0 8px", padding: "4px 8px", fontSize: "11px", color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "4px" }}>
+          {finishedLabel} runs before {formatDisplayDate(finishedFrom)} are not loaded{finishedRange === "year" ? "." : " — pick “this year” to see more."}
+        </div>
+      )}
       {/* Two columns: run list on the left (~20%, can be folded), calendar on the right. */}
       <div style={{ display: "flex", gap: "10px", alignItems: "flex-start" }}>
         {listOpen ? (
@@ -697,11 +733,11 @@ export default function RunCalendarView({ runs = [], runStatuses = [], statuses 
         <div style={{ flex: 1, minWidth: 0 }}>
       {/* Month grid */}
       <div ref={calendarRef} style={{ overflowX: "auto", scrollMarginTop: "70px" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(110px, 1fr)) 130px", background: "#e2e8f0", gap: "1px", border: "1px solid #e2e8f0", borderRadius: "4px", minWidth: "910px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(110px, 1fr)) 130px", borderTop: "1px solid #e2e8f0", borderLeft: "1px solid #e2e8f0", borderRadius: "4px", overflow: "hidden", minWidth: "910px" }}>
           {WEEKDAYS.map((weekday) => (
-            <div key={weekday} style={{ background: "#f8fafc", padding: "4px 6px", fontSize: "11px", fontWeight: 600, color: "#64748b" }}>{weekday}</div>
+            <div key={weekday} style={{ ...CELL_LINES, background: "#f8fafc", padding: "4px 6px", fontSize: "11px", fontWeight: 600, color: "#64748b" }}>{weekday}</div>
           ))}
-          <div style={{ background: "#f1f5f9", padding: "4px 6px", fontSize: "11px", fontWeight: 600, color: "#64748b" }}>Week</div>
+          <div style={{ ...CELL_LINES, background: "#f1f5f9", padding: "4px 6px", fontSize: "11px", fontWeight: 600, color: "#64748b" }}>Week</div>
           {weeks.map(({ weekDays, totals }) => [
             ...weekDays.map((day) => {
               const key = toDateKey(day);
@@ -709,7 +745,7 @@ export default function RunCalendarView({ runs = [], runStatuses = [], statuses 
               const isToday = key === todayKey;
               const dayItems = itemsByDay.get(key) || [];
               return (
-                <div key={key} style={{ background: inMonth ? "#fff" : "#f8fafc", minHeight: "96px", padding: "4px", display: "flex", flexDirection: "column", gap: "3px" }}>
+                <div key={key} style={{ ...CELL_LINES, background: inMonth ? "#fff" : "#f8fafc", minHeight: "96px", padding: "4px", display: "flex", flexDirection: "column", gap: "3px" }}>
                   {/* The day number opens that day's summary. */}
                   <button
                     type="button"
@@ -735,7 +771,7 @@ export default function RunCalendarView({ runs = [], runStatuses = [], statuses 
                 </div>
               );
             }),
-            <div key={`week-${toDateKey(weekDays[0])}`} style={{ background: "#f8fafc", padding: "6px", display: "flex", alignItems: "flex-start" }}>
+            <div key={`week-${toDateKey(weekDays[0])}`} style={{ ...CELL_LINES, background: "#f8fafc", padding: "6px", display: "flex", alignItems: "flex-start" }}>
               <WeekSummary weekDays={weekDays} totals={totals} />
             </div>,
           ])}

@@ -34,15 +34,27 @@ function RunCalendarSkeleton() {
   );
 }
 
-export default function RunCalendarPage() {
+// First day ("YYYY-MM-DD") from which completed / cancelled runs are loaded:
+// the 1st of the month two months before this one ("recent", the default),
+// or 1 January for "year" (whichever is earlier, so "year" never loads less
+// than "recent" in January or February).
+function finishedRunsFrom(range) {
+  const now = new Date();
+  const recent = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 2, 1));
+  const yearStart = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
+  const from = range === "year" && yearStart < recent ? yearStart : recent;
+  return from.toISOString().slice(0, 10);
+}
+
+export default function RunCalendarPage({ searchParams }) {
   return (
     <Suspense fallback={<RunCalendarSkeleton />}>
-      <RunCalendarContent />
+      <RunCalendarContent searchParams={searchParams} />
     </Suspense>
   );
 }
 
-async function RunCalendarContent() {
+async function RunCalendarContent({ searchParams }) {
   // Access, page lock and lookup tables don't depend on each other: load them together.
   // Same rule as the Run Master List: every Project Map user sees every run.
   // The other pages' cards decide which page buttons the view shows.
@@ -64,7 +76,16 @@ async function RunCalendarContent() {
     return <ProjectMapAccessBlocked access={{ ...access, reason: "no-run-mapping" }} page="Run Calendar" />;
   }
 
-  const runs = await loadRuns(access);
+  // Open runs: every one (Behind / On Track and the list need them all).
+  // Completed / cancelled runs: only from finishedFrom on — this month and the
+  // two before it, or this whole year with ?range=year. Both load together.
+  const finishedRange = (await searchParams)?.range === "year" ? "year" : "recent";
+  const finishedFrom = finishedRunsFrom(finishedRange);
+  const [openRuns, finishedRuns] = await Promise.all([
+    loadRuns(access, { statusScope: "open" }),
+    loadRuns(access, { statusScope: "finished", runDateFrom: finishedFrom }),
+  ]);
+  const runs = [...openRuns, ...finishedRuns];
   return (
     <RunCalendarView
       runs={runs}
@@ -73,6 +94,8 @@ async function RunCalendarContent() {
       paymentMethods={setup.paymentMethods || []}
       editAccess={{ editableRunStatusNames: access.editableRunStatusNames }}
       pageAccess={{ map: canOpenMap, runMaster: canOpenRunMaster }}
+      finishedRange={finishedRange}
+      finishedFrom={finishedFrom}
     />
   );
 }

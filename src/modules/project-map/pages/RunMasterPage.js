@@ -29,7 +29,8 @@ export default async function RunMasterPage() {
   }
 
   const [runs, setup] = await Promise.all([
-    loadRuns(access),
+    // Open runs only at first; the Status filter loads finished ones when ticked.
+    loadRuns(access, { statusScope: "open" }),
     loadProjectMapSetup(),
   ]);
   return (

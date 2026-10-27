@@ -5,7 +5,7 @@ import { getCurrentSession } from "@/core/auth/session.service";
 // One session lookup per page request, shared by loadPageAccess and
 // loadProjectStatusTabAccess (locally a lookup is 3 database trips).
 const getSession = cache(getCurrentSession);
-import { getStatusTabGroupIds } from "./projectMap.data";
+import { FINISHED_RUN_STATUS_KEYS, getStatusTabGroupIds } from "./projectMap.data";
 import projectMapModule from "../index";
 
 function getSupabaseAdmin() {
@@ -284,6 +284,7 @@ export async function loadProjectStatusTabAccess() {
     allowedStatusIds: [],
     visibleProjectStatusIds: [],
     allowedRunStatusNames: [],
+    finishedRunStatusNames: [],
     editableProjectStatusIds: [],
     editableRunStatusNames: [],
     readOnly: false,
@@ -306,7 +307,7 @@ export async function loadProjectStatusTabAccess() {
         .maybeSingle(),
       loadProjectMapRoles(supabase, session.userId),
       supabase.from("proj_s_project_status").select("status_id, status_name, is_active, system_key"),
-      supabase.from("proj_s_run_status").select("status_id, status_name"),
+      supabase.from("proj_s_run_status").select("status_id, status_name, system_key"),
     ]);
     if (userResult.error) throw new Error(userResult.error.message);
     const user = userResult.data;
@@ -336,6 +337,10 @@ export async function loadProjectStatusTabAccess() {
     access.allowedStatusIds = statuses.map((status) => String(status.status_id));
     access.visibleProjectStatusIds = access.allowedStatusIds;
     access.allowedRunStatusNames = runStatuses.map((status) => status.status_name);
+    // Run statuses that end a run (by system_key); every other one is "open".
+    access.finishedRunStatusNames = runStatuses
+      .filter((status) => FINISHED_RUN_STATUS_KEYS.includes(status.system_key))
+      .map((status) => status.status_name);
 
     // Changing: only the statuses ticked for one of the user's roles. Several
     // roles can tick the same status, so de-duplicate.
@@ -423,11 +428,22 @@ export async function loadAllRunStatuses() {
 
 // ─── Runs Loader ────────────────────────────────────────────
 
-export async function loadRuns(access) {
+// Which runs loadRuns returns (second argument, all optional):
+// - statusScope: "open" = run statuses that do not end a run, "finished" =
+//   those that do (access.finishedRunStatusNames), "all" (default) = both.
+// - runDateFrom (included) / runDateBefore (excluded): "YYYY-MM-DD" limits on
+//   run_date. Runs without a run date are left out when either is set.
+const RUN_STATUS_SCOPES = ["all", "open", "finished"];
+const isDateKey = (value) => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
+
+export async function loadRuns(access, { statusScope = "all", runDateFrom = null, runDateBefore = null } = {}) {
   // Only runs in statuses this user's Project Map roles may see. A page that has
   // already looked access up passes it in to save a second lookup.
   const runAccess = access || (await loadProjectStatusTabAccess());
-  const statusNames = runAccess.allowedRunStatusNames || [];
+  const scope = RUN_STATUS_SCOPES.includes(statusScope) ? statusScope : "all";
+  const finishedNames = new Set(runAccess.finishedRunStatusNames || []);
+  const statusNames = (runAccess.allowedRunStatusNames || []).filter((name) =>
+    scope === "all" || (scope === "finished") === finishedNames.has(name));
   if (statusNames.length === 0) return [];
 
   const supabase = getSupabaseAdmin();
@@ -438,12 +454,17 @@ export async function loadRuns(access) {
   // long. A run with no saved Paid Sheet row has no entry here, so
   // dot_number/state_route stay null until the sheet is saved.
   const [runs, paidSheets] = await Promise.all([
-    fetchAllRows(() => supabase
-      .from("proj_t_runs")
-      .select("*, proj_s_origin_addresses(*), proj_t_run_projects(id, proj_t_projects(client_name, city, payment_method_type, project_subtotal, proj_s_project_status!proj_t_projects_status_id_fkey(status_name, system_key)))")
-      .in("status", statusNames)
-      .order("run_date", { ascending: false })
-      .order("id", { ascending: true })),
+    fetchAllRows(() => {
+      let query = supabase
+        .from("proj_t_runs")
+        .select("*, proj_s_origin_addresses(*), proj_t_run_projects(id, proj_t_projects(client_name, city, payment_method_type, project_subtotal, proj_s_project_status!proj_t_projects_status_id_fkey(status_name, system_key)))")
+        .in("status", statusNames);
+      if (isDateKey(runDateFrom)) query = query.gte("run_date", runDateFrom);
+      if (isDateKey(runDateBefore)) query = query.lt("run_date", runDateBefore);
+      return query
+        .order("run_date", { ascending: false })
+        .order("id", { ascending: true });
+    }),
     fetchAllRows(() => supabase
       .from("proj_t_paid_sheet")
       .select("run_id, dot_number, state_route")

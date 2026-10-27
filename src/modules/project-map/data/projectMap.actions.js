@@ -10,7 +10,7 @@ import {
 } from "@/core/storage/files.service";
 import { PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, REPAIR_STATUS_KEYS, PROJECT_COMMENT_MAX_LENGTH, PROJECT_MAP_PAGES } from "./projectMap.data";
 import { getCurrentSession } from "@/core/auth/session.service";
-import { fetchAllRows, loadPageAccess, loadProjectStatusTabAccess } from "./projectMap.server";
+import { fetchAllRows, loadPageAccess, loadProjectStatusTabAccess, loadRuns as loadRunsForAccess } from "./projectMap.server";
 import projectMapModule from "../index";
 import {
   getDealerLink,
@@ -1885,42 +1885,11 @@ export async function updateRunStopsCount(runId, count) {
   return { success: true };
 }
 
-export async function loadRuns() {
+export async function loadRuns(options = {}) {
   // Same rule as the page load: only runs in statuses this user's Project Map roles may see.
   // Called from the browser, so access is always looked up here, never passed in.
-  const access = await loadProjectStatusTabAccess();
-  const statusNames = access.allowedRunStatusNames || [];
-  if (statusNames.length === 0) return [];
-
-  const supabase = getSupabaseAdmin();
-
-  // Runs and each run's Paid Sheet header (proj_t_paid_sheet holds one row per
-  // run, run_id UNIQUE) load together, page by page (fetchAllRows). Paid
-  // sheets are read whole instead of by run id: a list of 1000+ ids makes the
-  // request address too long. A run with no saved Paid Sheet yet has no entry
-  // here — dot_number/state_route stay null until the sheet is saved.
-  const [runs, paidSheets] = await Promise.all([
-    fetchAllRows(() => supabase
-      .from("proj_t_runs")
-      .select("*, proj_s_origin_addresses(*), proj_t_run_projects(id, proj_t_projects(payment_method_type, project_subtotal, proj_s_project_status!proj_t_projects_status_id_fkey(status_name, system_key)))")
-      .in("status", statusNames)
-      .order("run_date", { ascending: false })
-      .order("id", { ascending: true })),
-    fetchAllRows(() => supabase
-      .from("proj_t_paid_sheet")
-      .select("run_id, dot_number, state_route")
-      .order("run_id", { ascending: true })),
-  ]);
-  const paidSheetByRunId = Object.fromEntries(paidSheets.map((ps) => [ps.run_id, ps]));
-
-  return runs.map((run) => {
-    const ps = paidSheetByRunId[run.id];
-    return {
-      ...run,
-      dot_number: ps?.dot_number ?? null,
-      state_route: ps?.state_route ?? null,
-    };
-  });
+  // Same loader and options as the pages (loadRuns in projectMap.server.js).
+  return loadRunsForAccess(await loadProjectStatusTabAccess(), options || {});
 }
 
 /**

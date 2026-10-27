@@ -9,12 +9,12 @@
  */
 "use client";
 
-import { useState, useMemo, useCallback, Fragment } from "react";
+import { useState, useMemo, useCallback, useRef, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCircleInfo, faCheckCircle, faPrint, faMoneyCheckDollar, faPen, faPaperclip } from "@fortawesome/free-solid-svg-icons";
 import { Button, Modal, toastError, TableZ, FileAttachments } from "@/shared/components/ui";
-import { resolveRunStatusOptions, getRunStatusColor, formatProjectDescriptionForDisplay, stripTownshipLabel, parseStateRoute, getProjectAmountDisplay, splitRunAmounts, PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, formatDisplayDate, canEditRunStatusName } from "../data/projectMap.data";
+import { resolveRunStatusOptions, getRunStatusColor, formatProjectDescriptionForDisplay, stripTownshipLabel, parseStateRoute, getProjectAmountDisplay, splitRunAmounts, PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, formatDisplayDate, canEditRunStatusName, FINISHED_RUN_STATUS_KEYS } from "../data/projectMap.data";
 import { loadRunDetails, loadRuns, loadPaidSheet, loadFiles, createFileUpload, saveUploadedFile, getFileUrl, deleteFile, loadProjectFileCounts } from "../data/projectMap.actions";
 import { generateRunManifestPrint } from "../utils/printRunManifest";
 import { generatePaidSheetPrint } from "../utils/printPaidSheet";
@@ -28,6 +28,12 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
 
   // ---- State ----
   const [localRuns, setLocalRuns] = useState(runs);
+  // Which runs are loaded: "open" (what the page loads first), "finished" or
+  // "all", following the Status filter (handleFiltersChange). Open runs stay
+  // few; finished ones pile up, so they load only when ticked.
+  const [loadingRuns, setLoadingRuns] = useState(false);
+  const runScopeRef = useRef("open");
+  const runsRequestRef = useRef(0);
   const [showRunForm, setShowRunForm] = useState(false);
   const [showInfoModal, setShowInfoModal] = useState(false);
   const [showPaidSheetForm, setShowPaidSheetForm] = useState(false);
@@ -41,14 +47,46 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
   const [filesProject, setFilesProject] = useState(null);
 
   // ---- Helpers ----
+  // Reloads the runs the Status filter needs. Only the newest request may fill
+  // the table, so quick filter changes never show an older result.
   const refreshRuns = useCallback(async () => {
+    const requestId = ++runsRequestRef.current;
     try {
-      const fresh = await loadRuns();
-      setLocalRuns(fresh);
+      const fresh = await loadRuns({ statusScope: runScopeRef.current });
+      if (requestId === runsRequestRef.current) setLocalRuns(fresh);
     } catch (err) {
       console.error("[RunMasterView] Failed to refresh runs:", err);
     }
   }, []);
+
+  // Names of the run statuses that end a run (FINISHED_RUN_STATUS_KEYS).
+  const finishedStatusNames = useMemo(
+    () => new Set(runStatuses.filter((s) => FINISHED_RUN_STATUS_KEYS.includes(s.system_key)).map((s) => s.status_name)),
+    [runStatuses]
+  );
+
+  // The Status filter starts on every open status: exactly what the page loaded.
+  const defaultFilters = useMemo(
+    () => ({ status: resolveRunStatusOptions(runStatuses).filter((name) => !finishedStatusNames.has(name)) }),
+    [runStatuses, finishedStatusNames]
+  );
+
+  // Loads what the Status filter needs: nothing ticked = every run; only open
+  // statuses = open runs; only finished ones = finished runs; a mix = all.
+  // Reloads only when that changes; the table itself then filters by status.
+  const handleFiltersChange = useCallback(async (filters) => {
+    const ticked = Array.isArray(filters?.status) ? filters.status : [];
+    const wantsFinished = ticked.length === 0 || ticked.some((name) => finishedStatusNames.has(name));
+    const wantsOpen = ticked.length === 0 || ticked.some((name) => !finishedStatusNames.has(name));
+    const scope = wantsOpen && wantsFinished ? "all" : wantsFinished ? "finished" : "open";
+    if (scope === runScopeRef.current) return;
+    runScopeRef.current = scope;
+    setExpandedRunId(null);
+    setExpandedDetail(null);
+    setLoadingRuns(true);
+    await refreshRuns();
+    setLoadingRuns(false);
+  }, [finishedStatusNames, refreshRuns]);
 
   // File counts for the expanded run's stops. Best effort: the Files button
   // still opens the list when the count could not be loaded.
@@ -645,6 +683,9 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
         rowIdKey="id"
         actions={actions}
         filterConfig={filterConfig}
+        defaultFilters={defaultFilters}
+        onFiltersChange={handleFiltersChange}
+        loading={loadingRuns}
         searchPlaceholder="Search by run name, run code, origin, or installer..."
         emptyMessage="No runs found."
         selectedRowId={expandedRunId}
@@ -695,7 +736,7 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
       <Modal show={showInfoModal} onHide={() => setShowInfoModal(false)} title="How the Run Master List works">
         <div style={{ fontSize: "13px", color: "#1e293b", lineHeight: 1.6 }}>
           <p style={{ margin: "0 0 14px" }}>
-            This page lists every run so you can search, filter, and print from one place.
+            This page opens on the open runs. Tick a finished status (or clear the Status filter) to load those runs too. Search, filter, and print from one place.
           </p>
 
           <div style={{ display: "flex", gap: "10px", marginBottom: "10px", padding: "10px", background: "#eff6ff", borderRadius: "6px", border: "1px solid #2563EB" }}>

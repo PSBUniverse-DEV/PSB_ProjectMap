@@ -66,6 +66,13 @@ export function runStatusKeyByName(runStatuses = [], name) {
 }
 
 /**
+ * system_key values of the run statuses that end a run. Runs in these
+ * statuses are "finished"; every other run status is "open". Pages load
+ * finished runs only when asked (loadRuns statusScope in projectMap.server.js).
+ */
+export const FINISHED_RUN_STATUS_KEYS = ["completed", "cancelled"];
+
+/**
  * Where a run stands against its date, for the Run Calendar. Worked out on
  * the fly, never stored. `todayKey` is the viewer's date as "YYYY-MM-DD".
  * - finished: its run status is "completed" or "cancelled" (by system_key)
@@ -75,7 +82,7 @@ export function runStatusKeyByName(runStatuses = [], name) {
  */
 export function getRunScheduleState(run, runStatuses = [], todayKey) {
   const key = runStatusKeyByName(runStatuses, run?.status);
-  const finished = key === "completed" || key === "cancelled";
+  const finished = FINISHED_RUN_STATUS_KEYS.includes(key);
   const runDate = String(run?.run_date || "").slice(0, 10);
   const originalDate = String(run?.original_run_date || "").slice(0, 10);
   return {

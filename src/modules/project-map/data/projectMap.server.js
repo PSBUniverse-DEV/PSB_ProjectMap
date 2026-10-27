@@ -19,6 +19,24 @@ function getSupabaseAdmin() {
   });
 }
 
+// ─── Paged reads ────────────────────────────────────────────
+
+// Supabase returns at most "Max rows" (Settings → API, 1000 by default) per
+// request, so lists that can grow past that are read page by page.
+// buildQuery must return a NEW query on every call and end with a unique sort
+// (e.g. .order("id")), so no row is skipped or repeated between pages.
+const PAGE_SIZE = 1000;
+
+export async function fetchAllRows(buildQuery) {
+  const rows = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await buildQuery().range(from, from + PAGE_SIZE - 1);
+    if (error) throw new Error(error.message);
+    rows.push(...(data || []));
+    if (!data || data.length < PAGE_SIZE) return rows;
+  }
+}
+
 // ─── Setup Loader ───────────────────────────────────────────
 
 export async function loadProjectMapSetup() {
@@ -26,7 +44,8 @@ export async function loadProjectMapSetup() {
 
   // Select all project fields including the new operational fields.
   // Uses LEFT JOIN (Supabase default) so projects without lookup records are not excluded.
-  const projectsQuery = supabase
+  // Paged (fetchAllRows): the list can grow past one request's row limit.
+  const buildProjectsQuery = () => supabase
     .from("proj_t_projects")
     .select(
       "id, client_name, formatted_address, address_line_1, city, state, state_code, " +
@@ -38,10 +57,11 @@ export async function loadProjectMapSetup() {
       "created_at, updated_at, created_by, updated_by, " +
       "proj_s_project_status!proj_t_projects_status_id_fkey(status_id, status_name, status_description, system_key)"
     )
-    .order("updated_at", { ascending: false });
+    .order("updated_at", { ascending: false })
+    .order("id", { ascending: true });
 
   const queries = {
-    projects: projectsQuery,
+    projects: fetchAllRows(buildProjectsQuery).then((data) => ({ data, error: null })),
     projectStatuses: supabase
       .from("proj_s_project_status")
       .select("*")
@@ -412,29 +432,24 @@ export async function loadRuns(access) {
 
   const supabase = getSupabaseAdmin();
 
-  const { data, error } = await supabase
-    .from("proj_t_runs")
-    .select("*, proj_s_origin_addresses(*), proj_t_run_projects(id, proj_t_projects(client_name, city, payment_method_type, project_subtotal, proj_s_project_status!proj_t_projects_status_id_fkey(status_name, system_key)))")
-    .in("status", statusNames)
-    .order("run_date", { ascending: false });
-
-  if (error) throw new Error(error.message);
-
-  const runs = data || [];
-  const runIds = runs.map((r) => r.id).filter(Boolean);
-
-  // Fetch each run's Paid Sheet header (proj_t_paid_sheet) in a single batched
-  // query rather than one query per row. A run with no saved Paid Sheet row has
-  // no entry here, so dot_number/state_route stay null until the sheet is saved.
-  let paidSheetByRunId = {};
-  if (runIds.length > 0) {
-    const { data: psData, error: psError } = await supabase
+  // Runs and each run's Paid Sheet header (proj_t_paid_sheet, one row per run)
+  // load together, page by page (fetchAllRows). Paid sheets are read whole
+  // instead of by run id: a list of 1000+ ids makes the request address too
+  // long. A run with no saved Paid Sheet row has no entry here, so
+  // dot_number/state_route stay null until the sheet is saved.
+  const [runs, paidSheets] = await Promise.all([
+    fetchAllRows(() => supabase
+      .from("proj_t_runs")
+      .select("*, proj_s_origin_addresses(*), proj_t_run_projects(id, proj_t_projects(client_name, city, payment_method_type, project_subtotal, proj_s_project_status!proj_t_projects_status_id_fkey(status_name, system_key)))")
+      .in("status", statusNames)
+      .order("run_date", { ascending: false })
+      .order("id", { ascending: true })),
+    fetchAllRows(() => supabase
       .from("proj_t_paid_sheet")
       .select("run_id, dot_number, state_route")
-      .in("run_id", runIds);
-    if (psError) throw new Error(psError.message);
-    paidSheetByRunId = Object.fromEntries((psData || []).map((ps) => [ps.run_id, ps]));
-  }
+      .order("run_id", { ascending: true })),
+  ]);
+  const paidSheetByRunId = Object.fromEntries(paidSheets.map((ps) => [ps.run_id, ps]));
 
   return runs.map((run) => {
     const ps = paidSheetByRunId[run.id];

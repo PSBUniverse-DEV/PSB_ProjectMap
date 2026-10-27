@@ -475,6 +475,29 @@ export default function ProjectMap({
         const lng = p.site_longitude ?? p.address_longitude;
         return lat != null && lng != null;
       });
+      // Grid of squares at least CLUSTER_DISTANCE_METERS wide: two projects in
+      // range are always in the same or a touching square, so each project is
+      // compared only with the projects around it, not with every project
+      // (1,000 projects: a few thousand checks instead of ~1 million).
+      // Neighbours are taken in list order, so the groups come out exactly as
+      // when every project was compared with every other.
+      const latOf = (p) => Number(p.site_latitude ?? p.address_latitude);
+      const lngOf = (p) => Number(p.site_longitude ?? p.address_longitude);
+      const latCell = CLUSTER_DISTANCE_METERS / 111000; // 1° of latitude ≈ 111 km
+      const maxAbsLat = validProjects.reduce((max, p) => Math.max(max, Math.abs(latOf(p))), 0);
+      // A degree of longitude shrinks away from the equator, so squares widen to match.
+      const lngCell = latCell / Math.max(Math.cos((Math.min(maxAbsLat, 89) * Math.PI) / 180), 0.01);
+      const cellX = (p) => Math.floor(lngOf(p) / lngCell);
+      const cellY = (p) => Math.floor(latOf(p) / latCell);
+      const indexById = new Map(); // project id -> position in validProjects
+      const grid = new Map(); // "x:y" -> projects in that square, in list order
+      validProjects.forEach((p, index) => {
+        indexById.set(p.id, index);
+        const key = `${cellX(p)}:${cellY(p)}`;
+        if (!grid.has(key)) grid.set(key, []);
+        grid.get(key).push(p);
+      });
+
       const assigned = new Set();
       let groupCounter = 0;
       validProjects.forEach((seed) => {
@@ -487,7 +510,16 @@ export default function ProjectMap({
           groupIds.push(current.id);
           const curLat = current.site_latitude ?? current.address_latitude;
           const curLng = current.site_longitude ?? current.address_longitude;
-          validProjects.forEach((other) => {
+          const x = cellX(current);
+          const y = cellY(current);
+          const nearby = [];
+          for (let dx = -1; dx <= 1; dx += 1) {
+            for (let dy = -1; dy <= 1; dy += 1) {
+              (grid.get(`${x + dx}:${y + dy}`) || []).forEach((other) => nearby.push(other));
+            }
+          }
+          nearby.sort((a, b) => indexById.get(a.id) - indexById.get(b.id));
+          nearby.forEach((other) => {
             if (assigned.has(other.id)) return;
             const otherLat = other.site_latitude ?? other.address_latitude;
             const otherLng = other.site_longitude ?? other.address_longitude;

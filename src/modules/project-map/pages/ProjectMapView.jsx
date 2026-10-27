@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Modal, toastError, toastSuccess } from "@/shared/components/ui";
 import { startNavbarLoader } from "@/shared/utils/navbar-loader";
-import { deleteProject, calculateRoute, calculateMultiStopRoute, deleteRun, removeProjectFromRun, loadRunDetails, updateStopSequence, addProjectToRun, updateRun, updateProject, getProjectRunAssignment, updateStopNote, updateRunStopsCount, loadProjects, loadRuns, loadAllRunProjects } from "../data/projectMap.actions";
+import { deleteProject, calculateRoute, calculateMultiStopRoute, deleteRun, removeProjectFromRun, loadRunDetails, updateStopSequence, addProjectToRun, updateRun, updateProject, getProjectRunAssignment, updateStopNote, updateRunStopsCount, loadProjects, loadRuns, loadAllRunProjects, loadProjectMapSync } from "../data/projectMap.actions";
 import { computeRunSegmentData } from "../utils/runSegments";
 import { reverseGeocode } from "../utils/geocoding";
 import { useProjectMapRealtime } from "../hooks/useProjectMapRealtime";
@@ -256,9 +256,11 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
   // removeProjectFromRun / updateStopSequence expect, so unassign flows can
   // resolve it from the project alone.
   const projectRunLookup = useMemo(() => {
+    // Runs by id, so each stop finds its run at once instead of searching the list.
+    const runsById = new Map(runs.map((r) => [r.id, r]));
     const lookup = new Map();
     allRunProjects.forEach((rp) => {
-      const run = runs.find((r) => r.id === rp.run_id);
+      const run = runsById.get(rp.run_id);
       if (run) {
         lookup.set(rp.project_id, {
           run,
@@ -964,23 +966,45 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
     }
   }, []);
 
-  // One sync pass triggered by useProjectMapRealtime whenever ANY user
-  // (including this one on another tab) changes a project, a run, or a run
-  // assignment. Refreshes everything the UI renders from:
+  // One sync pass triggered by useProjectMapRealtime (or the polling fallback)
+  // whenever ANY user (including this one on another tab) changes a project, a
+  // run, or a run assignment. ONE server call (loadProjectMapSync) reloads
+  // everything the UI renders from:
   //   - projects      → map pins (Projects tab), project list, detail drawer
   //   - runs          → runs list, status tabs, run panel header
   //   - run assignments → Assigned Run lookups, Runs-tab pin rules
-  // When a run is open, refreshRunData additionally reloads its stop list and
-  // route line — and it already refreshes runs + assignments itself, so the
-  // else-branch skips them to avoid double-fetching.
+  //   - the open run's stops (route line follows them), with the same race
+  //     guards and stops-count rule as refreshRunData.
   const handleRemoteSync = useCallback(async () => {
-    await refreshProjects();
-    if (selectedRunId) {
-      await refreshRunData();
-    } else {
-      await Promise.all([refreshRuns(), refreshRunProjects()]);
+    const runId = selectedRunIdRef.current;
+    const requestId = runId ? ++runRequestIdRef.current : null;
+    try {
+      const sync = await loadProjectMapSync(runId || null);
+      setProjects(sync.projects);
+      setRuns(sync.runs);
+      setAllRunProjects(sync.runProjects);
+      if (!runId) return;
+      if (selectedRunIdRef.current !== runId || requestId !== runRequestIdRef.current) {
+        return; // stale — a newer selection/fetch owns the panel now
+      }
+      const details = sync.runDetails;
+      if (!details?.run) {
+        // Run no longer exists — clear all run state
+        clearRunState();
+        return;
+      }
+      const stops = details.projects || [];
+      setRunProjects(stops);
+      // Only write the stops count when it actually differs (same rule as
+      // refreshRunData): the write emits a realtime event, so the next sync
+      // finds it matching and stops there.
+      if (Number(details.run.stops) !== stops.length) {
+        await updateRunStopsCount(runId, stops.length);
+      }
+    } catch (err) {
+      console.error("[ProjectMapView] Sync failed:", err);
     }
-  }, [selectedRunId, refreshProjects, refreshRuns, refreshRunProjects, refreshRunData]);
+  }, [clearRunState]);
 
   // Live multi-user sync (Supabase Realtime). No-op when the connection
   // cannot be established — see the hook's docs for the failure modes.

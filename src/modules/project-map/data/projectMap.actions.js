@@ -10,7 +10,7 @@ import {
 } from "@/core/storage/files.service";
 import { PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, REPAIR_STATUS_KEYS, PROJECT_COMMENT_MAX_LENGTH, PROJECT_MAP_PAGES } from "./projectMap.data";
 import { getCurrentSession } from "@/core/auth/session.service";
-import { loadPageAccess, loadProjectStatusTabAccess } from "./projectMap.server";
+import { fetchAllRows, loadPageAccess, loadProjectStatusTabAccess } from "./projectMap.server";
 import projectMapModule from "../index";
 import {
   getDealerLink,
@@ -1894,30 +1894,24 @@ export async function loadRuns() {
 
   const supabase = getSupabaseAdmin();
 
-  const { data, error } = await supabase
-    .from("proj_t_runs")
-    .select("*, proj_s_origin_addresses(*), proj_t_run_projects(id, proj_t_projects(payment_method_type, project_subtotal, proj_s_project_status!proj_t_projects_status_id_fkey(status_name, system_key)))")
-    .in("status", statusNames)
-    .order("run_date", { ascending: false });
-
-  if (error) throw new Error(error.message);
-
-  const runs = data || [];
-  const runIds = runs.map((r) => r.id).filter(Boolean);
-
-  // Fetch each run's Paid Sheet header (proj_t_paid_sheet) in a single batched
-  // query rather than one query per row. proj_t_paid_sheet holds one row per
-  // run (run_id UNIQUE), so a run with no saved Paid Sheet yet has no entry
+  // Runs and each run's Paid Sheet header (proj_t_paid_sheet holds one row per
+  // run, run_id UNIQUE) load together, page by page (fetchAllRows). Paid
+  // sheets are read whole instead of by run id: a list of 1000+ ids makes the
+  // request address too long. A run with no saved Paid Sheet yet has no entry
   // here — dot_number/state_route stay null until the sheet is saved.
-  let paidSheetByRunId = {};
-  if (runIds.length > 0) {
-    const { data: psData, error: psError } = await supabase
+  const [runs, paidSheets] = await Promise.all([
+    fetchAllRows(() => supabase
+      .from("proj_t_runs")
+      .select("*, proj_s_origin_addresses(*), proj_t_run_projects(id, proj_t_projects(payment_method_type, project_subtotal, proj_s_project_status!proj_t_projects_status_id_fkey(status_name, system_key)))")
+      .in("status", statusNames)
+      .order("run_date", { ascending: false })
+      .order("id", { ascending: true })),
+    fetchAllRows(() => supabase
       .from("proj_t_paid_sheet")
       .select("run_id, dot_number, state_route")
-      .in("run_id", runIds);
-    if (psError) throw new Error(psError.message);
-    paidSheetByRunId = Object.fromEntries((psData || []).map((ps) => [ps.run_id, ps]));
-  }
+      .order("run_id", { ascending: true })),
+  ]);
+  const paidSheetByRunId = Object.fromEntries(paidSheets.map((ps) => [ps.run_id, ps]));
 
   return runs.map((run) => {
     const ps = paidSheetByRunId[run.id];
@@ -1951,30 +1945,33 @@ export async function loadProjects() {
 
   const supabase = getSupabaseAdmin();
 
-  let query = supabase
-    .from("proj_t_projects")
-    .select(
-      "id, client_name, formatted_address, address_line_1, city, state, state_code, " +
-      "postal_code, country, address_latitude, address_longitude, site_latitude, site_longitude, " +
-      "location_source, location_confirmed, status_id, dealer, " +
-      "building_category_id, permit_status_id, welcome_call_status_id, invoice_number, " +
-      "order_received_at, scheduled_project_start, scheduled_project_end, install_start, install_end, " +
-      "project_subtotal, project_notes, dimension, " +
-      "created_at, updated_at, created_by, updated_by, " +
-      "proj_s_project_status!proj_t_projects_status_id_fkey(status_id, status_name, status_description, system_key)"
-    )
-    .order("updated_at", { ascending: false });
+  // Paged (fetchAllRows): the list can grow past one request's row limit.
+  const buildQuery = () => {
+    let query = supabase
+      .from("proj_t_projects")
+      .select(
+        "id, client_name, formatted_address, address_line_1, city, state, state_code, " +
+        "postal_code, country, address_latitude, address_longitude, site_latitude, site_longitude, " +
+        "location_source, location_confirmed, status_id, dealer, " +
+        "building_category_id, permit_status_id, welcome_call_status_id, invoice_number, " +
+        "order_received_at, scheduled_project_start, scheduled_project_end, install_start, install_end, " +
+        "project_subtotal, project_notes, dimension, " +
+        "created_at, updated_at, created_by, updated_by, " +
+        "proj_s_project_status!proj_t_projects_status_id_fkey(status_id, status_name, status_description, system_key)"
+      )
+      .order("updated_at", { ascending: false })
+      .order("id", { ascending: true });
 
-  if (access.allowedRunStatusNames.length === 0) {
-    // Projects with no status are shown to everyone so they can be given one.
-    query = access.visibleProjectStatusIds.length > 0
-      ? query.or(`status_id.is.null,status_id.in.(${access.visibleProjectStatusIds.join(",")})`)
-      : query.is("status_id", null);
-  }
+    if (access.allowedRunStatusNames.length === 0) {
+      // Projects with no status are shown to everyone so they can be given one.
+      query = access.visibleProjectStatusIds.length > 0
+        ? query.or(`status_id.is.null,status_id.in.(${access.visibleProjectStatusIds.join(",")})`)
+        : query.is("status_id", null);
+    }
+    return query;
+  };
 
-  const { data, error } = await query;
-  if (error) throw new Error(error.message);
-  return data || [];
+  return fetchAllRows(buildQuery);
 }
 
 /**
@@ -2019,9 +2016,11 @@ export async function getProjectMapVersion() {
 }
 
 export async function loadAllRunProjects() {
+  await requireProjectMapAccess();
   const supabase = getSupabaseAdmin();
 
-  const { data, error } = await supabase
+  // Paged (fetchAllRows): one row per stop, the fastest-growing table.
+  return fetchAllRows(() => supabase
     .from("proj_t_run_projects")
     // Only the columns the app actually reads. The arrival columns
     // (estimated_arrival, estimated_departure, arrival_datetime) exist in the
@@ -2030,10 +2029,8 @@ export async function loadAllRunProjects() {
     // (install_start/install_end) instead. Add them back only if per-stop
     // route ETAs become a real feature (see rule.md §12).
     .select("id, run_id, project_id, stop_sequence, notes")
-    .order("run_id", { ascending: true });
-
-  if (error) throw new Error(error.message);
-  return data || [];
+    .order("run_id", { ascending: true })
+    .order("id", { ascending: true }));
 }
 
 export async function loadRunDetails(runId) {
@@ -2132,6 +2129,24 @@ async function fetchDrivingRoute(coords) {
     geometry: route.geometry,
     legs: (route.legs || []).map((leg) => ({ distance: leg.distance, duration: leg.duration })),
   };
+}
+
+/**
+ * Everything one live-update sync pass needs (useProjectMapRealtime /
+ * useProjectMapPolling → handleRemoteSync), in ONE server call. Browser →
+ * server action calls run one at a time, so separate loadProjects, loadRuns,
+ * loadAllRunProjects and loadRunDetails calls would queue behind each other;
+ * here they run together on the server. Each loader keeps its own access rule.
+ * `runDetails` is null when no run is open.
+ */
+export async function loadProjectMapSync(selectedRunId = null) {
+  const [projects, runs, runProjects, runDetails] = await Promise.all([
+    loadProjects(),
+    loadRuns(),
+    loadAllRunProjects(),
+    selectedRunId != null ? loadRunDetails(selectedRunId) : Promise.resolve(null),
+  ]);
+  return { projects, runs, runProjects, runDetails };
 }
 
 export async function calculateRoute(originLat, originLng, destLat, destLng) {

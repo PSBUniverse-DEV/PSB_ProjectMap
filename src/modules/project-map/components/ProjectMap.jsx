@@ -149,6 +149,8 @@ export default function ProjectMap({
   tempMarker = null,
   searchMarker = null,
   onSearchMarkerClick = null,
+  // false hides "Add Project Here" and "Create Project" for roles that cannot create projects.
+  canCreateProject = true,
 }) {
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
@@ -182,6 +184,7 @@ export default function ProjectMap({
   const onRemoveFromRunRef = useRef(onRemoveFromRun);
   const projectRunLookupRef = useRef(projectRunLookup);
   const showLabelsRef = useRef(showLabels);
+  const canCreateProjectRef = useRef(canCreateProject);
   const onSearchMarkerClickRef = useRef(onSearchMarkerClick);
   
   // Keep refs in sync with props
@@ -194,6 +197,7 @@ export default function ProjectMap({
   projectRunLookupRef.current = projectRunLookup;
   showLabelsRef.current = showLabels;
   onSearchMarkerClickRef.current = onSearchMarkerClick;
+  canCreateProjectRef.current = canCreateProject;
 
   // Helper to extract calendar date (YYYY-MM-DD) from any date value
   const toDateString = (value) => {
@@ -341,7 +345,7 @@ export default function ProjectMap({
         // Right-click handler for adding project from map (only in projects mode)
         map.on("contextmenu", (e) => {
           // Only show "Add Project Here" in projects mode
-          if (modeRef.current !== "projects") {
+          if (modeRef.current !== "projects" || !canCreateProjectRef.current) {
             return;
           }
 
@@ -1210,7 +1214,11 @@ export default function ProjectMap({
           " class="cancel-search-btn">Cancel Search</button>
         `;
         
-        popupContent.querySelector(".create-project-btn").addEventListener("click", () => {
+        // Roles that cannot create projects only get "Cancel Search".
+        if (!canCreateProjectRef.current) {
+          popupContent.querySelector(".create-project-btn")?.remove();
+        }
+        popupContent.querySelector(".create-project-btn")?.addEventListener("click", () => {
           if (onSearchMarkerClickRef.current) {
             onSearchMarkerClickRef.current(searchMarker.data);
           }

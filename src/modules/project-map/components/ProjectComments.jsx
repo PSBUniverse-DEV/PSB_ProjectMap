@@ -28,9 +28,13 @@ function formatCommentTime(value) {
  *   opens. The parent must pass a `key` that changes with the project so
  *   the thread reloads when the user switches projects.
  *
+ * - View-only users (readOnly) read the thread but cannot post or delete;
+ *   the server refuses them too.
+ *
  * @param {number} projectId
+ * @param {boolean} [readOnly]
  */
-export default function ProjectComments({ projectId }) {
+export default function ProjectComments({ projectId, readOnly = false }) {
   const { dbUser } = useAuth();
   const [comments, setComments] = useState(null); // null = still loading
   const [draft, setDraft] = useState("");
@@ -118,7 +122,7 @@ export default function ProjectComments({ projectId }) {
               <div style={{ display: "flex", alignItems: "baseline", gap: "6px", marginBottom: "2px" }}>
                 <span style={{ fontSize: "11px", fontWeight: 700, color: "#1e293b" }}>{comment.author_name || "Unknown"}</span>
                 <span style={{ flex: 1, fontSize: "9px", color: "#94a3b8" }}>{formatCommentTime(comment.created_at)}</span>
-                {isOwn && (
+                {isOwn && !readOnly && (
                   <button
                     type="button"
                     onClick={() => setConfirmComment(comment)}
@@ -136,27 +140,31 @@ export default function ProjectComments({ projectId }) {
         })
       )}
 
-      <textarea
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={handleKeyDown}
-        maxLength={PROJECT_COMMENT_MAX_LENGTH}
-        rows={2}
-        placeholder="Write a comment..."
-        aria-label="Write a comment"
-        style={{ display: "block", width: "100%", marginTop: "6px", padding: "6px 8px", fontSize: "11px", color: "#1e293b", border: "1px solid #e2e8f0", borderRadius: "4px", resize: "vertical", outline: "none", fontFamily: "inherit" }}
-      />
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "4px" }}>
-        <span style={{ fontSize: "9px", color: "#94a3b8" }}>Ctrl+Enter to post</span>
-        <button
-          type="button"
-          onClick={handlePost}
-          disabled={!canPost}
-          style={{ padding: "3px 12px", fontSize: "11px", fontWeight: 600, borderRadius: "4px", border: "none", background: canPost ? "#1e293b" : "#cbd5e1", color: "#fff", cursor: canPost ? "pointer" : "not-allowed" }}
-        >
-          {posting ? "Posting..." : "Post"}
-        </button>
-      </div>
+      {!readOnly && (
+        <>
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={handleKeyDown}
+            maxLength={PROJECT_COMMENT_MAX_LENGTH}
+            rows={2}
+            placeholder="Write a comment..."
+            aria-label="Write a comment"
+            style={{ display: "block", width: "100%", marginTop: "6px", padding: "6px 8px", fontSize: "11px", color: "#1e293b", border: "1px solid #e2e8f0", borderRadius: "4px", resize: "vertical", outline: "none", fontFamily: "inherit" }}
+          />
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "4px" }}>
+            <span style={{ fontSize: "9px", color: "#94a3b8" }}>Ctrl+Enter to post</span>
+            <button
+              type="button"
+              onClick={handlePost}
+              disabled={!canPost}
+              style={{ padding: "3px 12px", fontSize: "11px", fontWeight: 600, borderRadius: "4px", border: "none", background: canPost ? "#1e293b" : "#cbd5e1", color: "#fff", cursor: canPost ? "pointer" : "not-allowed" }}
+            >
+              {posting ? "Posting..." : "Post"}
+            </button>
+          </div>
+        </>
+      )}
 
       {confirmComment ? (
         <Modal

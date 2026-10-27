@@ -32,7 +32,8 @@ import { stripTownshipLabel } from "../data/projectMap.data";
  *  - Empty state
  *  - Validation (required name, required address)
  */
-export default function OriginAddressesGrid({ data = [], onRefresh }) {
+// readOnly: view-only user, no add, edit, delete, reorder or Active switch.
+export default function OriginAddressesGrid({ data = [], onRefresh, readOnly = false }) {
   const router = useRouter();
 
   // ─── State ─────────────────────────────────────────────────
@@ -308,7 +309,7 @@ export default function OriginAddressesGrid({ data = [], onRefresh }) {
             id={`active-${row.id}`}
             checked={row.is_active === true}
             onChange={() => handleToggleActive(row.id, row.is_active === true)}
-            disabled={busy}
+            disabled={busy || readOnly}
             className="ltg-active-switch"
           />
           <span className={`ltg-status-badge ltg-status-badge--${row.is_active === true ? "active" : "inactive"}`}>
@@ -317,12 +318,13 @@ export default function OriginAddressesGrid({ data = [], onRefresh }) {
         </div>
       ),
     },
-  ], [busy, handleToggleActive]);
+  ], [busy, handleToggleActive, readOnly]);
 
-  const tableActions = useMemo(() => [
+  // View-only users get no row actions (TableZ then hides the Actions column).
+  const tableActions = useMemo(() => (readOnly ? [] : [
     { key: "edit", label: "Edit", icon: "pen", type: "primary", onClick: (row) => openEdit(row) },
     { key: "delete", label: "Delete", icon: "trash", type: "danger", onClick: (row) => setConfirmDelete(row) },
-  ], [openEdit]);
+  ]), [openEdit, readOnly]);
 
   // ─── Render ────────────────────────────────────────────────
 
@@ -360,10 +362,19 @@ export default function OriginAddressesGrid({ data = [], onRefresh }) {
             />
           </div>
 
-          <Button variant="success" onClick={openAdd} className="ltg-add-btn">
-            <FontAwesomeIcon icon={faPlus} />
-            <span>Add Origin Address</span>
-          </Button>
+          {readOnly ? (
+            <span
+              title="Your Project Map roles are view only."
+              style={{ alignSelf: "center", fontSize: "11px", fontWeight: 600, color: "#64748b", background: "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "2px 10px" }}
+            >
+              View only
+            </span>
+          ) : (
+            <Button variant="success" onClick={openAdd} className="ltg-add-btn">
+              <FontAwesomeIcon icon={faPlus} />
+              <span>Add Origin Address</span>
+            </Button>
+          )}
         </div>
       </div>
 
@@ -375,8 +386,8 @@ export default function OriginAddressesGrid({ data = [], onRefresh }) {
           rowIdKey="id"
           actions={tableActions}
           variant="setup"
-          draggable
-          onReorder={handleReorder}
+          draggable={!readOnly}
+          onReorder={readOnly ? undefined : handleReorder}
           hideSearch
           hideFooter
           emptyMessage={searchValue || filterActive !== "all" ? "No matching origin addresses." : "No origin addresses found."}

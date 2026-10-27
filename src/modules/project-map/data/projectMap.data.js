@@ -42,7 +42,11 @@ export function getRunStatusColor(statusName, runStatuses = []) {
 /** True when the user may change projects in this project status. */
 export function canEditProjectStatusId(access, statusId) {
   if (!access) return true;
-  return statusId != null && (access.editableProjectStatusIds || []).includes(String(statusId));
+  const editableIds = access.editableProjectStatusIds || [];
+  // A project with no status can be changed by anyone who may edit some
+  // project status, so it can be given one (same rule as canEditProjectStatus).
+  if (statusId == null) return editableIds.length > 0;
+  return editableIds.includes(String(statusId));
 }
 
 /** True when the user may change runs in this run status (runs store the status name). */

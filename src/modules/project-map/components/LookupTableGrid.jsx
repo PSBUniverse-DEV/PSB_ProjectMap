@@ -19,6 +19,7 @@ import { Button, Modal, TableZ, toastSuccess, toastError } from "@/shared/compon
  * @param {Function} props.onReorder - Async function to reorder records
  * @param {Function} props.onDelete - Async function to permanently delete a record
  * @param {Function} props.onRefresh - Optional callback after successful operations
+ * @param {boolean} [props.readOnly=false] - View-only user: no add, edit, delete, reorder or Active switch
  *
  * @param {Object} props.config
  * @param {string} config.title - Page title (e.g., "Building Categories")
@@ -40,6 +41,7 @@ export default function LookupTableGrid({
   onDelete,
   onRefresh,
   config,
+  readOnly = false,
 }) {
   const router = useRouter();
   const {
@@ -324,16 +326,17 @@ export default function LookupTableGrid({
             id={`active-${row[idField]}`}
             checked={row.is_active === true}
             onChange={() => handleToggleActive(row[idField], row.is_active === true)}
-            disabled={busy}
+            disabled={busy || readOnly}
             className="ltg-active-switch"
           />
           {renderActiveBadge(row.is_active === true)}
         </div>
       ),
     }] : []),
-  ], [busy, descField, descLabel, extraColumns, handleToggleActive, hasActive, hasColor, hasOrder, idField, nameField, nameLabel, renderActiveBadge, renderColorPreview]);
+  ], [busy, descField, descLabel, extraColumns, handleToggleActive, hasActive, hasColor, hasOrder, idField, nameField, nameLabel, readOnly, renderActiveBadge, renderColorPreview]);
 
-  const tableActions = useMemo(() => [
+  // View-only users get no row actions (TableZ then hides the Actions column).
+  const tableActions = useMemo(() => (readOnly ? [] : [
     {
       key: "edit",
       label: "Edit",
@@ -348,7 +351,7 @@ export default function LookupTableGrid({
       type: "danger",
       onClick: (row) => setConfirmDelete(row),
     },
-  ], [openEdit]);
+  ]), [openEdit, readOnly]);
 
   // ─── Render ────────────────────────────────────────────────
 
@@ -388,11 +391,20 @@ export default function LookupTableGrid({
             />
           </div>
 
-          {/* Add Button */}
-          <Button variant="success" onClick={openAdd} className="ltg-add-btn">
-            <FontAwesomeIcon icon={faPlus} />
-            <span>Add {singularName}</span>
-          </Button>
+          {/* Add Button (a "View only" label for view-only users) */}
+          {readOnly ? (
+            <span
+              title="Your Project Map roles are view only."
+              style={{ alignSelf: "center", fontSize: "11px", fontWeight: 600, color: "#64748b", background: "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "2px 10px" }}
+            >
+              View only
+            </span>
+          ) : (
+            <Button variant="success" onClick={openAdd} className="ltg-add-btn">
+              <FontAwesomeIcon icon={faPlus} />
+              <span>Add {singularName}</span>
+            </Button>
+          )}
         </div>
       </div>
 
@@ -404,8 +416,8 @@ export default function LookupTableGrid({
           rowIdKey={idField}
           actions={tableActions}
           variant="setup"
-          draggable={hasOrder}
-          onReorder={hasOrder ? handleReorder : undefined}
+          draggable={hasOrder && !readOnly}
+          onReorder={hasOrder && !readOnly ? handleReorder : undefined}
           hideSearch
           hideFooter
           emptyMessage={searchValue || filterActive !== "all"

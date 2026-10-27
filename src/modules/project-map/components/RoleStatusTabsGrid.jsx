@@ -32,7 +32,8 @@ const byDisplayOrder = (a, b) => Number(a.display_order ?? 0) - Number(b.display
  * may CHANGE. A role with nothing ticked is view only (e.g. "Viewer"). Repair
  * sub-statuses are not listed: the "Repairs" tab covers them.
  */
-export default function RoleStatusTabsGrid({ roles = [], statuses = [], mappings = [], runStatuses = [], runMappings = [] }) {
+// readOnly: view-only user, the ticks are shown but cannot be edited.
+export default function RoleStatusTabsGrid({ roles = [], statuses = [], mappings = [], runStatuses = [], runMappings = [], readOnly = false }) {
   const router = useRouter();
   const [editingRole, setEditingRole] = useState(null);
   const [selected, setSelected] = useState([]);
@@ -141,7 +142,7 @@ export default function RoleStatusTabsGrid({ roles = [], statuses = [], mappings
           <table className="oag-table">
             <thead>
               <tr>
-                <th className="oag-col-actions">Actions</th>
+                {!readOnly && <th className="oag-col-actions">Actions</th>}
                 <th className="oag-col-name">Role</th>
                 <th>Can Edit Projects In</th>
                 <th>Can Edit Runs In</th>
@@ -155,18 +156,20 @@ export default function RoleStatusTabsGrid({ roles = [], statuses = [], mappings
                 const runNames = activeRunStatuses.filter((s) => runIds.includes(String(s.status_id))).map((s) => s.status_name);
                 return (
                   <tr key={role.role_id} className="oag-row">
-                    <td className="oag-col-actions">
-                      <div className="oag-actions">
-                        <button
-                          className="oag-action-btn oag-action-btn--edit"
-                          title="Edit tabs"
-                          onClick={() => openEdit(role)}
-                          disabled={busy}
-                        >
-                          <FontAwesomeIcon icon={faPen} />
-                        </button>
-                      </div>
-                    </td>
+                    {!readOnly && (
+                      <td className="oag-col-actions">
+                        <div className="oag-actions">
+                          <button
+                            className="oag-action-btn oag-action-btn--edit"
+                            title="Edit tabs"
+                            onClick={() => openEdit(role)}
+                            disabled={busy}
+                          >
+                            <FontAwesomeIcon icon={faPen} />
+                          </button>
+                        </div>
+                      </td>
+                    )}
                     <td className="oag-col-name">
                       <span className="oag-origin-name">{role.role_name}</span>
                       {role.is_active === false && <span style={{ marginLeft: "6px", fontSize: "11px", color: "#64748b" }}>(inactive)</span>}

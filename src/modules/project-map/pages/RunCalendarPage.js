@@ -45,10 +45,13 @@ export default function RunCalendarPage() {
 async function RunCalendarContent() {
   // Access, page lock and lookup tables don't depend on each other: load them together.
   // Same rule as the Run Master List: every Project Map user sees every run.
-  const [access, hasPageAccess, setup] = await Promise.all([
+  // The other pages' cards decide which page buttons the view shows.
+  const [access, hasPageAccess, setup, canOpenMap, canOpenRunMaster] = await Promise.all([
     loadProjectStatusTabAccess(),
     loadPageAccess(PROJECT_MAP_PAGES.calendar),
     loadRunCalendarSetup(),
+    loadPageAccess(PROJECT_MAP_PAGES.map),
+    loadPageAccess(PROJECT_MAP_PAGES.runMaster),
   ]);
   if (access.reason !== "ok") {
     return <ProjectMapAccessBlocked access={access} page="Run Calendar" />;
@@ -69,6 +72,7 @@ async function RunCalendarContent() {
       statuses={setup.projectStatuses || []}
       paymentMethods={setup.paymentMethods || []}
       editAccess={{ editableRunStatusNames: access.editableRunStatusNames }}
+      pageAccess={{ map: canOpenMap, runMaster: canOpenRunMaster }}
     />
   );
 }

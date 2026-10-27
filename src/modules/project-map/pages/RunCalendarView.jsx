@@ -284,7 +284,7 @@ function MonthSummary({ label, filterLabel, totals, runStatuses }) {
  * status cascade), reschedule, prints and files; changes follow the run's
  * status ticks.
  */
-export default function RunCalendarView({ runs = [], runStatuses = [], statuses = [], paymentMethods = [], editAccess = null }) {
+export default function RunCalendarView({ runs = [], runStatuses = [], statuses = [], paymentMethods = [], editAccess = null, pageAccess = null }) {
   const router = useRouter();
   const todayKey = toDateKey(new Date());
   const [monthStart, setMonthStart] = useState(() => {
@@ -414,6 +414,9 @@ export default function RunCalendarView({ runs = [], runStatuses = [], statuses 
   const selectedRun = selected?.run || null;
   // Changes follow the run's status ticks (the server checks them too).
   const canChangeSelectedRun = selectedRun ? canEditRunStatusName(editAccess, selectedRun.status) : false;
+  // Buttons to other Project Map pages show only for roles that have that
+  // page's card (loadPageAccess). A missing prop means no restriction.
+  const canOpenPage = (key) => !pageAccess || pageAccess[key] === true;
 
   // Stat cards of the run pop-up. Uses the loaded stops when ready, else the
   // stops that came with the run list. Repairs are never revenue.
@@ -568,8 +571,12 @@ export default function RunCalendarView({ runs = [], runStatuses = [], statuses 
           <p style={{ margin: "2px 0 0", fontSize: "11px", color: "#64748b" }}>Runs by date. On Track, Behind and Rescheduled are worked out automatically.</p>
         </div>
         <div style={{ display: "flex", gap: "6px" }}>
-          <button type="button" style={navButtonStyle} onClick={() => { startNavbarLoader(); router.push("/project-map"); }}>🗺️ Project Map</button>
-          <button type="button" style={navButtonStyle} onClick={() => { startNavbarLoader(); router.push("/project-map/run-master"); }}>📋 Run Master List</button>
+          {canOpenPage("map") && (
+            <button type="button" style={navButtonStyle} onClick={() => { startNavbarLoader(); router.push("/project-map"); }}>🗺️ Project Map</button>
+          )}
+          {canOpenPage("runMaster") && (
+            <button type="button" style={navButtonStyle} onClick={() => { startNavbarLoader(); router.push("/project-map/run-master"); }}>📋 Run Master List</button>
+          )}
         </div>
       </div>
 

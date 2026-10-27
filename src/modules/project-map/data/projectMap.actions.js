@@ -990,8 +990,12 @@ async function requireProjectMapAccess() {
   return access;
 }
 
+// A project with no status can be changed by anyone who may edit some project
+// status, so it can be given one (same rule as canEditProjectStatusId).
 function canEditProjectStatus(access, statusId) {
-  return statusId != null && (access.editableProjectStatusIds || []).includes(String(statusId));
+  const editableIds = access.editableProjectStatusIds || [];
+  if (statusId == null) return editableIds.length > 0;
+  return editableIds.includes(String(statusId));
 }
 
 function canEditRunStatus(access, statusName) {
@@ -1962,7 +1966,10 @@ export async function loadProjects() {
     .order("updated_at", { ascending: false });
 
   if (access.allowedRunStatusNames.length === 0) {
-    query = query.in("status_id", access.visibleProjectStatusIds);
+    // Projects with no status are shown to everyone so they can be given one.
+    query = access.visibleProjectStatusIds.length > 0
+      ? query.or(`status_id.is.null,status_id.in.(${access.visibleProjectStatusIds.join(",")})`)
+      : query.is("status_id", null);
   }
 
   const { data, error } = await query;

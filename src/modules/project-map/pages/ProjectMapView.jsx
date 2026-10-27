@@ -80,7 +80,7 @@ function storeRouteCache(map, runId, entry) {
 }
 
 
-export default function ProjectMapView({ projects: initialProjects = [], statuses = [], origins = [], states = [], runs: initialRuns = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [], runStatuses = [], statusTabAccess = null }) {
+export default function ProjectMapView({ projects: initialProjects = [], statuses = [], origins = [], states = [], runs: initialRuns = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [], runStatuses = [], statusTabAccess = null, pageAccess = null }) {
   const router = useRouter();
   const [mode, setMode] = useState("projects");
   const [showLabels, setShowLabels] = useState(true);
@@ -109,7 +109,8 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
   const projects = useMemo(() => {
     const visibleIds = statusTabAccess?.visibleProjectStatusIds;
     if (!visibleIds) return loadedProjects;
-    return loadedProjects.filter((project) => visibleIds.includes(String(project.status_id)));
+    // Projects with no status are shown to everyone so they can be given one.
+    return loadedProjects.filter((project) => project.status_id == null || visibleIds.includes(String(project.status_id)));
   }, [loadedProjects, statusTabAccess]);
 
   useEffect(() => {
@@ -488,6 +489,9 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
   const canEditSelectedRun = selectedRun ? canEditRunStatusName(statusTabAccess, selectedRun.status) : false;
   const canCreateProject = !statusTabAccess || (statusTabAccess.editableProjectStatusIds || []).length > 0;
   const canCreateRun = !statusTabAccess || (statusTabAccess.editableRunStatusNames || []).length > 0;
+  // Buttons to other Project Map pages show only for roles that have that
+  // page's card (loadPageAccess). A missing prop means no restriction.
+  const canOpenPage = (key) => !pageAccess || pageAccess[key] === true;
 
   // Filter runs by search and filters
   const filteredRuns = useMemo(() => {
@@ -1421,8 +1425,12 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
         {canSeeRuns && (
           <>
             <button onClick={() => setMode("runs")} style={{ padding: "6px 16px", fontSize: "12px", fontWeight: mode === "runs" ? 600 : 400, border: "none", borderBottom: mode === "runs" ? "2px solid #1e293b" : "2px solid transparent", background: mode === "runs" ? "#f8fafc" : "#fff", color: mode === "runs" ? "#1e293b" : "#64748b", cursor: "pointer" }}>Runs</button>
-            <button onClick={() => { startNavbarLoader(); router.push("/project-map/run-master"); }} style={{ padding: "6px 16px", fontSize: "12px", fontWeight: 400, border: "none", borderBottom: "2px solid transparent", background: "#fff", color: "#64748b", cursor: "pointer" }}>📋 Run Master List</button>
-            <button onClick={() => { startNavbarLoader(); router.push("/project-map/calendar"); }} style={{ padding: "6px 16px", fontSize: "12px", fontWeight: 400, border: "none", borderBottom: "2px solid transparent", background: "#fff", color: "#64748b", cursor: "pointer" }}>📅 Run Calendar</button>
+            {canOpenPage("runMaster") && (
+              <button onClick={() => { startNavbarLoader(); router.push("/project-map/run-master"); }} style={{ padding: "6px 16px", fontSize: "12px", fontWeight: 400, border: "none", borderBottom: "2px solid transparent", background: "#fff", color: "#64748b", cursor: "pointer" }}>📋 Run Master List</button>
+            )}
+            {canOpenPage("calendar") && (
+              <button onClick={() => { startNavbarLoader(); router.push("/project-map/calendar"); }} style={{ padding: "6px 16px", fontSize: "12px", fontWeight: 400, border: "none", borderBottom: "2px solid transparent", background: "#fff", color: "#64748b", cursor: "pointer" }}>📅 Run Calendar</button>
+            )}
           </>
         )}
       </div>
@@ -1505,11 +1513,11 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
         </div>
 
         <div style={{ flex: 1, position: "relative", minHeight: 0, minWidth: 0 }}>
-          <ProjectMap projects={mapProjects} selectedProjectId={selectedProjectId} onSelectProject={handleSelectProject} filters={mapFilters} selectedOrigin={selectedOrigin} routeData={routeData} stateColorLookup={stateColorLookup} statuses={statuses} buildingCategories={buildingCategories} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} searchResults={searchResults} mode={mode} runs={runs} selectedRunId={selectedRunId} runProjects={runProjects} runRouteData={runRouteData} onAddToRun={canEditSelectedRun ? handleAddProjectToRun : null} onRemoveFromRun={canEditSelectedRun ? handleRemoveProjectFromRun : null} projectRunLookup={projectRunLookup} showLabels={showLabels} onMapRightClick={handleMapRightClick} tempMarker={tempMarker} searchMarker={searchMarker} onSearchMarkerClick={handleSearchMarkerClick} />
+          <ProjectMap projects={mapProjects} selectedProjectId={selectedProjectId} onSelectProject={handleSelectProject} filters={mapFilters} selectedOrigin={selectedOrigin} routeData={routeData} stateColorLookup={stateColorLookup} statuses={statuses} buildingCategories={buildingCategories} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} searchResults={searchResults} mode={mode} runs={runs} selectedRunId={selectedRunId} runProjects={runProjects} runRouteData={runRouteData} onAddToRun={canEditSelectedRun ? handleAddProjectToRun : null} onRemoveFromRun={canEditSelectedRun ? handleRemoveProjectFromRun : null} projectRunLookup={projectRunLookup} showLabels={showLabels} onMapRightClick={handleMapRightClick} canCreateProject={canCreateProject} tempMarker={tempMarker} searchMarker={searchMarker} onSearchMarkerClick={handleSearchMarkerClick} />
         </div>
 
         {mode === "projects" && selectedProject && (
-          <ProjectDetailDrawer project={selectedProject} statuses={statuses} buildingCategories={buildingCategories} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} projectRunLookup={projectRunLookup} onClose={handleCloseDrawer} onEdit={canEditSelectedProject ? handleEdit : null} onDelete={canDeleteSelectedProject ? () => setConfirmDeleteId(selectedProject.id) : null} onRemoveFromRun={canRemoveSelectedProjectFromRun ? handleRemoveProjectFromRunById : null} readOnly={!canEditSelectedProject} routeInfo={routeInfo} />
+          <ProjectDetailDrawer project={selectedProject} statuses={statuses} buildingCategories={buildingCategories} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} projectRunLookup={projectRunLookup} onClose={handleCloseDrawer} onEdit={canEditSelectedProject ? handleEdit : null} onDelete={canDeleteSelectedProject ? () => setConfirmDeleteId(selectedProject.id) : null} onRemoveFromRun={canRemoveSelectedProjectFromRun ? handleRemoveProjectFromRunById : null} readOnly={!canEditSelectedProject} commentsReadOnly={Boolean(statusTabAccess?.readOnly)} routeInfo={routeInfo} />
         )}
         {/* Panel spinner = details fetch + OSRM route (loading contract is
             documented on the two effects above): it shows while either is in

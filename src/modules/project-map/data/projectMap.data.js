@@ -55,6 +55,21 @@ export function canEditRunStatusName(access, statusName) {
   return Boolean(statusName) && (access.editableRunStatusNames || []).includes(statusName);
 }
 
+/**
+ * True when the user may comment and add files (Role Tabs → "Comments & Files":
+ * every role but e.g. Viewer), also where they cannot edit. No access = yes.
+ */
+export function canCommentAndAttach(access) {
+  if (!access) return true;
+  return access.canCommentAndAttach === true;
+}
+
+/** True for a file this user added, while they may still comment and attach. */
+export function isOwnFile(access, file) {
+  const userId = access?.user?.userId;
+  return canCommentAndAttach(access) && userId != null && file?.created_by != null && String(file.created_by) === String(userId);
+}
+
 /** Name of the run status with this system_key, or "". */
 export function runStatusNameByKey(runStatuses = [], key) {
   return runStatuses.find((s) => s.system_key === key)?.status_name || "";

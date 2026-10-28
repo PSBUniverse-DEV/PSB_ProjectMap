@@ -19,7 +19,7 @@ import { loadFiles, createFileUpload, saveUploadedFile, getFileUrl, deleteFile }
  * the SAME removal flow used by the Runs tab's detail panel (same action, same
  * toasts, same refreshes) so every unassign path stays in sync.
  */
-export default function ProjectDetailDrawer({ project, statuses = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [], projectRunLookup = new Map(), onClose, onEdit = null, onDelete = null, onRemoveFromRun = null, routeInfo = null, readOnly = false, commentsReadOnly = false }) {
+export default function ProjectDetailDrawer({ project, statuses = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [], projectRunLookup = new Map(), onClose, onEdit = null, onDelete = null, onRemoveFromRun = null, routeInfo = null, readOnly = false, commentsReadOnly = false, filesReadOnly = false, canDeleteFile = null }) {
   const statusName = useMemo(() => {
     if (!project) return "";
     return project.proj_s_project_status?.status_name || statuses.find((s) => s.status_id === project.status_id)?.status_name || "";
@@ -275,11 +275,13 @@ export default function ProjectDetailDrawer({ project, statuses = [], buildingCa
           deleteFile={(file) => deleteFile(file.id)}
           maxBytes={PROJECT_FILE_MAX_BYTES}
           accept={PROJECT_FILE_TYPES.join(",")}
-          readOnly={readOnly}
+          // Add file: editors and anyone who may comment and attach. Delete: editors, or your own file.
+          readOnly={filesReadOnly}
+          canDeleteFile={canDeleteFile}
         />
 
-        {/* Comments: open to every Project Map user who can change something,
-            also on view-only projects. Fully view-only users only read them. */}
+        {/* Comments: open to every role whose "Comments & Files" tick is on,
+            also on view-only projects. Unticked roles (e.g. Viewer) only read them. */}
         <ProjectComments key={`comments-${project.id}`} projectId={project.id} readOnly={commentsReadOnly} />
 
         {routeInfo && (

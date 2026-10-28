@@ -1059,6 +1059,21 @@ async function requireFileOwnerEdit(supabase, access, ownerType, ownerId, viaRun
   throw new Error(`Unknown file owner type: "${ownerType}"`);
 }
 
+// Comments & files: roles whose "Comments & Files" tick is on (every role but
+// e.g. Viewer) may comment and add files on every project and run, also where
+// they cannot edit. See canCommentAndAttach in loadProjectStatusTabAccess.
+const COMMENT_ATTACH_MESSAGE = "Your Project Map roles can't add comments or files.";
+
+function requireCommentAndAttach(access) {
+  if (!access.canCommentAndAttach) throw new Error(COMMENT_ATTACH_MESSAGE);
+}
+
+// Adding a file: anyone who may comment and attach; otherwise the owner's edit rules decide.
+async function requireFileAdd(supabase, access, ownerType, ownerId, viaRunId = null) {
+  if (access.canCommentAndAttach) return;
+  await requireFileOwnerEdit(supabase, access, ownerType, ownerId, viaRunId);
+}
+
 // Project fields a stop edit inside a run may change (run panel: date, invoice, price).
 const STOP_PROJECT_FIELDS = ["install_start", "install_end", "invoice_number", "project_subtotal", "updated_by"];
 
@@ -1540,7 +1555,7 @@ export async function updateRun(runId, updates) {
   // "Completed" can be detected (updates only carries the new values).
   const { data: existingRun, error: fetchError } = await supabase
     .from("proj_t_runs")
-    .select("id, status, original_run_date")
+    .select("id, status, run_date, original_run_date")
     .eq("id", runId)
     .maybeSingle();
   if (fetchError) throw new Error(fetchError.message);
@@ -1564,6 +1579,48 @@ export async function updateRun(runId, updates) {
 
   const { data, error } = await supabase.from("proj_t_runs").update(payload).eq("id", runId).select("*").single();
   if (error) throw new Error(error.message);
+
+  // ─── Run date → stops' arrival dates ───
+  // Business rule: when the run's date changes, every stop's arrival window
+  // (install_start and install_end) moves to the run date. Each value keeps
+  // its time of day; an empty one stays empty. Changing only the origin leaves
+  // the stops as they are. Failures are logged, never thrown (the run saved fine).
+  const newRunDate = payload.run_date ? String(payload.run_date).slice(0, 10) : null;
+  const previousRunDate = existingRun?.run_date ? String(existingRun.run_date).slice(0, 10) : null;
+  if (newRunDate && newRunDate !== previousRunDate) {
+    try {
+      const { data: stops, error: stopsError } = await supabase
+        .from("proj_t_run_projects")
+        .select("project_id, proj_t_projects(install_start, install_end)")
+        .eq("run_id", runId);
+      if (stopsError) throw stopsError;
+
+      const onRunDate = (value) => (value ? `${newRunDate}${String(value).slice(10)}` : null);
+      const changes = (stops || [])
+        .filter((stop) => stop.proj_t_projects)
+        .map((stop) => ({
+          projectId: stop.project_id,
+          installStart: onRunDate(stop.proj_t_projects.install_start),
+          installEnd: onRunDate(stop.proj_t_projects.install_end),
+          before: stop.proj_t_projects,
+        }))
+        .filter((change) => change.installStart !== change.before.install_start || change.installEnd !== change.before.install_end);
+
+      const results = await Promise.all(changes.map((change) =>
+        supabase
+          .from("proj_t_projects")
+          .update({ install_start: change.installStart, install_end: change.installEnd, updated_at: now })
+          .eq("id", change.projectId)
+      ));
+      const failed = results.find((result) => result.error);
+      if (failed) throw failed.error;
+    } catch (arrivalErr) {
+      console.error(
+        `[updateRun] Failed to move the stops' arrival dates of run #${runId} to ${newRunDate}:`,
+        arrivalErr?.message ?? arrivalErr
+      );
+    }
+  }
 
   // ─── Transition cascade: run status → project status ───
   const previousStatus = existingRun?.status ?? null;
@@ -2294,7 +2351,7 @@ export async function loadFiles(ownerType, ownerId) {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("proj_t_files")
-    .select("id, file_name, mime_type, file_size, created_at")
+    .select("id, file_name, mime_type, file_size, created_by, created_at")
     .eq(column, id)
     .order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
@@ -2307,7 +2364,7 @@ export async function loadFiles(ownerType, ownerId) {
  */
 export async function createFileUpload(ownerType, ownerId, file, { viaRunId = null } = {}) {
   const { folder, id } = resolveFileOwner(ownerType, ownerId);
-  await requireFileOwnerEdit(getSupabaseAdmin(), await requireProjectMapAccess(), ownerType, id, viaRunId);
+  await requireFileAdd(getSupabaseAdmin(), await requireProjectMapAccess(), ownerType, id, viaRunId);
   return createSignedFileUpload({
     bucket: FILES_BUCKET,
     folder: `${folder}/${id}`,
@@ -2329,7 +2386,8 @@ export async function saveUploadedFile(ownerType, ownerId, storagePath, file, { 
   }
 
   const supabase = getSupabaseAdmin();
-  await requireFileOwnerEdit(supabase, await requireProjectMapAccess(), ownerType, id, viaRunId);
+  const access = await requireProjectMapAccess();
+  await requireFileAdd(supabase, access, ownerType, id, viaRunId);
   const { data, error } = await supabase
     .from("proj_t_files")
     .insert({
@@ -2338,9 +2396,10 @@ export async function saveUploadedFile(ownerType, ownerId, storagePath, file, { 
       file_name: String(file.name),
       mime_type: String(file.type || ""),
       file_size: toIntOrNull(file.size),
-      created_by: null,
+      // Who added it, so they can delete their own file later.
+      created_by: toIntOrNull(access.user?.userId),
     })
-    .select("id, file_name, mime_type, file_size, created_at")
+    .select("id, file_name, mime_type, file_size, created_by, created_at")
     .single();
   if (error) throw new Error(error.message);
   return data;
@@ -2365,13 +2424,18 @@ export async function deleteFile(fileId, { viaRunId = null } = {}) {
   if (id === null) throw new Error("fileId is required.");
 
   const supabase = getSupabaseAdmin();
-  const { data: row, error } = await supabase.from("proj_t_files").select("storage_path, project_id, run_id").eq("id", id).maybeSingle();
+  const { data: row, error } = await supabase.from("proj_t_files").select("storage_path, project_id, run_id, created_by").eq("id", id).maybeSingle();
   if (error) throw new Error(error.message);
   if (!row) return { success: true };
 
   const access = await requireProjectMapAccess();
-  if (row.project_id != null) await requireFileOwnerEdit(supabase, access, "project", row.project_id, viaRunId);
-  else if (row.run_id != null) await requireFileOwnerEdit(supabase, access, "run", row.run_id);
+  // Your own file, while you may still comment and attach: yours to delete.
+  // Any other file (also older files with no owner) follows the edit rules.
+  const isOwnFile = access.canCommentAndAttach && row.created_by != null && Number(row.created_by) === Number(access.user?.userId);
+  if (!isOwnFile) {
+    if (row.project_id != null) await requireFileOwnerEdit(supabase, access, "project", row.project_id, viaRunId);
+    else if (row.run_id != null) await requireFileOwnerEdit(supabase, access, "run", row.run_id);
+  }
 
   await removeStorageObjects({ bucket: FILES_BUCKET, storagePaths: [row.storage_path] });
 
@@ -2456,9 +2520,9 @@ export async function addProjectComment(projectId, text, fallbackAuthor = null) 
     throw new Error(`Comment must be ${PROJECT_COMMENT_MAX_LENGTH} characters or fewer.`);
   }
 
-  // Comments are open to every Project Map user who is not read only, whatever their status access.
+  // Comments are open to every role whose "Comments & Files" tick is on (all but e.g. Viewer), whatever their status access.
   const access = await requireProjectMapAccess();
-  if (access.readOnly) throw new Error(READ_ONLY_MESSAGE);
+  requireCommentAndAttach(access);
   const author = await resolveCommentAuthor(fallbackAuthor);
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
@@ -2490,7 +2554,7 @@ export async function deleteProjectComment(commentId, fallbackAuthor = null) {
   if (!row) return { success: true };
 
   const access = await requireProjectMapAccess();
-  if (access.readOnly) throw new Error(READ_ONLY_MESSAGE);
+  requireCommentAndAttach(access);
   const author = await resolveCommentAuthor(fallbackAuthor);
   if (row.created_by == null || author.userId == null || Number(row.created_by) !== author.userId) {
     throw new Error("You can only delete your own comments.");
@@ -2606,4 +2670,24 @@ export async function saveRoleStatusTabs(roleId, statusIds) {
 export async function saveRoleRunStatuses(roleId, statusIds) {
   await requireSetupAccess();
   return replaceRoleStatusRows("proj_m_role_run_status", roleId, statusIds);
+}
+
+/**
+ * Sets a Project Map role's options (proj_m_role_options). Today one option:
+ * canCommentAndAttach, whether the role may comment and add files on every
+ * project and run. A role with no row may (the default).
+ */
+export async function saveRoleOptions(roleId, { canCommentAndAttach = true } = {}) {
+  await requireSetupAccess();
+  const targetRoleId = Number(roleId);
+  if (!targetRoleId) throw new Error("Role is required.");
+
+  const { error } = await getSupabaseAdmin()
+    .from("proj_m_role_options")
+    .upsert(
+      { role_id: targetRoleId, can_comment_and_attach: canCommentAndAttach !== false, updated_at: new Date().toISOString() },
+      { onConflict: "role_id" }
+    );
+  if (error) throw new Error(error.message);
+  return { success: true };
 }

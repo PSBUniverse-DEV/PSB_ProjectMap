@@ -12,6 +12,8 @@ export default function RunFilterPanel({
   runStatuses = [],
   // State codes of the projects (one entry per project; duplicates are fine).
   states = [],
+  // Origin address rows from setup; only the active ones are offered.
+  origins = [],
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [localFilters, setLocalFilters] = useState(runFilters);
@@ -82,7 +84,7 @@ export default function RunFilterPanel({
   };
 
   const handleClearAll = () => {
-    const cleared = { ...localFilters, runDateFrom: "", runDateTo: "", state: [] };
+    const cleared = { ...localFilters, runDateFrom: "", runDateTo: "", state: [], origin: [] };
     setLocalFilters(cleared);
     onFilterChange?.(cleared);
     setIsOpen(false);
@@ -92,7 +94,8 @@ export default function RunFilterPanel({
   const activeFilterCount = useMemo(() => {
     const dateCount = (runFilters.runDateFrom || runFilters.runDateTo) ? 1 : 0;
     const stateCount = Array.isArray(runFilters.state) && runFilters.state.length > 0 ? 1 : 0;
-    return dateCount + stateCount;
+    const originCount = Array.isArray(runFilters.origin) && runFilters.origin.length > 0 ? 1 : 0;
+    return dateCount + stateCount + originCount;
   }, [runFilters]);
 
   // Same State list as the Projects tab filter: unique state codes, sorted.
@@ -100,6 +103,17 @@ export default function RunFilterPanel({
     const set = new Set(states.filter(Boolean));
     return Array.from(set).sort().map((s) => ({ label: s, value: s }));
   }, [states]);
+
+  // Active origin addresses, in setup order. Values are the ids as text.
+  const originOptions = useMemo(
+    () => origins
+      .filter((origin) => origin?.is_active !== false)
+      .map((origin) => ({
+        label: origin.origin_name || origin.formatted_address || `#${origin.id}`,
+        value: String(origin.id),
+      })),
+    [origins]
+  );
 
   return (
     <div style={{ position: "relative" }} ref={panelRef}>
@@ -200,6 +214,20 @@ export default function RunFilterPanel({
                 />
               </div>
             </div>
+          </div>
+
+          {/* ORIGIN SECTION: narrows the run list (runs from these origins) AND
+              the pins (projects in these origins' states). Combines with State. */}
+          <div style={{ marginBottom: "16px" }}>
+            <div style={{ fontSize: "11px", fontWeight: 700, color: "#1e293b", marginBottom: "8px", paddingBottom: "6px", borderBottom: "1px solid #e2e8f0" }}>
+              Origin Address
+            </div>
+            <MultiSelectDropdown
+              options={originOptions}
+              selectedValues={localFilters.origin || []}
+              onChange={(vals) => setLocalFilters({ ...localFilters, origin: vals })}
+              placeholder="All"
+            />
           </div>
 
           {/* PROJECTS ON THE MAP SECTION (pins only; the run list is not filtered) */}

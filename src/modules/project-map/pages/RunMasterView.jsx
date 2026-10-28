@@ -14,7 +14,7 @@ import { useRouter } from "next/navigation";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCircleInfo, faCheckCircle, faPrint, faMoneyCheckDollar, faPen, faPaperclip } from "@fortawesome/free-solid-svg-icons";
 import { Button, Modal, toastError, TableZ, FileAttachments } from "@/shared/components/ui";
-import { resolveRunStatusOptions, getRunStatusColor, formatProjectDescriptionForDisplay, stripTownshipLabel, parseStateRoute, getProjectAmountDisplay, splitRunAmounts, PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, formatDisplayDate, canEditRunStatusName, FINISHED_RUN_STATUS_KEYS } from "../data/projectMap.data";
+import { resolveRunStatusOptions, getRunStatusColor, formatProjectDescriptionForDisplay, stripTownshipLabel, parseStateRoute, getProjectAmountDisplay, splitRunAmounts, PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, formatDisplayDate, canEditRunStatusName, canCommentAndAttach, isOwnFile, FINISHED_RUN_STATUS_KEYS } from "../data/projectMap.data";
 import { loadRunDetails, loadRuns, loadPaidSheet, loadFiles, createFileUpload, saveUploadedFile, getFileUrl, deleteFile, loadProjectFileCounts } from "../data/projectMap.actions";
 import { generateRunManifestPrint } from "../utils/printRunManifest";
 import { generatePaidSheetPrint } from "../utils/printPaidSheet";
@@ -725,8 +725,10 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
             saveFile={(storagePath, meta) => saveUploadedFile("project", filesProject.id, storagePath, meta, { viaRunId: expandedDetail?.run?.id })}
             getFileUrl={(file) => getFileUrl(file.id)}
             deleteFile={(file) => deleteFile(file.id, { viaRunId: expandedDetail?.run?.id })}
-            // Run Master is a Runs-tab view: the run's status decides.
-            readOnly={!canEditRunStatusName(editAccess, expandedDetail?.run?.status)}
+            // Run Master is a Runs-tab view: the run's status decides; users who
+            // may comment and attach can also add files and delete their own.
+            readOnly={!canEditRunStatusName(editAccess, expandedDetail?.run?.status) && !canCommentAndAttach(editAccess)}
+            canDeleteFile={(file) => canEditRunStatusName(editAccess, expandedDetail?.run?.status) || isOwnFile(editAccess, file)}
             maxBytes={PROJECT_FILE_MAX_BYTES}
             accept={PROJECT_FILE_TYPES.join(",")}
           />

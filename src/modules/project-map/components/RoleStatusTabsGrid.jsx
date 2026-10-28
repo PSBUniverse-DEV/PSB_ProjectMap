@@ -6,7 +6,7 @@ import { Form } from "react-bootstrap";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faPen } from "@fortawesome/free-solid-svg-icons";
 import { Button, Modal, toastSuccess, toastError } from "@/shared/components/ui";
-import { saveRoleStatusTabs, saveRoleRunStatuses } from "../data/projectMap.actions";
+import { saveRoleStatusTabs, saveRoleRunStatuses, saveRoleOptions } from "../data/projectMap.actions";
 import { isGroupedStatusTab } from "../data/projectMap.data";
 
 // role_id -> status ids (as strings)
@@ -33,11 +33,12 @@ const byDisplayOrder = (a, b) => Number(a.display_order ?? 0) - Number(b.display
  * sub-statuses are not listed: the "Repairs" tab covers them.
  */
 // readOnly: view-only user, the ticks are shown but cannot be edited.
-export default function RoleStatusTabsGrid({ roles = [], statuses = [], mappings = [], runStatuses = [], runMappings = [], readOnly = false }) {
+export default function RoleStatusTabsGrid({ roles = [], statuses = [], mappings = [], runStatuses = [], runMappings = [], roleOptions = [], readOnly = false }) {
   const router = useRouter();
   const [editingRole, setEditingRole] = useState(null);
   const [selected, setSelected] = useState([]);
   const [selectedRuns, setSelectedRuns] = useState([]);
+  const [canCommentAndAttach, setCanCommentAndAttach] = useState(true);
   const [busy, setBusy] = useState(false);
 
   // Statuses that can be a tab, in tab order.
@@ -52,21 +53,33 @@ export default function RoleStatusTabsGrid({ roles = [], statuses = [], mappings
 
   const statusIdsByRole = useMemo(() => groupStatusIdsByRole(mappings), [mappings]);
   const runStatusIdsByRole = useMemo(() => groupStatusIdsByRole(runMappings), [runMappings]);
+  // role_id -> may comment and add files (no row = yes).
+  const commentAttachByRole = useMemo(() => {
+    const lookup = new Map();
+    roleOptions.forEach((row) => lookup.set(String(row.role_id), row.can_comment_and_attach !== false));
+    return lookup;
+  }, [roleOptions]);
+  const canRoleCommentAndAttach = useCallback(
+    (roleId) => commentAttachByRole.get(String(roleId)) ?? true,
+    [commentAttachByRole]
+  );
 
   const openEdit = useCallback(
     (role) => {
       // Start from every saved row, including ones not listed below, so saving never drops them silently.
       setSelected(statusIdsByRole.get(String(role.role_id)) || []);
       setSelectedRuns(runStatusIdsByRole.get(String(role.role_id)) || []);
+      setCanCommentAndAttach(canRoleCommentAndAttach(role.role_id));
       setEditingRole(role);
     },
-    [statusIdsByRole, runStatusIdsByRole]
+    [statusIdsByRole, runStatusIdsByRole, canRoleCommentAndAttach]
   );
 
   const closeModal = useCallback(() => {
     setEditingRole(null);
     setSelected([]);
     setSelectedRuns([]);
+    setCanCommentAndAttach(true);
   }, []);
 
   const toggle = (setter) => (statusId) => {
@@ -85,6 +98,7 @@ export default function RoleStatusTabsGrid({ roles = [], statuses = [], mappings
     try {
       await saveRoleStatusTabs(editingRole.role_id, selected);
       await saveRoleRunStatuses(editingRole.role_id, selectedRuns);
+      await saveRoleOptions(editingRole.role_id, { canCommentAndAttach });
       toastSuccess("Role tabs saved.", "Role Tabs");
       closeModal();
       router.refresh();
@@ -94,7 +108,7 @@ export default function RoleStatusTabsGrid({ roles = [], statuses = [], mappings
     } finally {
       setBusy(false);
     }
-  }, [editingRole, selected, selectedRuns, closeModal, router]);
+  }, [editingRole, selected, selectedRuns, canCommentAndAttach, closeModal, router]);
 
   const renderChecklist = (title, listed, values, setter, idPrefix) => (
     <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
@@ -146,6 +160,7 @@ export default function RoleStatusTabsGrid({ roles = [], statuses = [], mappings
                 <th className="oag-col-name">Role</th>
                 <th>Can Edit Projects In</th>
                 <th>Can Edit Runs In</th>
+                <th>Comments &amp; Files</th>
               </tr>
             </thead>
             <tbody>
@@ -188,6 +203,13 @@ export default function RoleStatusTabsGrid({ roles = [], statuses = [], mappings
                         <span style={{ color: "#64748b", fontWeight: 600 }}>None (view only)</span>
                       )}
                     </td>
+                    <td>
+                      {canRoleCommentAndAttach(role.role_id) ? (
+                        <span className="oag-address">Yes</span>
+                      ) : (
+                        <span style={{ color: "#64748b", fontWeight: 600 }}>No (read only)</span>
+                      )}
+                    </td>
                   </tr>
                 );
               })}
@@ -210,6 +232,21 @@ export default function RoleStatusTabsGrid({ roles = [], statuses = [], mappings
               Nothing ticked: this role can view every run but change none. A user with another Project Map role still gets that role&apos;s edit rights.
             </p>
           )}
+          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+            <strong style={{ fontSize: "13px" }}>Comments &amp; files</strong>
+            <Form.Check
+              type="checkbox"
+              id="role-comment-attach"
+              label="Can comment and add files on every project and run (also where it can't edit)"
+              checked={canCommentAndAttach}
+              onChange={(e) => setCanCommentAndAttach(e.target.checked)}
+            />
+            {!canCommentAndAttach && (
+              <p style={{ margin: 0, fontSize: "12px", color: "#64748b" }}>
+                Unticked: this role only reads comments and opens files (e.g. Viewer). A user with another Project Map role still gets that role&apos;s rights.
+              </p>
+            )}
+          </div>
           <div className="oag-modal-actions">
             <Button variant="secondary" onClick={closeModal}>Cancel</Button>
             <Button variant="primary" loading={busy} onClick={handleSave}>Save</Button>

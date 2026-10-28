@@ -31,7 +31,7 @@ function formatMileage(miles) {
   return `${Number(miles).toFixed(1)} mi`;
 }
 
-export default function RunDetailPanel({ run, runProjects = [], runSegmentData = null, onClose, onEdit, onDelete, onRemoveProject, onReorderStops, onRecalculate, recalculating = false, onEditStopNote, onEditStopDate, onEditStopInvoice, onEditProjectPrice, onProjectUpdated, isLoading = false, runStatuses = [], onStatusChange, readOnly = false }) {
+export default function RunDetailPanel({ run, runProjects = [], runSegmentData = null, onClose, onEdit, onDelete, onRemoveProject, onReorderStops, onRecalculate, recalculating = false, onEditStopNote, onEditStopDate, onEditStopInvoice, onEditProjectPrice, onProjectUpdated, isLoading = false, runStatuses = [], onStatusChange, readOnly = false, filesReadOnly = false, canDeleteFile = null }) {
   const [dragIndex, setDragIndex] = useState(null);
   const [dragOverIndex, setDragOverIndex] = useState(null);
   const [isEditingStatus, setIsEditingStatus] = useState(false);
@@ -359,7 +359,9 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
               saveFile={(storagePath, meta) => saveUploadedFile("run", run.id, storagePath, meta)}
               getFileUrl={(file) => getFileUrl(file.id)}
               deleteFile={(file) => deleteFile(file.id)}
-              readOnly={readOnly}
+              // Add file: editors and anyone who may comment and attach. Delete: editors, or your own file.
+              readOnly={filesReadOnly}
+              canDeleteFile={canDeleteFile}
               maxBytes={PROJECT_FILE_MAX_BYTES}
               accept={PROJECT_FILE_TYPES.join(",")}
             />

@@ -41,7 +41,7 @@ export default async function RunMasterPage() {
       runStatuses={setup.runStatuses || []}
       paymentMethods={setup.paymentMethods || []}
       states={setup.states || []}
-      editAccess={{ editableProjectStatusIds: access.editableProjectStatusIds, editableRunStatusNames: access.editableRunStatusNames }}
+      editAccess={{ editableProjectStatusIds: access.editableProjectStatusIds, editableRunStatusNames: access.editableRunStatusNames, canCommentAndAttach: access.canCommentAndAttach, user: { userId: access.user?.userId } }}
     />
   );
 }

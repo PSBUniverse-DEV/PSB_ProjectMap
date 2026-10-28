@@ -6,7 +6,7 @@ import { Button, Modal, FileAttachments, toastError, toastSuccess } from "@/shar
 import AppIcon from "@/shared/components/ui/AppIcon";
 import { startNavbarLoader } from "@/shared/utils/navbar-loader";
 import { loadRunDetails, updateRun, loadPaidSheet, loadFiles, createFileUpload, saveUploadedFile, getFileUrl, deleteFile } from "../data/projectMap.actions";
-import { formatRunCode, getRunStatusColor, getRunScheduleState, formatDisplayDate, splitRunAmounts, runStatusKeyByName, resolveRunStatusOptions, canEditRunStatusName, PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, FINISHED_RUN_STATUS_KEYS, PROJECT_MAP_PAGES } from "../data/projectMap.data";
+import { formatRunCode, getRunStatusColor, getRunScheduleState, formatDisplayDate, splitRunAmounts, runStatusKeyByName, resolveRunStatusOptions, canEditRunStatusName, canCommentAndAttach, isOwnFile, PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, FINISHED_RUN_STATUS_KEYS, PROJECT_MAP_PAGES } from "../data/projectMap.data";
 import { computeRunSegmentData } from "../utils/runSegments";
 import { generateRunManifestPrint } from "../utils/printRunManifest";
 import { generatePaidSheetPrint } from "../utils/printPaidSheet";
@@ -982,7 +982,9 @@ export default function RunCalendarView({ runs = [], runStatuses = [], statuses 
               saveFile={(storagePath, meta) => saveUploadedFile("run", selected.run.id, storagePath, meta)}
               getFileUrl={(file) => getFileUrl(file.id)}
               deleteFile={(file) => deleteFile(file.id)}
-              readOnly={!canChangeSelectedRun}
+              // Add file: editors and anyone who may comment and attach. Delete: editors, or your own file.
+              readOnly={!canChangeSelectedRun && !canCommentAndAttach(editAccess)}
+              canDeleteFile={(file) => canChangeSelectedRun || isOwnFile(editAccess, file)}
               maxBytes={PROJECT_FILE_MAX_BYTES}
               accept={PROJECT_FILE_TYPES.join(",")}
             />

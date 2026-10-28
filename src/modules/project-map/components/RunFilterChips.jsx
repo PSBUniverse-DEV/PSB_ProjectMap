@@ -7,6 +7,8 @@ import { faTimes } from "@fortawesome/free-solid-svg-icons";
 export default function RunFilterChips({
   runFilters = {},
   onRemoveFilter,
+  // Origin address rows, to show names in the Origin chip.
+  origins = [],
 }) {
   // Build readable filter labels — the status filter is no longer shown as a
   // chip because RunStatusTabs now displays the active status right above the
@@ -31,8 +33,19 @@ export default function RunFilterChips({
       });
     }
 
+    // Filters → Origin Address (narrows the run list and the pins).
+    if (Array.isArray(runFilters.origin) && runFilters.origin.length > 0) {
+      const names = runFilters.origin.map(
+        (id) => origins.find((origin) => String(origin.id) === id)?.origin_name || `#${id}`
+      );
+      labels.push({
+        key: "origin",
+        label: `Origin: ${names.join(", ")}`,
+      });
+    }
+
     return labels;
-  }, [runFilters]);
+  }, [runFilters, origins]);
 
   if (filterLabels.length === 0) {
     return null;

@@ -21,5 +21,5 @@ export default async function ProjectMapSetupPage() {
   ]);
   // Setup shows switched-off run statuses too, so they can be switched back on.
   const setup = { ...loadedSetup, runStatuses: allRunStatuses };
-  return <ProjectMapSetupView setup={setup} roles={roleTabs.roles} roleStatusMappings={roleTabs.mappings} roleRunStatusMappings={roleTabs.runMappings} readOnly={access.readOnly === true} />;
+  return <ProjectMapSetupView setup={setup} roles={roleTabs.roles} roleStatusMappings={roleTabs.mappings} roleRunStatusMappings={roleTabs.runMappings} roleOptions={roleTabs.options} readOnly={access.readOnly === true} />;
 }

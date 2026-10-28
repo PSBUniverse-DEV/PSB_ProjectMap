@@ -20,7 +20,7 @@ import StopStatusPrompt from "../components/StopStatusPrompt";
 import FilterBar from "../components/FilterBar";
 import AddProjectForm from "../components/AddProjectForm";
 import MapSearch from "../components/MapSearch";
-import { splitRunAmounts, getStatusTabGroupIds, runStatusNameByKey, canEditProjectStatusId, canEditRunStatusName } from "../data/projectMap.data";
+import { splitRunAmounts, getStatusTabGroupIds, runStatusNameByKey, canEditProjectStatusId, canEditRunStatusName, canCommentAndAttach, isOwnFile } from "../data/projectMap.data";
 import FilterChips from "../components/FilterChips";
 import RunFilterPanel from "../components/RunFilterPanel";
 import RunFilterChips from "../components/RunFilterChips";
@@ -358,6 +358,8 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
       setRunFilters({ ...runFilters, runDateFrom: "", runDateTo: "" });
     } else if (filterKey === "state") {
       setRunFilters({ ...runFilters, state: [] });
+    } else if (filterKey === "origin") {
+      setRunFilters({ ...runFilters, origin: [] });
     }
   }, [runFilters]);
 
@@ -495,6 +497,8 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
   const canEditSelectedRun = selectedRun ? canEditRunStatusName(statusTabAccess, selectedRun.status) : false;
   const canCreateProject = !statusTabAccess || (statusTabAccess.editableProjectStatusIds || []).length > 0;
   const canCreateRun = !statusTabAccess || (statusTabAccess.editableRunStatusNames || []).length > 0;
+  // Comments & files: also on projects and runs this user cannot edit (not for e.g. Viewer).
+  const canAttach = canCommentAndAttach(statusTabAccess);
   // Buttons to other Project Map pages show only for roles that have that
   // page's card (loadPageAccess). A missing prop means no restriction.
   const canOpenPage = (key) => !pageAccess || pageAccess[key] === true;
@@ -525,6 +529,15 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
         runFilters.runDateTo &&
         runDate &&
         runDate > runFilters.runDateTo
+      ) {
+        return false;
+      }
+
+      // Origin filter: only runs that start from a ticked origin.
+      if (
+        Array.isArray(runFilters.origin) &&
+        runFilters.origin.length > 0 &&
+        !runFilters.origin.includes(String(run.origin_id))
       ) {
         return false;
       }
@@ -577,6 +590,13 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
     const selectedStatuses = Array.isArray(runFilters.status) ? runFilters.status : [];
     // Filters → State: only pins of projects in the ticked states (empty = every state).
     const selectedStates = Array.isArray(runFilters.state) ? runFilters.state : [];
+    // Filters → Origin Address: only pins in the states of the ticked origins.
+    // Works alongside State (both must match); an origin with no state saved
+    // does not narrow the pins.
+    const selectedOrigins = Array.isArray(runFilters.origin) ? runFilters.origin : [];
+    const originStates = origins
+      .filter((origin) => selectedOrigins.includes(String(origin.id)) && origin.state_code)
+      .map((origin) => origin.state_code);
     // Every assignment, including runs this user's roles cannot see.
     const assignedProjectIds = new Set(allRunProjects.map((rp) => rp.project_id));
     // Runs tab: project statuses do not apply, so start from the full list.
@@ -586,6 +606,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
       // (the route line and "Remove from Run" need them).
       if (selectedRunId && assignment?.run.id === selectedRunId) return true;
       if (selectedStates.length > 0 && !selectedStates.includes(p.state_code)) return false;
+      if (originStates.length > 0 && !originStates.includes(p.state_code)) return false;
       // No visible run: show it only when it is truly unassigned (always
       // visible for run assignment). On a run this user's roles cannot see, hide it.
       if (!assignment) return !assignedProjectIds.has(p.id);
@@ -594,7 +615,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
       if (selectedStatuses.length === 0) return true; // "All" — every run matches
       return selectedStatuses.includes(assignment.run.status);
     });
-  }, [mode, projects, loadedProjects, allRunProjects, runFilters.status, runFilters.state, projectRunLookup, selectedRunId]);
+  }, [mode, projects, loadedProjects, allRunProjects, runFilters.status, runFilters.state, runFilters.origin, origins, projectRunLookup, selectedRunId]);
 
   // Project filters for the map. On the Runs tab the map ignores the project
   // filters entirely (the run status tabs override them) — ProjectMap receives
@@ -1521,7 +1542,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
       )}
 
       {mode === "runs" && (
-        <RunFilterChips runFilters={runFilters} onRemoveFilter={handleRemoveRunFilter} />
+        <RunFilterChips runFilters={runFilters} onRemoveFilter={handleRemoveRunFilter} origins={origins} />
       )}
 
       <div style={{ flex: 1, display: "flex", position: "relative", overflow: "hidden", minHeight: 0 }}>
@@ -1534,7 +1555,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
           ) : (
             <>
               <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "4px 10px", borderBottom: "1px solid #e2e8f0", background: "#fff", flexShrink: 0 }}>
-                <RunFilterPanel runFilters={runFilters} onFilterChange={setRunFilters} runStatuses={visibleRunStatuses} states={runProjectStates} />
+                <RunFilterPanel runFilters={runFilters} onFilterChange={setRunFilters} runStatuses={visibleRunStatuses} states={runProjectStates} origins={origins} />
                 {canCreateRun && (
                   <button onClick={() => { setEditingRun(null); setShowRunForm(true); }} style={{ padding: "3px 10px", fontSize: "12px", borderRadius: "3px", border: "none", background: "#16a34a", color: "#fff", cursor: "pointer", whiteSpace: "nowrap" }}>+ New Run</button>
                 )}
@@ -1549,13 +1570,13 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
         </div>
 
         {mode === "projects" && selectedProject && (
-          <ProjectDetailDrawer project={selectedProject} statuses={statuses} buildingCategories={buildingCategories} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} projectRunLookup={projectRunLookup} onClose={handleCloseDrawer} onEdit={canEditSelectedProject ? handleEdit : null} onDelete={canDeleteSelectedProject ? () => setConfirmDeleteId(selectedProject.id) : null} onRemoveFromRun={canRemoveSelectedProjectFromRun ? handleRemoveProjectFromRunById : null} readOnly={!canEditSelectedProject} commentsReadOnly={Boolean(statusTabAccess?.readOnly)} routeInfo={routeInfo} />
+          <ProjectDetailDrawer project={selectedProject} statuses={statuses} buildingCategories={buildingCategories} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} projectRunLookup={projectRunLookup} onClose={handleCloseDrawer} onEdit={canEditSelectedProject ? handleEdit : null} onDelete={canDeleteSelectedProject ? () => setConfirmDeleteId(selectedProject.id) : null} onRemoveFromRun={canRemoveSelectedProjectFromRun ? handleRemoveProjectFromRunById : null} readOnly={!canEditSelectedProject} commentsReadOnly={!canAttach} filesReadOnly={!canEditSelectedProject && !canAttach} canDeleteFile={(file) => canEditSelectedProject || isOwnFile(statusTabAccess, file)} routeInfo={routeInfo} />
         )}
         {/* Panel spinner = details fetch + OSRM route (loading contract is
             documented on the two effects above): it shows while either is in
             flight and hides only once ALL panel data is displayed. */}
         {mode === "runs" && selectedRun && (
-          <RunDetailPanel run={selectedRun} runProjects={runProjects} runSegmentData={runSegmentData} onClose={handleCloseRunDetail} onEdit={canEditSelectedRun ? handleEditRun : null} onDelete={canEditSelectedRun ? () => setConfirmDeleteRunId(selectedRun.id) : null} onRemoveProject={canEditSelectedRun ? handleRemoveProjectFromRun : null} onReorderStops={canEditSelectedRun ? handleReorderStops : null} onRecalculate={handleRecalculate} recalculating={recalculating} onEditStopNote={canEditSelectedRun ? handleEditStopNote : null} readOnly={!canEditSelectedRun} onEditStopDate={handleEditStopDate} onEditStopInvoice={handleEditStopInvoice} onEditProjectPrice={handleEditProjectPrice} isLoading={isLoadingRunDetails || runRouteLoading} runStatuses={runStatuses} onStatusChange={handleRunStatusChange} />
+          <RunDetailPanel run={selectedRun} runProjects={runProjects} runSegmentData={runSegmentData} onClose={handleCloseRunDetail} onEdit={canEditSelectedRun ? handleEditRun : null} onDelete={canEditSelectedRun ? () => setConfirmDeleteRunId(selectedRun.id) : null} onRemoveProject={canEditSelectedRun ? handleRemoveProjectFromRun : null} onReorderStops={canEditSelectedRun ? handleReorderStops : null} onRecalculate={handleRecalculate} recalculating={recalculating} onEditStopNote={canEditSelectedRun ? handleEditStopNote : null} readOnly={!canEditSelectedRun} filesReadOnly={!canEditSelectedRun && !canAttach} canDeleteFile={(file) => canEditSelectedRun || isOwnFile(statusTabAccess, file)} onEditStopDate={handleEditStopDate} onEditStopInvoice={handleEditStopInvoice} onEditProjectPrice={handleEditProjectPrice} isLoading={isLoadingRunDetails || runRouteLoading} runStatuses={runStatuses} onStatusChange={handleRunStatusChange} />
         )}
       </div>
 

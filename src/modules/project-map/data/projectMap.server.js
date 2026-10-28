@@ -288,6 +288,7 @@ export async function loadProjectStatusTabAccess() {
     editableProjectStatusIds: [],
     editableRunStatusNames: [],
     readOnly: false,
+    canCommentAndAttach: false,
     user: null,
     roles: [],
   };
@@ -325,9 +326,10 @@ export async function loadProjectStatusTabAccess() {
     if (runStatusesResult.error) throw new Error(runStatusesResult.error.message);
     const roleIds = access.roles.map((role) => role.roleId);
 
-    const [mappingResult, runMappingResult] = await Promise.all([
+    const [mappingResult, runMappingResult, optionsResult] = await Promise.all([
       supabase.from("proj_m_role_project_status").select("status_id").in("role_id", roleIds),
       supabase.from("proj_m_role_run_status").select("status_id").in("role_id", roleIds),
+      supabase.from("proj_m_role_options").select("role_id, can_comment_and_attach").in("role_id", roleIds),
     ]);
     if (mappingResult.error) throw new Error(mappingResult.error.message);
 
@@ -367,8 +369,26 @@ export async function loadProjectStatusTabAccess() {
 
     // Read only: the user's roles tick nothing in Role Tabs (e.g. a "Viewer"
     // role with no ticks). They may open every page their cards allow, but
-    // change nothing: no edits, files, comments or Setup changes.
+    // edit nothing and change no Setup. Comments and files follow
+    // canCommentAndAttach below instead.
     access.readOnly = access.editableProjectStatusIds.length === 0 && access.editableRunStatusNames.length === 0;
+
+    // Comments & files (Role Tabs → "Comments & Files"): a role may comment and
+    // attach on every project and run unless its proj_m_role_options row says
+    // no (e.g. Viewer); no row = yes. Several roles combine: one "yes" is enough.
+    // While the env switch lets everyone change everything, everyone may.
+    // If the lookup fails, fall back to the edit ticks.
+    if (isStatusAccessAll()) {
+      access.canCommentAndAttach = true;
+    } else if (optionsResult.error) {
+      console.error("[loadProjectStatusTabAccess] role options:", optionsResult.error.message);
+      access.canCommentAndAttach = !access.readOnly;
+    } else {
+      const blockedRoleIds = new Set(
+        (optionsResult.data || []).filter((row) => row.can_comment_and_attach === false).map((row) => String(row.role_id))
+      );
+      access.canCommentAndAttach = roleIds.some((roleId) => !blockedRoleIds.has(String(roleId)));
+    }
 
     return access;
   } catch (error) {
@@ -389,23 +409,26 @@ export async function loadRoleStatusMappings() {
     appId = await loadProjectMapAppId(supabase);
   } catch (error) {
     console.error("[loadRoleStatusMappings] application:", error?.message);
-    return { roles: [], mappings: [], runMappings: [] };
+    return { roles: [], mappings: [], runMappings: [], options: [] };
   }
 
-  const [rolesResult, mappingsResult, runMappingsResult] = await Promise.all([
+  const [rolesResult, mappingsResult, runMappingsResult, optionsResult] = await Promise.all([
     supabase.from("psb_s_role").select("role_id, role_name, is_active").eq("app_id", appId).order("role_name", { ascending: true }),
     supabase.from("proj_m_role_project_status").select("role_id, status_id"),
     supabase.from("proj_m_role_run_status").select("role_id, status_id"),
+    supabase.from("proj_m_role_options").select("role_id, can_comment_and_attach"),
   ]);
 
   if (rolesResult.error) console.error("[loadRoleStatusMappings] roles:", rolesResult.error.message);
   if (mappingsResult.error) console.error("[loadRoleStatusMappings] mappings:", mappingsResult.error.message);
   if (runMappingsResult.error) console.error("[loadRoleStatusMappings] run mappings:", runMappingsResult.error.message);
+  if (optionsResult.error) console.error("[loadRoleStatusMappings] role options:", optionsResult.error.message);
 
   return {
     roles: rolesResult.data || [],
     mappings: mappingsResult.data || [],
     runMappings: runMappingsResult.data || [],
+    options: optionsResult.data || [],
   };
 }
 

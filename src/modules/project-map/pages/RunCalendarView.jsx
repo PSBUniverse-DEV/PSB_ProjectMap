@@ -11,6 +11,8 @@ import { computeRunSegmentData } from "../utils/runSegments";
 import { generateRunManifestPrint } from "../utils/printRunManifest";
 import { generatePaidSheetPrint } from "../utils/printPaidSheet";
 import StopStatusPrompt from "../components/StopStatusPrompt";
+import { useProjectMapRealtime } from "../hooks/useProjectMapRealtime";
+import { useProjectMapPolling } from "../hooks/useProjectMapPolling";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -467,6 +469,16 @@ export default function RunCalendarView({ runs = [], runStatuses = [], statuses 
       setStopsLoading(false);
     }
   }, []);
+
+  // Live updates, same as the Map page: when ANY user (or another tab) changes
+  // a project, run or run stop, reload the calendar's runs (server page) and
+  // the open run's stops. Polling every 30 s only while live updates are down.
+  const handleRemoteSync = useCallback(() => {
+    router.refresh();
+    if (selectedRunId) loadSelectedStops(selectedRunId);
+  }, [router, selectedRunId, loadSelectedStops]);
+  const realtimeConnected = useProjectMapRealtime(handleRemoteSync);
+  useProjectMapPolling(handleRemoteSync, !realtimeConnected);
 
   useEffect(() => {
     if (!selectedRunId) {

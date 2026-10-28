@@ -1542,6 +1542,12 @@ export async function createRun(runData) {
  *   on different statuses. That underscore-prefixed key is client metadata,
  *   never a database column.
  */
+// A stop's arrival window on its run's date: 12:00 AM for both Arrival From
+// and Arrival By, in the same "YYYY-MM-DDTHH:mm" form the date pickers save.
+function arrivalOnRunDate(runDate) {
+  return `${String(runDate).slice(0, 10)}T00:00`;
+}
+
 export async function updateRun(runId, updates) {
   const supabase = getSupabaseAdmin();
   // Judged by the run's CURRENT status, so moving it into any status is allowed.
@@ -1582,9 +1588,9 @@ export async function updateRun(runId, updates) {
 
   // ─── Run date → stops' arrival dates ───
   // Business rule: when the run's date changes, every stop's arrival window
-  // (install_start and install_end) moves to the run date. Each value keeps
-  // its time of day; an empty one stays empty. Changing only the origin leaves
-  // the stops as they are. Failures are logged, never thrown (the run saved fine).
+  // (install_start and install_end) is set to the run date at 12:00 AM, also
+  // for stops that had no arrival date or had other times. Changing only the
+  // origin leaves the stops as they are. Failures are logged, never thrown (the run saved fine).
   const newRunDate = payload.run_date ? String(payload.run_date).slice(0, 10) : null;
   const previousRunDate = existingRun?.run_date ? String(existingRun.run_date).slice(0, 10) : null;
   if (newRunDate && newRunDate !== previousRunDate) {
@@ -1595,22 +1601,18 @@ export async function updateRun(runId, updates) {
         .eq("run_id", runId);
       if (stopsError) throw stopsError;
 
-      const onRunDate = (value) => (value ? `${newRunDate}${String(value).slice(10)}` : null);
-      const changes = (stops || [])
+      const arrival = arrivalOnRunDate(newRunDate);
+      const isOnRunDate = (value) => String(value || "").slice(0, 16) === arrival;
+      const projectIds = (stops || [])
         .filter((stop) => stop.proj_t_projects)
-        .map((stop) => ({
-          projectId: stop.project_id,
-          installStart: onRunDate(stop.proj_t_projects.install_start),
-          installEnd: onRunDate(stop.proj_t_projects.install_end),
-          before: stop.proj_t_projects,
-        }))
-        .filter((change) => change.installStart !== change.before.install_start || change.installEnd !== change.before.install_end);
+        .filter((stop) => !isOnRunDate(stop.proj_t_projects.install_start) || !isOnRunDate(stop.proj_t_projects.install_end))
+        .map((stop) => stop.project_id);
 
-      const results = await Promise.all(changes.map((change) =>
+      const results = await Promise.all(projectIds.map((projectId) =>
         supabase
           .from("proj_t_projects")
-          .update({ install_start: change.installStart, install_end: change.installEnd, updated_at: now })
-          .eq("id", change.projectId)
+          .update({ install_start: arrival, install_end: arrival, updated_at: now })
+          .eq("id", projectId)
       ));
       const failed = results.find((result) => result.error);
       if (failed) throw failed.error;
@@ -1821,6 +1823,24 @@ export async function addProjectToRun(runId, projectId, stopSequence = 0) {
 
   const { data, error } = await supabase.from("proj_t_run_projects").insert(payload).select("*").single();
   if (error) throw new Error(error.message);
+
+  // A stop on a dated run gets the run date as its arrival window (12:00 AM for
+  // both), the same rule as a run date change in updateRun. The screen asks the
+  // user first. Failures are logged; the stop itself was added.
+  try {
+    const { data: run, error: runError } = await supabase.from("proj_t_runs").select("run_date").eq("id", runId).maybeSingle();
+    if (runError) throw runError;
+    if (run?.run_date) {
+      const arrival = arrivalOnRunDate(run.run_date);
+      const { error: arrivalError } = await supabase
+        .from("proj_t_projects")
+        .update({ install_start: arrival, install_end: arrival, updated_at: new Date().toISOString() })
+        .eq("id", pid);
+      if (arrivalError) throw arrivalError;
+    }
+  } catch (arrivalErr) {
+    console.error(`[addProjectToRun] Failed to set project #${pid}'s arrival date to run #${runId}'s date:`, arrivalErr?.message ?? arrivalErr);
+  }
 
   // A stop added to a run that is already under way gets the same project status as the others.
   await matchProjectStatusToRun(supabase, runId, pid);

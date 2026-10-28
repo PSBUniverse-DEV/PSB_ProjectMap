@@ -21,6 +21,8 @@ import { generatePaidSheetPrint } from "../utils/printPaidSheet";
 import { computeRunSegmentData } from "../utils/runSegments";
 import RunForm from "../components/RunForm";
 import PaidSheetForm from "../components/PaidSheetForm";
+import { useProjectMapRealtime } from "../hooks/useProjectMapRealtime";
+import { useProjectMapPolling } from "../hooks/useProjectMapPolling";
 import "./run-master.css";
 
 export default function RunMasterView({ runs = [], origins = [], statuses = [], runStatuses = [], paymentMethods = [], states = [], editAccess = null }) {
@@ -102,6 +104,26 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
       console.error("[RunMasterView] Failed to load project file counts:", err);
     }
   }, []);
+
+  // Live updates, same as the Map page: when ANY user (or another tab) changes
+  // a project, run or run stop, reload the runs for the current Status filter
+  // and the expanded run's details (quietly, no spinner). Polling every 30 s
+  // only while live updates are down.
+  const handleRemoteSync = useCallback(async () => {
+    refreshRuns();
+    const runId = expandedRunId;
+    if (!runId) return;
+    try {
+      const detail = await loadRunDetails(runId);
+      // Keep it only if the same run is still expanded.
+      setExpandedDetail((prev) => (prev?.run?.id === runId ? detail : prev));
+      refreshProjectFileCounts(detail?.projects);
+    } catch (err) {
+      console.error("[RunMasterView] Live update of the expanded run failed:", err);
+    }
+  }, [refreshRuns, expandedRunId, refreshProjectFileCounts]);
+  const realtimeConnected = useProjectMapRealtime(handleRemoteSync);
+  useProjectMapPolling(handleRemoteSync, !realtimeConnected);
 
   const handleRowClick = useCallback(async (row) => {
     if (expandedRunId === row.id) {

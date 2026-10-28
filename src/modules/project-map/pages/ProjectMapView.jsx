@@ -20,7 +20,7 @@ import StopStatusPrompt from "../components/StopStatusPrompt";
 import FilterBar from "../components/FilterBar";
 import AddProjectForm from "../components/AddProjectForm";
 import MapSearch from "../components/MapSearch";
-import { splitRunAmounts, getStatusTabGroupIds, runStatusNameByKey, canEditProjectStatusId, canEditRunStatusName, canCommentAndAttach, isOwnFile } from "../data/projectMap.data";
+import { splitRunAmounts, getStatusTabGroupIds, runStatusNameByKey, canEditProjectStatusId, canEditRunStatusName, canCommentAndAttach, isOwnFile, formatDisplayDate } from "../data/projectMap.data";
 import FilterChips from "../components/FilterChips";
 import RunFilterPanel from "../components/RunFilterPanel";
 import RunFilterChips from "../components/RunFilterChips";
@@ -135,6 +135,8 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
   const [showRunForm, setShowRunForm] = useState(false);
   const [editingRun, setEditingRun] = useState(null);
   const [confirmDeleteRunId, setConfirmDeleteRunId] = useState(null);
+  // "Add to Run" question: { projectId, clientName, runDate } while open.
+  const [confirmAddProject, setConfirmAddProject] = useState(null);
   // "Choose a status" pop-up after stops leave a run (stop removed, run cancelled
   // or deleted): { title, message, stops: [{ projectId, clientName, statusId }] }.
   const [stopPrompt, setStopPrompt] = useState(null);
@@ -1045,7 +1047,33 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
   // save server calls.
   useProjectMapPolling(handleRemoteSync, !realtimeConnected);
 
-  const handleAddProjectToRun = async (projectId) => {
+  // Right-click → Add to Run. On a run with a date the stop's arrival window is
+  // set to the run date (12:00 AM, see addProjectToRun), so ask first unless it
+  // already has exactly that. "No" cancels the add.
+  const handleAddProjectToRun = (projectId) => {
+    if (!selectedRunId) return;
+    const runDate = selectedRun?.run_date ? String(selectedRun.run_date).slice(0, 10) : "";
+    if (!runDate) {
+      addProjectToSelectedRun(projectId);
+      return;
+    }
+    const project = loadedProjects.find((p) => String(p.id) === String(projectId));
+    const arrival = `${runDate}T00:00`;
+    const alreadyOnRunDate = [project?.install_start, project?.install_end].every((value) => String(value || "").slice(0, 16) === arrival);
+    if (alreadyOnRunDate) {
+      addProjectToSelectedRun(projectId);
+      return;
+    }
+    setConfirmAddProject({ projectId, clientName: project?.client_name || "This project", runDate });
+  };
+
+  const handleConfirmAddProject = async () => {
+    const projectId = confirmAddProject?.projectId;
+    setConfirmAddProject(null);
+    if (projectId != null) await addProjectToSelectedRun(projectId);
+  };
+
+  const addProjectToSelectedRun = async (projectId) => {
     if (!selectedRunId) return;
     setBusy(true);
     try {
@@ -1605,6 +1633,18 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
         onClose={() => setStopPrompt(null)}
         onSaved={handleStopPromptSaved}
       />
+
+      {mode === "runs" && (
+        <Modal show={!!confirmAddProject} onHide={() => setConfirmAddProject(null)} title="Add to Run">
+          <p style={{ fontSize: "13px", color: "#1e293b", margin: "0 0 16px" }}>
+            {confirmAddProject?.clientName}&apos;s arrival date will be changed to the run date ({formatDisplayDate(confirmAddProject?.runDate)}, 12:00 AM). Proceed?
+          </p>
+          <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+            <Button variant="secondary" onClick={() => setConfirmAddProject(null)}>No</Button>
+            <Button variant="primary" loading={busy} onClick={handleConfirmAddProject}>Yes</Button>
+          </div>
+        </Modal>
+      )}
 
       {mode === "runs" && (
         <Modal show={!!confirmDeleteRunId} onHide={() => setConfirmDeleteRunId(null)} title="Delete Run">

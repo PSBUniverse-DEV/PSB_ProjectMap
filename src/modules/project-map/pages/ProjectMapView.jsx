@@ -356,6 +356,8 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
       setRunFilters({ ...runFilters, status: [] });
     } else if (filterKey === "runDate") {
       setRunFilters({ ...runFilters, runDateFrom: "", runDateTo: "" });
+    } else if (filterKey === "state") {
+      setRunFilters({ ...runFilters, state: [] });
     }
   }, [runFilters]);
 
@@ -374,6 +376,8 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
 
   const dealers = useMemo(() => projects.map((p) => p.dealer).filter(Boolean), [projects]);
   const projectStates = useMemo(() => projects.map((p) => p.state_code).filter(Boolean), [projects]);
+  // Runs tab State filter: the Runs tab shows every project, so its list comes from all of them.
+  const runProjectStates = useMemo(() => loadedProjects.map((p) => p.state_code).filter(Boolean), [loadedProjects]);
 
   // Helper to extract calendar date (YYYY-MM-DD) from any date value
   const toDateString = (value) => {
@@ -571,22 +575,26 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
   const mapProjects = useMemo(() => {
     if (mode !== "runs") return projects;
     const selectedStatuses = Array.isArray(runFilters.status) ? runFilters.status : [];
+    // Filters → State: only pins of projects in the ticked states (empty = every state).
+    const selectedStates = Array.isArray(runFilters.state) ? runFilters.state : [];
     // Every assignment, including runs this user's roles cannot see.
     const assignedProjectIds = new Set(allRunProjects.map((rp) => rp.project_id));
     // Runs tab: project statuses do not apply, so start from the full list.
     return loadedProjects.filter((p) => {
       const assignment = projectRunLookup.get(p.id);
+      // A run is open: its own stops always stay, whatever the State filter
+      // (the route line and "Remove from Run" need them).
+      if (selectedRunId && assignment?.run.id === selectedRunId) return true;
+      if (selectedStates.length > 0 && !selectedStates.includes(p.state_code)) return false;
       // No visible run: show it only when it is truly unassigned (always
       // visible for run assignment). On a run this user's roles cannot see, hide it.
       if (!assignment) return !assignedProjectIds.has(p.id);
-      if (selectedRunId) {
-        // A run is open: keep its own stops, hide every other run's pins.
-        return assignment.run.id === selectedRunId;
-      }
+      // A run is open: hide every other run's pins.
+      if (selectedRunId) return false;
       if (selectedStatuses.length === 0) return true; // "All" — every run matches
       return selectedStatuses.includes(assignment.run.status);
     });
-  }, [mode, projects, loadedProjects, allRunProjects, runFilters.status, projectRunLookup, selectedRunId]);
+  }, [mode, projects, loadedProjects, allRunProjects, runFilters.status, runFilters.state, projectRunLookup, selectedRunId]);
 
   // Project filters for the map. On the Runs tab the map ignores the project
   // filters entirely (the run status tabs override them) — ProjectMap receives
@@ -1526,7 +1534,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
           ) : (
             <>
               <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "4px 10px", borderBottom: "1px solid #e2e8f0", background: "#fff", flexShrink: 0 }}>
-                <RunFilterPanel runFilters={runFilters} onFilterChange={setRunFilters} runStatuses={visibleRunStatuses} />
+                <RunFilterPanel runFilters={runFilters} onFilterChange={setRunFilters} runStatuses={visibleRunStatuses} states={runProjectStates} />
                 {canCreateRun && (
                   <button onClick={() => { setEditingRun(null); setShowRunForm(true); }} style={{ padding: "3px 10px", fontSize: "12px", borderRadius: "3px", border: "none", background: "#16a34a", color: "#fff", cursor: "pointer", whiteSpace: "nowrap" }}>+ New Run</button>
                 )}

@@ -23,6 +23,14 @@ export default function RunFilterChips({
       });
     }
 
+    // Filters → State (narrows the project pins on the map).
+    if (Array.isArray(runFilters.state) && runFilters.state.length > 0) {
+      labels.push({
+        key: "state",
+        label: `State: ${runFilters.state.join(", ")}`,
+      });
+    }
+
     return labels;
   }, [runFilters]);
 

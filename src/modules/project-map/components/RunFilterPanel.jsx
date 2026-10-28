@@ -4,11 +4,14 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faSliders } from "@fortawesome/free-solid-svg-icons";
+import MultiSelectDropdown from "../../../shared/components/ui/controls/MultiSelectDropdown";
 
 export default function RunFilterPanel({
   runFilters = {},
   onFilterChange,
   runStatuses = [],
+  // State codes of the projects (one entry per project; duplicates are fine).
+  states = [],
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [localFilters, setLocalFilters] = useState(runFilters);
@@ -30,6 +33,13 @@ export default function RunFilterPanel({
   // Close panel when clicking outside or pressing Escape
   useEffect(() => {
     const handleClickOutside = (e) => {
+      // Ignore clicks inside a MultiSelectDropdown's menu — it portals to
+      // document.body as its own sibling tree (for clipping-avoidance), so
+      // it's not a DOM descendant of portalPanelRef and would otherwise be
+      // misread as an outside click, closing this panel while selecting.
+      if (e.target.closest && e.target.closest("[data-multiselect-portal]")) {
+        return;
+      }
       if (
         panelRef.current && !panelRef.current.contains(e.target) &&
         portalPanelRef.current && !portalPanelRef.current.contains(e.target)
@@ -72,7 +82,7 @@ export default function RunFilterPanel({
   };
 
   const handleClearAll = () => {
-    const cleared = { ...localFilters, runDateFrom: "", runDateTo: "" };
+    const cleared = { ...localFilters, runDateFrom: "", runDateTo: "", state: [] };
     setLocalFilters(cleared);
     onFilterChange?.(cleared);
     setIsOpen(false);
@@ -80,8 +90,16 @@ export default function RunFilterPanel({
 
   // Count active filters (excluding empty values)
   const activeFilterCount = useMemo(() => {
-    return (runFilters.runDateFrom || runFilters.runDateTo) ? 1 : 0;
+    const dateCount = (runFilters.runDateFrom || runFilters.runDateTo) ? 1 : 0;
+    const stateCount = Array.isArray(runFilters.state) && runFilters.state.length > 0 ? 1 : 0;
+    return dateCount + stateCount;
   }, [runFilters]);
+
+  // Same State list as the Projects tab filter: unique state codes, sorted.
+  const uniqueStates = useMemo(() => {
+    const set = new Set(states.filter(Boolean));
+    return Array.from(set).sort().map((s) => ({ label: s, value: s }));
+  }, [states]);
 
   return (
     <div style={{ position: "relative" }} ref={panelRef}>
@@ -182,6 +200,22 @@ export default function RunFilterPanel({
                 />
               </div>
             </div>
+          </div>
+
+          {/* PROJECTS ON THE MAP SECTION (pins only; the run list is not filtered) */}
+          <div style={{ marginBottom: "16px" }}>
+            <div style={{ fontSize: "11px", fontWeight: 700, color: "#1e293b", marginBottom: "8px", paddingBottom: "6px", borderBottom: "1px solid #e2e8f0" }}>
+              Projects on the Map
+            </div>
+            <label style={{ display: "block", fontSize: "10px", fontWeight: 600, color: "#64748b", marginBottom: "3px" }}>
+              State
+            </label>
+            <MultiSelectDropdown
+              options={uniqueStates}
+              selectedValues={localFilters.state || []}
+              onChange={(vals) => setLocalFilters({ ...localFilters, state: vals })}
+              placeholder="All"
+            />
           </div>
 
           {/* Action Buttons */}

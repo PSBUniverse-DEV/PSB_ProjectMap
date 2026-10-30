@@ -92,6 +92,7 @@ async function RunCalendarContent({ searchParams }) {
       runStatuses={setup.runStatuses || []}
       statuses={setup.projectStatuses || []}
       paymentMethods={setup.paymentMethods || []}
+      states={setup.states || []}
       editAccess={{ editableRunStatusNames: access.editableRunStatusNames, canCommentAndAttach: access.canCommentAndAttach, user: { userId: access.user?.userId } }}
       pageAccess={{ map: canOpenMap, runMaster: canOpenRunMaster }}
       finishedRange={finishedRange}

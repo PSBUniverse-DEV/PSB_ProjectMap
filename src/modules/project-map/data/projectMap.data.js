@@ -355,18 +355,26 @@ export function getProjectAmountDisplay(project, statuses = []) {
  * Splits a run's stops into revenue and repairs. Repairs are never revenue,
  * so every run total must come from here instead of summing all stops.
  * `runProjects` are proj_t_run_projects rows with a nested proj_t_projects.
+ * `revenueCount` / `repairCount` are how many projects make up each amount.
  */
 export function splitRunAmounts(runProjects = [], statuses = []) {
   let revenue = 0;
   let repairs = 0;
+  let revenueCount = 0;
+  let repairCount = 0;
   (runProjects || []).forEach((rp) => {
     const proj = rp?.proj_t_projects;
     if (!proj) return;
     const amount = Number(proj.project_subtotal) || 0;
-    if (isRepairProject(proj, statuses)) repairs += amount;
-    else revenue += amount;
+    if (isRepairProject(proj, statuses)) {
+      repairs += amount;
+      repairCount += 1;
+    } else {
+      revenue += amount;
+      revenueCount += 1;
+    }
   });
-  return { revenue, repairs };
+  return { revenue, repairs, revenueCount, repairCount };
 }
 
 /**

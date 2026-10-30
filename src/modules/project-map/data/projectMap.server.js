@@ -131,18 +131,21 @@ export async function loadProjectMapSetup() {
 // calendar does not wait on the heavy projects query of loadProjectMapSetup.
 export async function loadRunCalendarSetup() {
   const supabase = getSupabaseAdmin();
-  const [projectStatuses, runStatuses, paymentMethods] = await Promise.all([
+  const [projectStatuses, runStatuses, paymentMethods, states] = await Promise.all([
     supabase.from("proj_s_project_status").select("*").order("display_order", { ascending: true }).order("status_name", { ascending: true }),
     supabase.from("proj_s_run_status").select("*").eq("is_active", true).order("display_order", { ascending: true }),
     supabase.from("proj_s_payment_method").select("*").order("display_order", { ascending: true }).order("method_name", { ascending: true }),
+    // For the Paid Sheet editor's State field.
+    supabase.from("proj_s_states").select("*").eq("is_active", true).order("display_order"),
   ]);
-  [["projectStatuses", projectStatuses], ["runStatuses", runStatuses], ["paymentMethods", paymentMethods]].forEach(([key, result]) => {
+  [["projectStatuses", projectStatuses], ["runStatuses", runStatuses], ["paymentMethods", paymentMethods], ["states", states]].forEach(([key, result]) => {
     if (result.error) console.error(`[loadRunCalendarSetup] Query "${key}" failed:`, result.error.message);
   });
   return {
     projectStatuses: projectStatuses.data || [],
     runStatuses: runStatuses.data || [],
     paymentMethods: paymentMethods.data || [],
+    states: states.data || [],
   };
 }
 

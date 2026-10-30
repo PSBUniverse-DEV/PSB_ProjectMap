@@ -11,6 +11,7 @@ import { computeRunSegmentData } from "../utils/runSegments";
 import { generateRunManifestPrint } from "../utils/printRunManifest";
 import { generatePaidSheetPrint } from "../utils/printPaidSheet";
 import StopStatusPrompt from "../components/StopStatusPrompt";
+import PaidSheetForm from "../components/PaidSheetForm";
 import { useProjectMapRealtime } from "../hooks/useProjectMapRealtime";
 import { useProjectMapPolling } from "../hooks/useProjectMapPolling";
 
@@ -103,6 +104,11 @@ function formatDriveTime(seconds) {
   return `${Math.floor(mins / 60)} hr ${mins % 60} min`;
 }
 
+// "1 project" / "3 projects"
+function projectCount(count) {
+  return `${count} project${count === 1 ? "" : "s"}`;
+}
+
 /**
  * Totals for a set of calendar items: runs, behind, cancelled, stops, route
  * miles, revenue and repairs (same figures as the run list). Cancelled runs
@@ -111,7 +117,7 @@ function formatDriveTime(seconds) {
 function summarize(list, runStatuses) {
   const totals = {
     runs: 0, behind: 0, onTrack: 0, rescheduled: 0, finished: 0, cancelled: 0,
-    stops: 0, miles: 0, seconds: 0, revenue: 0, repairs: 0,
+    stops: 0, miles: 0, seconds: 0, revenue: 0, repairs: 0, revenueProjects: 0, repairProjects: 0,
     byStatus: {}, byOrigin: {}, byDay: {},
   };
   list.forEach(({ run, state }) => {
@@ -134,9 +140,13 @@ function summarize(list, runStatuses) {
     totals.stops += stops ? stops.length : Number(run.stops) || 0;
     totals.miles += run.estimated_distance != null ? Number(run.estimated_distance) / 1609.344 : 0;
     totals.seconds += run.estimated_duration != null ? Number(run.estimated_duration) || 0 : 0;
-    const amounts = stops ? splitRunAmounts(stops) : { revenue: Number(run.estimated_subtotal) || 0, repairs: 0 };
+    const amounts = stops
+      ? splitRunAmounts(stops)
+      : { revenue: Number(run.estimated_subtotal) || 0, repairs: 0, revenueCount: Number(run.stops) || 0, repairCount: 0 };
     totals.revenue += amounts.revenue;
     totals.repairs += amounts.repairs;
+    totals.revenueProjects += amounts.revenueCount;
+    totals.repairProjects += amounts.repairCount;
   });
   return totals;
 }
@@ -194,8 +204,8 @@ function WeekSummary({ weekDays, totals }) {
           {line(`${totals.stops} stop${totals.stops === 1 ? "" : "s"} · ${Math.round(totals.miles).toLocaleString("en-US")} mi`)}
           {totals.seconds > 0 && line(`${formatDriveTime(totals.seconds)} driving`)}
           <span style={{ borderTop: "1px solid #e2e8f0", margin: "3px 0" }} />
-          {line(money(totals.revenue), "#16a34a", true)}
-          {totals.repairs > 0 && line(`Repairs ${money(totals.repairs)}`, "#dc2626")}
+          {line(`${projectCount(totals.revenueProjects)} · ${money(totals.revenue)}`, "#16a34a", true)}
+          {totals.repairProjects > 0 && line(`${projectCount(totals.repairProjects)} · Repairs ${money(totals.repairs)}`, "#dc2626")}
 
           {totals.cancelled > 0 && line(`${totals.cancelled} cancelled`, "#64748b")}
         </>
@@ -248,9 +258,9 @@ function MonthSummary({ label, filterLabel, totals, runStatuses }) {
             </div>
             <div style={POPUP_CARD}>
               <div style={POPUP_SECTION_TITLE}>Revenue</div>
-              <div style={{ fontSize: "11px", color: "#64748b" }}>Total revenue</div>
+              <div style={{ fontSize: "11px", color: "#64748b" }}>Total revenue · {projectCount(totals.revenueProjects)}</div>
               <div style={{ ...MONTH_BIG, color: "#16a34a" }}>{money(totals.revenue)}</div>
-              <div style={{ fontSize: "11px", color: "#64748b" }}>Total repair cost</div>
+              <div style={{ fontSize: "11px", color: "#64748b" }}>Total repair cost · {projectCount(totals.repairProjects)}</div>
               <div style={{ ...MONTH_BIG, color: totals.repairs > 0 ? "#dc2626" : "#0f172a", marginBottom: 0 }}>{money(totals.repairs)}</div>
             </div>
             <div style={POPUP_CARD}>
@@ -291,7 +301,7 @@ function MonthSummary({ label, filterLabel, totals, runStatuses }) {
  * status cascade), reschedule, prints and files; changes follow the run's
  * status ticks.
  */
-export default function RunCalendarView({ runs = [], runStatuses = [], statuses = [], paymentMethods = [], editAccess = null, pageAccess = null, finishedRange = "recent", finishedFrom = null }) {
+export default function RunCalendarView({ runs = [], runStatuses = [], statuses = [], paymentMethods = [], states = [], editAccess = null, pageAccess = null, finishedRange = "recent", finishedFrom = null }) {
   const router = useRouter();
   const todayKey = toDateKey(new Date());
   const [monthStart, setMonthStart] = useState(() => {
@@ -316,6 +326,9 @@ export default function RunCalendarView({ runs = [], runStatuses = [], statuses 
   const [pendingDate, setPendingDate] = useState("");
   const [savingRun, setSavingRun] = useState(false);
   const [printingPaidSheet, setPrintingPaidSheet] = useState(false);
+  // Paid Sheet editor: the run's details while it is open, and the busy flag while they load.
+  const [paidSheetDetail, setPaidSheetDetail] = useState(null);
+  const [openingPaidSheet, setOpeningPaidSheet] = useState(false);
   // "Choose a status" pop-up after a run is cancelled here.
   const [stopPrompt, setStopPrompt] = useState(null);
   const calendarRef = useRef(null);
@@ -457,6 +470,10 @@ export default function RunCalendarView({ runs = [], runStatuses = [], statuses 
     };
   }, [selectedRun, runStops, stopsLoading, statuses]);
 
+  // Same rule as the Run Master List: a paid sheet prints only once the run
+  // has an installer and at least one stop.
+  const canPrintSelectedPaidSheet = Boolean(selectedRun?.team_assigned) && (selectedTotals?.stops || 0) > 0;
+
   const loadSelectedStops = useCallback(async (runId) => {
     setStopsLoading(true);
     try {
@@ -534,6 +551,30 @@ export default function RunCalendarView({ runs = [], runStatuses = [], statuses 
     } finally {
       setPrintingPaidSheet(false);
     }
+  };
+
+  // Same Paid Sheet editor as the Run Master List's row Edit.
+  const handleEditPaidSheet = async (run) => {
+    setOpeningPaidSheet(true);
+    try {
+      const detail = await loadRunDetails(run.id);
+      if (!detail?.run) {
+        toastError("Unable to load run details.", "Paid Sheet");
+        return;
+      }
+      setPaidSheetDetail(detail);
+    } catch (err) {
+      toastError(err?.message || "Failed to load run.", "Paid Sheet");
+    } finally {
+      setOpeningPaidSheet(false);
+    }
+  };
+
+  // Saved: reload the calendar (installer, totals) and the open run's stops.
+  const handlePaidSheetSaved = () => {
+    setPaidSheetDetail(null);
+    router.refresh();
+    if (selectedRunId) loadSelectedStops(selectedRunId);
   };
 
   // Same print as the Run Master List.
@@ -857,9 +898,16 @@ export default function RunCalendarView({ runs = [], runStatuses = [], statuses 
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px", flexWrap: "wrap", width: "100%" }}>
             <Button variant="secondary" onClick={() => setSelectedRunId(null)}>Close</Button>
             <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-              <Button variant="secondary" loading={printingPaidSheet} onClick={() => handlePrintPaidSheet(selected.run)}>
-                <AppIcon icon="receipt" style={{ marginRight: "6px" }} />Print Paid Sheet
-              </Button>
+              {canChangeSelectedRun && (
+                <Button variant="secondary" loading={openingPaidSheet} onClick={() => handleEditPaidSheet(selected.run)}>
+                  <AppIcon icon="pen" style={{ marginRight: "6px" }} />Edit Paid Sheet
+                </Button>
+              )}
+              {canPrintSelectedPaidSheet && (
+                <Button variant="secondary" loading={printingPaidSheet} onClick={() => handlePrintPaidSheet(selected.run)}>
+                  <AppIcon icon="receipt" style={{ marginRight: "6px" }} />Print Paid Sheet
+                </Button>
+              )}
               <Button variant="primary" loading={printing} onClick={() => handlePrintManifest(selected.run)}>
                 <AppIcon icon="print" style={{ marginRight: "6px" }} />Print Manifest
               </Button>
@@ -1003,6 +1051,17 @@ export default function RunCalendarView({ runs = [], runStatuses = [], statuses 
           </div>
         )}
       </Modal>
+
+      {/* Paid Sheet editor, opened from the run pop-up (same form as the Run Master List). */}
+      <PaidSheetForm
+        show={!!paidSheetDetail}
+        run={paidSheetDetail?.run}
+        projects={paidSheetDetail?.projects || []}
+        paymentMethods={paymentMethods}
+        states={states}
+        onClose={() => setPaidSheetDetail(null)}
+        onSaved={handlePaidSheetSaved}
+      />
 
       {/* After a run is cancelled here: choose its stops' statuses. */}
       <StopStatusPrompt

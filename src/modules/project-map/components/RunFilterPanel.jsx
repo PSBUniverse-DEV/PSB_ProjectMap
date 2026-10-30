@@ -217,7 +217,7 @@ export default function RunFilterPanel({
           </div>
 
           {/* ORIGIN SECTION: narrows the run list (runs from these origins) AND
-              the pins (projects in these origins' states). Combines with State. */}
+              the pins (projects in these origins' service states). Combines with State. */}
           <div style={{ marginBottom: "16px" }}>
             <div style={{ fontSize: "11px", fontWeight: 700, color: "#1e293b", marginBottom: "8px", paddingBottom: "6px", borderBottom: "1px solid #e2e8f0" }}>
               Origin Address

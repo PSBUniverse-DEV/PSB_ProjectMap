@@ -15,6 +15,7 @@ import {
 } from "../data/projectMap.actions";
 import LocationSearch from "./LocationSearch";
 import MapLocationPicker from "./MapLocationPicker";
+import MultiSelectDropdown from "../../../shared/components/ui/controls/MultiSelectDropdown";
 import { stripTownshipLabel } from "../data/projectMap.data";
 
 /**
@@ -28,12 +29,13 @@ import { stripTownshipLabel } from "../data/projectMap.data";
  *  - Search across name and formatted_address
  *  - Add/Edit modal with LocationSearch (auto-populates all address fields, hidden from user)
  *  - No is_default, origin_code, city, state fields exposed in UI
+ *  - Service States: the states this origin serves (Runs tab Origin filter)
  *  - Delete confirmation with permanent delete (blocked while a run uses the address)
  *  - Empty state
  *  - Validation (required name, required address)
  */
 // readOnly: view-only user, no add, edit, delete, reorder or Active switch.
-export default function OriginAddressesGrid({ data = [], onRefresh, readOnly = false }) {
+export default function OriginAddressesGrid({ data = [], states = [], onRefresh, readOnly = false }) {
   const router = useRouter();
 
   // ─── State ─────────────────────────────────────────────────
@@ -50,6 +52,14 @@ export default function OriginAddressesGrid({ data = [], onRefresh, readOnly = f
   // ─── Local data (for optimistic updates) ──────────────────
   const [localData, setLocalData] = useState(null);
   const displayData = localData ?? data;
+
+  // Active states from setup, for the Service States picker. Values are state codes.
+  const stateOptions = useMemo(
+    () => states
+      .filter((s) => s?.is_active !== false && s.state_code)
+      .map((s) => ({ label: `${s.state_code} — ${s.state_name}`, value: s.state_code })),
+    [states]
+  );
 
   // Fresh server data replaces the local optimistic copy, so saved edits show.
   useEffect(() => {
@@ -111,6 +121,7 @@ export default function OriginAddressesGrid({ data = [], onRefresh, readOnly = f
       latitude: null,
       longitude: null,
       is_active: true,
+      service_state_codes: [],
     });
     setLocationQuery("");
     setEditingRow(null);
@@ -131,6 +142,7 @@ export default function OriginAddressesGrid({ data = [], onRefresh, readOnly = f
       latitude: row.latitude ?? null,
       longitude: row.longitude ?? null,
       is_active: row.is_active === true,
+      service_state_codes: Array.isArray(row.service_state_codes) ? row.service_state_codes : [],
     });
     setLocationQuery(initialAddress);
     setEditingRow(row);
@@ -213,6 +225,7 @@ export default function OriginAddressesGrid({ data = [], onRefresh, readOnly = f
         latitude: modalDraft.latitude != null ? Number(modalDraft.latitude) : null,
         longitude: modalDraft.longitude != null ? Number(modalDraft.longitude) : null,
         is_active: modalDraft.is_active === true,
+        service_state_codes: modalDraft.service_state_codes || [],
       };
 
       if (modalMode === "add") {
@@ -296,6 +309,12 @@ export default function OriginAddressesGrid({ data = [], onRefresh, readOnly = f
       sortable: true,
       minWidth: 260,
       render: (row) => <span className="ltg-description">{stripTownshipLabel(row.formatted_address) || "--"}</span>,
+    },
+    {
+      key: "service_state_codes",
+      label: "Service States",
+      minWidth: 180,
+      render: (row) => <span className="ltg-description">{(row.service_state_codes || []).join(", ") || "--"}</span>,
     },
     {
       key: "is_active",
@@ -433,6 +452,17 @@ export default function OriginAddressesGrid({ data = [], onRefresh, readOnly = f
                 🗺️ Choose Map
               </Button>
             </div>
+          </Form.Group>
+
+          {/* Service States: the Runs tab Origin filter shows projects in these states */}
+          <Form.Group className="oag-modal-field">
+            <Form.Label className="oag-modal-label">Service States</Form.Label>
+            <MultiSelectDropdown
+              options={stateOptions}
+              selectedValues={modalDraft.service_state_codes || []}
+              onChange={(vals) => handleDraftChange("service_state_codes", vals)}
+              placeholder="None"
+            />
           </Form.Group>
 
           {/* Active Status */}

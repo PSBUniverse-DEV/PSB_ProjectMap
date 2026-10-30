@@ -374,6 +374,12 @@ export async function softDeleteProjectStatus(statusId) {
 
 // ─── Origin Address Specific Actions ─────────────────────────
 
+// Service states of an origin: unique, upper-case state codes (empty list = none).
+function normalizeStateCodes(value) {
+  const list = Array.isArray(value) ? value : [];
+  return Array.from(new Set(list.map((code) => String(code || "").trim().toUpperCase()).filter(Boolean)));
+}
+
 export async function createOriginAddress(data) {
   await requireSetupAccess();
   const supabase = getSupabaseAdmin();
@@ -418,6 +424,7 @@ export async function createOriginAddress(data) {
     country: data.country ? String(data.country).trim() : null,
     latitude: data.latitude != null ? Number(data.latitude) : null,
     longitude: data.longitude != null ? Number(data.longitude) : null,
+    service_state_codes: normalizeStateCodes(data.service_state_codes),
     is_active: data.is_active === true || data.is_active === "true" || data.is_active === "1",
   };
 
@@ -471,6 +478,7 @@ export async function updateOriginAddress(id, data) {
   if (data.country !== undefined) payload.country = data.country ? String(data.country).trim() : null;
   if (data.latitude !== undefined) payload.latitude = data.latitude != null ? Number(data.latitude) : null;
   if (data.longitude !== undefined) payload.longitude = data.longitude != null ? Number(data.longitude) : null;
+  if (data.service_state_codes !== undefined) payload.service_state_codes = normalizeStateCodes(data.service_state_codes);
   if (data.is_active !== undefined) payload.is_active = data.is_active === true || data.is_active === "true" || data.is_active === "1";
 
   const { data: result, error } = await supabase

@@ -592,13 +592,18 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
     const selectedStatuses = Array.isArray(runFilters.status) ? runFilters.status : [];
     // Filters → State: only pins of projects in the ticked states (empty = every state).
     const selectedStates = Array.isArray(runFilters.state) ? runFilters.state : [];
-    // Filters → Origin Address: only pins in the states of the ticked origins.
-    // Works alongside State (both must match); an origin with no state saved
-    // does not narrow the pins.
+    // Filters → Origin Address: only pins in the service states of the ticked
+    // origins (Setup → Origin Addresses → Service States). An origin with no
+    // service states falls back to its own state; one with neither does not
+    // narrow the pins. Works alongside State (both must match).
     const selectedOrigins = Array.isArray(runFilters.origin) ? runFilters.origin : [];
     const originStates = origins
-      .filter((origin) => selectedOrigins.includes(String(origin.id)) && origin.state_code)
-      .map((origin) => origin.state_code);
+      .filter((origin) => selectedOrigins.includes(String(origin.id)))
+      .flatMap((origin) =>
+        Array.isArray(origin.service_state_codes) && origin.service_state_codes.length > 0
+          ? origin.service_state_codes
+          : origin.state_code ? [origin.state_code] : []
+      );
     // Every assignment, including runs this user's roles cannot see.
     const assignedProjectIds = new Set(allRunProjects.map((rp) => rp.project_id));
     // Runs tab: project statuses do not apply, so start from the full list.

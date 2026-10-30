@@ -492,7 +492,7 @@ export default function ProjectMapSetupView({ setup = {}, roles = [], roleStatus
         {activeTab === "roleTabs" ? (
           <RoleStatusTabsGrid roles={roles} statuses={setup.projectStatuses || []} mappings={roleStatusMappings} runStatuses={setup.runStatuses || []} runMappings={roleRunStatusMappings} roleOptions={roleOptions} readOnly={readOnly} />
         ) : activeTab === "originAddresses" ? (
-          <OriginAddressesGrid data={setup.originAddresses || []} readOnly={readOnly} />
+          <OriginAddressesGrid data={setup.originAddresses || []} states={setup.states || []} readOnly={readOnly} />
         ) : ["projectStatuses", "states", "buildingCategories", "permitStatuses", "welcomeCallStatuses", "runStatuses", "paymentMethods"].includes(activeTab) ? (
           <LookupTableGrid
             tableKey={activeTab}

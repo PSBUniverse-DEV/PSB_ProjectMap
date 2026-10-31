@@ -80,7 +80,7 @@ function storeRouteCache(map, runId, entry) {
 }
 
 
-export default function ProjectMapView({ projects: initialProjects = [], statuses = [], origins = [], states = [], runs: initialRuns = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [], runStatuses = [], statusTabAccess = null, pageAccess = null }) {
+export default function ProjectMapView({ projects: initialProjects = [], statuses = [], origins = [], runs: initialRuns = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [], runStatuses = [], statusTabAccess = null, pageAccess = null }) {
   const router = useRouter();
   const [mode, setMode] = useState("projects");
   const [showLabels, setShowLabels] = useState(true);
@@ -633,12 +633,6 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
     if (!selectedOriginId) return null;
     return origins.find((o) => o.id === selectedOriginId) || null;
   }, [selectedOriginId, origins]);
-
-  const stateColorLookup = useMemo(() => {
-    const map = {};
-    states.forEach((s) => { map[s.state_code] = s.display_color; });
-    return map;
-  }, [states]);
 
   const handleSelectProject = useCallback((id) => { setSelectedProjectId(id); }, []);
 
@@ -1595,7 +1589,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
         </div>
 
         <div style={{ flex: 1, position: "relative", minHeight: 0, minWidth: 0 }}>
-          <ProjectMap projects={mapProjects} selectedProjectId={selectedProjectId} onSelectProject={handleSelectProject} filters={mapFilters} selectedOrigin={selectedOrigin} routeData={routeData} stateColorLookup={stateColorLookup} statuses={statuses} buildingCategories={buildingCategories} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} searchResults={searchResults} mode={mode} runs={runs} selectedRunId={selectedRunId} runProjects={runProjects} runRouteData={runRouteData} onAddToRun={canEditSelectedRun ? handleAddProjectToRun : null} onRemoveFromRun={canEditSelectedRun ? handleRemoveProjectFromRun : null} projectRunLookup={projectRunLookup} showLabels={showLabels} onMapRightClick={handleMapRightClick} canCreateProject={canCreateProject} tempMarker={tempMarker} searchMarker={searchMarker} onSearchMarkerClick={handleSearchMarkerClick} />
+          <ProjectMap projects={mapProjects} selectedProjectId={selectedProjectId} onSelectProject={handleSelectProject} filters={mapFilters} selectedOrigin={selectedOrigin} routeData={routeData} statuses={statuses} buildingCategories={buildingCategories} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} searchResults={searchResults} mode={mode} runs={runs} selectedRunId={selectedRunId} runProjects={runProjects} runRouteData={runRouteData} onAddToRun={canEditSelectedRun ? handleAddProjectToRun : null} onRemoveFromRun={canEditSelectedRun ? handleRemoveProjectFromRun : null} projectRunLookup={projectRunLookup} showLabels={showLabels} onMapRightClick={handleMapRightClick} canCreateProject={canCreateProject} tempMarker={tempMarker} searchMarker={searchMarker} onSearchMarkerClick={handleSearchMarkerClick} />
         </div>
 
         {mode === "projects" && selectedProject && (

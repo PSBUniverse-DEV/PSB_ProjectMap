@@ -155,7 +155,7 @@ function summarize(list, runStatuses) {
 function SummaryLine({ totals, compact = false }) {
   const parts = [
     [`${totals.runs} run${totals.runs === 1 ? "" : "s"}`, "#1e293b"],
-    [`${totals.stops} stop${totals.stops === 1 ? "" : "s"}`, "#475569"],
+    [projectCount(totals.stops), "#475569"],
     [`${totals.miles.toFixed(0)} mi`, "#475569"],
     [money(totals.revenue), "#16a34a"],
     ...(totals.repairs > 0 ? [[`Repairs ${money(totals.repairs)}`, "#dc2626"]] : []),
@@ -201,7 +201,7 @@ function WeekSummary({ weekDays, totals }) {
               ))}
             </span>
           )}
-          {line(`${totals.stops} stop${totals.stops === 1 ? "" : "s"} · ${Math.round(totals.miles).toLocaleString("en-US")} mi`)}
+          {line(`${projectCount(totals.stops)} · ${Math.round(totals.miles).toLocaleString("en-US")} mi`)}
           {totals.seconds > 0 && line(`${formatDriveTime(totals.seconds)} driving`)}
           <span style={{ borderTop: "1px solid #e2e8f0", margin: "3px 0" }} />
           {line(`${projectCount(totals.revenueProjects)} · ${money(totals.revenue)}`, "#16a34a", true)}
@@ -233,7 +233,7 @@ function MonthSummary({ label, filterLabel, totals, runStatuses }) {
     <section style={{ marginTop: "12px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "12px 14px" }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: "8px", flexWrap: "wrap", marginBottom: "10px" }}>
         <strong style={{ fontSize: "14px", color: "#0f172a" }}>{label} summary</strong>
-        <span style={{ fontSize: "11px", color: "#64748b" }}>{filterLabel} runs · cancelled runs are left out of stops, miles and money</span>
+        <span style={{ fontSize: "11px", color: "#64748b" }}>{filterLabel} runs · cancelled runs are left out of projects, miles and money</span>
       </div>
       {totals.runs === 0 ? (
         <div style={{ fontSize: "12px", color: "#64748b" }}>No runs in {label}.</div>
@@ -251,9 +251,9 @@ function MonthSummary({ label, filterLabel, totals, runStatuses }) {
             <div style={POPUP_CARD}>
               <div style={POPUP_SECTION_TITLE}>Route</div>
               <div style={MONTH_BIG}>{Math.round(totals.miles).toLocaleString("en-US")} mi</div>
-              {row("Stops", totals.stops)}
+              {row("Projects", totals.stops)}
               {row("Drive time", totals.seconds > 0 ? formatDriveTime(totals.seconds) : "—")}
-              {row("Stops per run", activeRuns > 0 ? (totals.stops / activeRuns).toFixed(1) : "—")}
+              {row("Projects per run", activeRuns > 0 ? (totals.stops / activeRuns).toFixed(1) : "—")}
               {row("Miles per run", activeRuns > 0 ? Math.round(totals.miles / activeRuns).toLocaleString("en-US") : "—")}
             </div>
             <div style={POPUP_CARD}>
@@ -919,7 +919,7 @@ export default function RunCalendarView({ runs = [], runStatuses = [], statuses 
           <div style={{ display: "flex", flexDirection: "column", gap: "16px", fontSize: "13px", color: "#1e293b" }}>
             {/* Key figures */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "10px" }}>
-              <StatCard label="Stops" value={stopsLoading ? "…" : String(selectedTotals?.stops ?? 0)} />
+              <StatCard label="Projects" value={stopsLoading ? "…" : String(selectedTotals?.stops ?? 0)} />
               <StatCard label="Distance" value={selectedTotals?.miles != null ? `${Math.round(selectedTotals.miles).toLocaleString("en-US")} mi` : "—"} />
               <StatCard label="Drive time" value={formatDriveTime(selectedTotals?.seconds)} />
               <StatCard
@@ -1003,12 +1003,12 @@ export default function RunCalendarView({ runs = [], runStatuses = [], statuses 
             {/* Stops */}
             <div>
               <div style={POPUP_SECTION_TITLE}>
-                Stops <span style={{ fontWeight: 400, color: "#64748b" }}>{stopsLoading ? "…" : runStops.length}</span>
+                Projects <span style={{ fontWeight: 400, color: "#64748b" }}>{stopsLoading ? "…" : runStops.length}</span>
               </div>
               {stopsLoading ? (
-                <div style={{ fontSize: "12px", color: "#64748b" }}>Loading stops…</div>
+                <div style={{ fontSize: "12px", color: "#64748b" }}>Loading projects…</div>
               ) : runStops.length === 0 ? (
-                <div style={{ fontSize: "12px", color: "#64748b" }}>No stops on this run.</div>
+                <div style={{ fontSize: "12px", color: "#64748b" }}>No projects on this run.</div>
               ) : (
                 <div style={{ maxHeight: "260px", overflowY: "auto", border: "1px solid #e2e8f0", borderRadius: "8px" }}>
                   {runStops.map((stop, index) => {

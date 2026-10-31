@@ -11,6 +11,15 @@ function getStatusColor(statusName, statuses = []) {
   return found?.display_color || "#6b7280";
 }
 
+// Pin color: the project's status color from Setup → Project Statuses, found
+// by status id (so a renamed status still matches), then by the joined status
+// name. Grey when the project has no status or the status has no color.
+function getProjectPinColor(project, statuses = []) {
+  const byId = statuses.find((s) => s.status_id === project?.status_id);
+  if (byId?.display_color) return byId.display_color;
+  return getStatusColor(project?.proj_s_project_status?.status_name || "", statuses);
+}
+
 // Great-circle distance between two coordinates in meters (Haversine formula).
 // Used to cluster projects that are physically close together (same lot),
 // since real-world geocoding rarely returns byte-identical coordinates for
@@ -130,7 +139,6 @@ export default function ProjectMap({
   filters = {},
   selectedOrigin = null,
   routeData = null,
-  stateColorLookup = {},
   statuses = [],
   buildingCategories = [],
   permitStatuses = [],
@@ -568,9 +576,7 @@ export default function ProjectMap({
       const lat = rawLat;
       const lng = rawLng;
 
-      const statusName = project.proj_s_project_status?.status_name || "";
-      const statusColor = getStatusColor(statusName, statuses);
-      const stateColor = stateColorLookup[project.state_code] || statusColor;
+      const pinColor = getProjectPinColor(project, statuses);
 
       let marker = null;
       const existingBundle = markersMapRef.current[id];
@@ -622,9 +628,9 @@ export default function ProjectMap({
       const projectNotes = project.project_notes || "";
       const truncatedNotes = projectNotes.length > 120 ? projectNotes.substring(0, 120) + "…" : projectNotes;
 
-      // Native MapLibre marker with state color
+      // Native MapLibre marker with the project status color
       marker = new MapLibreGL.Marker({
-        color: stateColor,
+        color: pinColor,
         scale: 0.9
       })
         .setLngLat([lng, lat])
@@ -825,8 +831,9 @@ export default function ProjectMap({
         try { existingCluster.marker?.remove(); } catch (e) {}
       }
 
-      const firstStatusName = groupProjects[0].proj_s_project_status?.status_name || "";
-      const markerColor = stateColorLookup[groupProjects[0].state_code] || getStatusColor(firstStatusName, statuses);
+      // One color when every project here shares it; grey when they differ.
+      const groupColors = new Set(groupProjects.map((p) => getProjectPinColor(p, statuses)));
+      const markerColor = groupColors.size === 1 ? [...groupColors][0] : "#6b7280";
 
       // Standard MapLibre marker — identical construction to every other
       // pin on this map, just no per-project popups wired to it directly.
@@ -1032,7 +1039,7 @@ export default function ProjectMap({
       }
       initialFitDone.current = true;
     }
-  }, [filteredProjects, stateColorLookup, searchResults, projectRunLookup, statuses, buildingCategories, permitStatuses, welcomeCallStatuses]);
+  }, [filteredProjects, searchResults, projectRunLookup, statuses, buildingCategories, permitStatuses, welcomeCallStatuses]);
 
   // Tab changed: forget what was last framed so the new tab frames its own
   // content (Runs → selected run's full route, Projects → selected project).

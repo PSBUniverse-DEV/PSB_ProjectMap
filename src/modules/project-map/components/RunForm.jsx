@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { Button, Modal, toastError, toastSuccess } from "@/shared/components/ui";
 import { createRun, updateRun, deleteRun } from "../data/projectMap.actions";
 import { resolveRunStatusOptions, runStatusNameByKey } from "../data/projectMap.data";
+import ConfirmDeleteByName from "./ConfirmDeleteByName";
 
 export default function RunForm({ show, mode, run, origins = [], runStatuses = [], onClose, onSaved, editableRunStatusNames = null }) {
   const [busy, setBusy] = useState(false);
@@ -274,8 +275,16 @@ export default function RunForm({ show, mode, run, origins = [], runStatuses = [
           </div>
         </div>
 
-        {/* Delete Confirmation Dialog */}
-        <Modal show={showDeleteConfirm} onHide={() => setShowDeleteConfirm(false)} title="Delete Run">
+        {/* Delete Confirmation Dialog: the run's name must be typed first. */}
+        <ConfirmDeleteByName
+          show={showDeleteConfirm}
+          title="Delete Run"
+          itemLabel="run"
+          name={run?.run_name || run?.run_code}
+          busy={busy}
+          onCancel={() => setShowDeleteConfirm(false)}
+          onConfirm={handleDelete}
+        >
           <p style={{ fontSize: "13px", color: "#1e293b", margin: "0 0 16px", lineHeight: 1.5 }}>
             Are you sure you want to delete this run?
           </p>
@@ -284,11 +293,7 @@ export default function RunForm({ show, mode, run, origins = [], runStatuses = [
             <br />
             Projects assigned to this run will <strong>NOT</strong> be deleted. They will simply be unassigned and become available to be added to another run.
           </p>
-          <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
-            <Button variant="secondary" onClick={() => setShowDeleteConfirm(false)}>Cancel</Button>
-            <Button variant="danger" loading={busy} onClick={handleDelete}>Delete Run</Button>
-          </div>
-        </Modal>
+        </ConfirmDeleteByName>
       </div>
     </Modal>
   );

@@ -15,6 +15,7 @@ import ProjectDetailDrawer from "../components/ProjectDetailDrawer";
 import RunList from "../components/RunList";
 import RunDetailPanel from "../components/RunDetailPanel";
 import RunForm from "../components/RunForm";
+import ConfirmDeleteByName from "../components/ConfirmDeleteByName";
 import ProjectSelectorModal from "../components/ProjectSelectorModal";
 import StopStatusPrompt from "../components/StopStatusPrompt";
 import FilterBar from "../components/FilterBar";
@@ -1622,13 +1623,17 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
       )}
 
       {mode === "projects" && (
-        <Modal show={!!confirmDeleteId} onHide={() => setConfirmDeleteId(null)} title="Delete Project">
-          <p style={{ fontSize: "13px", color: "#1e293b", margin: "0 0 16px" }}>Delete this project? This cannot be undone.</p>
-          <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
-            <Button variant="secondary" onClick={() => setConfirmDeleteId(null)}>Cancel</Button>
-            <Button variant="danger" loading={busy} onClick={handleDelete}>Delete</Button>
-          </div>
-        </Modal>
+        <ConfirmDeleteByName
+          show={!!confirmDeleteId}
+          title="Delete Project"
+          itemLabel="project"
+          name={selectedProject?.client_name}
+          busy={busy}
+          onCancel={() => setConfirmDeleteId(null)}
+          onConfirm={handleDelete}
+        >
+          <p style={{ fontSize: "13px", color: "#1e293b", margin: "0 0 12px" }}>Delete this project? This cannot be undone.</p>
+        </ConfirmDeleteByName>
       )}
 
       {/* Any tab: stops leave a run from the run panel, the map, the project drawer, the run form, or a cancelled or deleted run. */}
@@ -1652,13 +1657,17 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
       )}
 
       {mode === "runs" && (
-        <Modal show={!!confirmDeleteRunId} onHide={() => setConfirmDeleteRunId(null)} title="Delete Run">
-          <p style={{ fontSize: "13px", color: "#1e293b", margin: "0 0 16px" }}>Delete this run? This cannot be undone.</p>
-          <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
-            <Button variant="secondary" onClick={() => setConfirmDeleteRunId(null)}>Cancel</Button>
-            <Button variant="danger" loading={busy} onClick={handleDeleteRun}>Delete</Button>
-          </div>
-        </Modal>
+        <ConfirmDeleteByName
+          show={!!confirmDeleteRunId}
+          title="Delete Run"
+          itemLabel="run"
+          name={selectedRun?.run_name || selectedRun?.run_code}
+          busy={busy}
+          onCancel={() => setConfirmDeleteRunId(null)}
+          onConfirm={handleDeleteRun}
+        >
+          <p style={{ fontSize: "13px", color: "#1e293b", margin: "0 0 12px" }}>Delete this run? This cannot be undone.</p>
+        </ConfirmDeleteByName>
       )}
 
       <Modal show={showRouteErrorModal} onHide={() => setShowRouteErrorModal(false)} title="Unable to Calculate Route">

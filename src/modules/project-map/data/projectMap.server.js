@@ -528,38 +528,3 @@ export async function loadRunDetails(runId) {
     projects: projectsResult.data || [],
   };
 }
-
-// ─── Project List Loader ────────────────────────────────────
-
-export async function loadProjectMapProjects() {
-  const supabase = getSupabaseAdmin();
-
-  const [projectsResult, statusesResult, originsResult, statesResult] = await Promise.all([
-    supabase
-      .from("proj_t_projects")
-      .select(
-        "id, client_name, formatted_address, address_line_1, city, state, state_code, " +
-        "postal_code, country, address_latitude, address_longitude, site_latitude, site_longitude, " +
-        "location_source, location_confirmed, status_id, dealer, " +
-        "building_category_id, permit_status_id, welcome_call_status_id, invoice_number, " +
-        "order_received_at, scheduled_project_start, scheduled_project_end, install_start, install_end, " +
-        "project_subtotal, project_notes, dimension, " +
-        "created_at, updated_at, created_by, updated_by, " +
-        "proj_s_project_status(status_id, status_name, status_description)"
-      )
-      .order("updated_at", { ascending: false }),
-    supabase.from("proj_s_project_status").select("status_id, status_name, status_description, display_color").order("status_id"),
-    supabase.from("proj_s_origin_addresses").select("*").eq("is_active", true).order("origin_name"),
-    supabase.from("proj_s_states").select("*").eq("is_active", true).order("display_order"),
-  ]);
-
-  if (projectsResult.error) throw new Error(projectsResult.error.message);
-  if (statusesResult.error) throw new Error(statusesResult.error.message);
-
-  const projects = projectsResult.data || [];
-  const statuses = statusesResult.data || [];
-  const origins = originsResult.error ? [] : (originsResult.data || []);
-  const states = statesResult.error ? [] : (statesResult.data || []);
-
-  return { projects, statuses, origins, states };
-}

@@ -345,33 +345,6 @@ export async function reorderProjectStatuses(updates) {
   return { success: true };
 }
 
-export async function softDeleteProjectStatus(statusId) {
-  await requireSetupAccess();
-  const supabase = getSupabaseAdmin();
-  const id = Number(statusId);
-  if (!id) throw new Error("status_id is required.");
-
-  // Check if the status is referenced by any projects
-  const { data: referencedProjects, error: refError } = await supabase
-    .from("proj_t_projects")
-    .select("id")
-    .eq("status_id", id)
-    .limit(1);
-
-  if (refError) throw new Error(refError.message);
-
-  // Soft delete by setting is_active = false
-  const { data, error } = await supabase
-    .from("proj_s_project_status")
-    .update({ is_active: false })
-    .eq("status_id", id)
-    .select("*")
-    .single();
-
-  if (error) throw new Error(error.message);
-  return data;
-}
-
 // ─── Origin Address Specific Actions ─────────────────────────
 
 // Service states of an origin: unique, upper-case state codes (empty list = none).
@@ -723,33 +696,6 @@ export async function reorderStates(updates) {
   }
 
   return { success: true };
-}
-
-export async function softDeleteState(id) {
-  await requireSetupAccess();
-  const supabase = getSupabaseAdmin();
-  const stateId = Number(id);
-  if (!stateId) throw new Error("id is required.");
-
-  // Check if the state is referenced by any projects or origin addresses
-  const [projectsRef, originsRef] = await Promise.all([
-    supabase.from("proj_t_projects").select("id").eq("state_code", stateId).limit(1),
-    supabase.from("proj_s_origin_addresses").select("id").eq("state_code", stateId).limit(1),
-  ]);
-
-  if (projectsRef.error) throw new Error(projectsRef.error.message);
-  if (originsRef.error) throw new Error(originsRef.error.message);
-
-  // Soft delete by setting is_active = false
-  const { data, error } = await supabase
-    .from("proj_s_states")
-    .update({ is_active: false })
-    .eq("id", stateId)
-    .select("*")
-    .single();
-
-  if (error) throw new Error(error.message);
-  return data;
 }
 
 // ─── Generic Lookup Table Actions ────────────────────────────
@@ -1981,14 +1927,14 @@ export async function loadRuns(options = {}) {
  * Loads the full project list for client-side refreshes.
  *
  * Why this exists: the page's initial project list is loaded by the server
- * component (loadProjectMapProjects in projectMap.server.js), so until now
+ * component (loadProjectMapSetup in projectMap.server.js), so until now
  * there was no way to re-fetch it from the browser. Live multi-user sync
  * needs one — when another user adds or edits a project, the realtime hook
  * triggers a refresh that must produce exactly the same data shape the page
  * was initialized with (same columns, same nested status lookup, same
  * ordering) or downstream components would mis-render.
  *
- * IMPORTANT: keep the select below in sync with loadProjectMapProjects().
+ * IMPORTANT: keep the select below in sync with loadProjectMapSetup().
  */
 export async function loadProjects() {
   // Same rule as the page load (see ProjectMapPage): users who can see runs get

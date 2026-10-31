@@ -16,7 +16,6 @@ import RunList from "../components/RunList";
 import RunDetailPanel from "../components/RunDetailPanel";
 import RunForm from "../components/RunForm";
 import ConfirmDeleteByName from "../components/ConfirmDeleteByName";
-import ProjectSelectorModal from "../components/ProjectSelectorModal";
 import StopStatusPrompt from "../components/StopStatusPrompt";
 import FilterBar from "../components/FilterBar";
 import AddProjectForm from "../components/AddProjectForm";
@@ -144,7 +143,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
   const [runProjects, setRunProjects] = useState([]);
   const [runRouteData, setRunRouteData] = useState(null);
   const [runRouteLoading, setRunRouteLoading] = useState(false);
-  const [showProjectSelector, setShowProjectSelector] = useState(false);
+
   const [runSegmentData, setRunSegmentData] = useState(null);
   const [showRouteErrorModal, setShowRouteErrorModal] = useState(false);
   // Status tabs are shown per Project Map role. Users with none never reach this
@@ -1094,10 +1093,6 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
     } finally { setBusy(false); }
   };
 
-  const handleProjectSelectorClose = () => { setShowProjectSelector(false); };
-  // Added stops may have changed status to match the run, so projects are reloaded too.
-  const handleProjectSelectorSaved = () => { setShowProjectSelector(false); refreshRunData(); refreshProjects(); };
-
   const handleRemoveProjectFromRun = async (runProjectId) => {
     setBusy(true);
     try {
@@ -1786,10 +1781,6 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
           </div>
         )}
       </Modal>
-
-      {mode === "runs" && selectedRunId && (
-        <ProjectSelectorModal show={showProjectSelector} runId={selectedRunId} allProjects={loadedProjects} existingProjectIds={runProjects.map((rp) => rp.project_id)} onClose={handleProjectSelectorClose} onSaved={handleProjectSelectorSaved} />
-      )}
     </div>
   );
 }

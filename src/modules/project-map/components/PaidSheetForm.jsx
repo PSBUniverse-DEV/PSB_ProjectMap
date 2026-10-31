@@ -228,6 +228,15 @@ export default function PaidSheetForm({
 
   const title = run?.run_name ? `Paid Sheet — ${run.run_name}` : "Paid Sheet";
 
+  // Methods a stop can pick: switched-on ones, plus the one it already uses
+  // (kept so saved data stays visible). The print uses the same rule.
+  const visiblePaymentMethods = (selectedId) =>
+    paymentMethods.filter((m) => m.is_active !== false || String(selectedId) === String(m.id));
+  // Shown when a stop has nothing to pick from.
+  const noPaymentMethodsMessage = paymentMethods.length === 0
+    ? "No payment methods configured."
+    : "All payment methods are switched off. Turn one on in Setup → Payment Methods.";
+
   // Shared cell/label styling consistent with RunForm.jsx.
   const cellStyle = { padding: "6px 8px", verticalAlign: "top", borderBottom: "1px solid #e2e8f0", fontSize: "12px" };
   const inputStyle = { width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "3px 6px", fontSize: "12px", background: "#fff" };
@@ -381,12 +390,11 @@ export default function PaidSheetForm({
                       </td>
                       <td style={cellStyle}>
                         <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                          {paymentMethods.length === 0 ? (
-                            <span style={{ fontStyle: "italic", color: "#64748b" }}>No payment methods configured.</span>
+                          {visiblePaymentMethods(v.payment_method_type).length === 0 ? (
+                            <span style={{ fontStyle: "italic", color: "#64748b" }}>{noPaymentMethodsMessage}</span>
                           ) : (
                             // Switched-off methods are hidden, unless this stop already uses one.
-                            paymentMethods
-                              .filter((m) => m.is_active !== false || String(v.payment_method_type) === String(m.id))
+                            visiblePaymentMethods(v.payment_method_type)
                               .map((m) => (
                               <label key={m.id} style={{ display: "flex", alignItems: "center", gap: "5px", fontSize: "12px", color: "#1e293b", cursor: "pointer", whiteSpace: "nowrap" }}>
                                 <input

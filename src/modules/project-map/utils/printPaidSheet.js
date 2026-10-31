@@ -36,6 +36,7 @@ export function generatePaidSheetPrint(run, runProjects, paidSheet = null, payme
   const paymentChoices = (Array.isArray(paymentMethods) ? paymentMethods : []).map((method) => ({
     id: String(method.id),
     label: method.method_description || method.method_name || "Payment",
+    active: method.is_active !== false,
   }));
 
   // Repairs are a company cost, not money collected from a client, so they
@@ -53,8 +54,10 @@ export function generatePaidSheetPrint(run, runProjects, paidSheet = null, payme
     const description = proj.client_name || `Stop #${idx + 1}`;
     const dimensionDisplay = formatProjectDescriptionForDisplay(proj.dimension) || "—";
     const selectedPaymentMethodId = proj.payment_method_type != null ? String(proj.payment_method_type) : "";
-    const paymentMethod = paymentChoices.length > 0
-      ? `<div class="payment-choices">${paymentChoices.map((choice) => `
+    // Same rule as the Paid Sheet editor: switched-on methods, plus the one this stop already uses.
+    const stopChoices = paymentChoices.filter((choice) => choice.active || choice.id === selectedPaymentMethodId);
+    const paymentMethod = stopChoices.length > 0
+      ? `<div class="payment-choices">${stopChoices.map((choice) => `
           <span class="payment-choice"><span class="payment-box">${selectedPaymentMethodId === choice.id ? "&#10003;" : ""}</span>${choice.label}</span>`).join("")}
         </div>`
       : (proj.proj_s_payment_method?.method_description || proj.proj_s_payment_method?.method_name || "—");

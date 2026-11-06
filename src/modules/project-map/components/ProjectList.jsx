@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { StatusBadge } from "@/shared/components/ui";
 import { stripTownshipLabel, getProjectAmountDisplay } from "../data/projectMap.data";
 
@@ -110,14 +110,39 @@ export default function ProjectList({ projects = [], selectedProjectId, onSelect
     });
   }, [projects, filters]);
 
+  // List order. "updated" keeps the order the projects arrive in (most
+  // recently updated first); "newest" / "oldest" sort by the date the project
+  // was entered on the map (created_at), so the oldest orders can be put on top.
+  const [sortOrder, setSortOrder] = useState("updated");
+  const sortedProjects = useMemo(() => {
+    if (sortOrder === "updated") return filteredProjects;
+    const time = (p) => {
+      const t = new Date(p.created_at).getTime();
+      return Number.isNaN(t) ? 0 : t;
+    };
+    const direction = sortOrder === "oldest" ? 1 : -1;
+    return [...filteredProjects].sort((a, b) => (time(a) - time(b)) * direction || (Number(a.id) - Number(b.id)));
+  }, [filteredProjects, sortOrder]);
+
   const now = new Date();
 
   return (
     <div style={{ height: "100%", minHeight: 0, overflow: "auto", background: "#f8fafc", borderRight: "1px solid #e2e8f0" }}>
-      <div style={{ padding: "6px 10px", borderBottom: "1px solid #e2e8f0", background: "#fff" }}>
+      <div style={{ padding: "6px 10px", borderBottom: "1px solid #e2e8f0", background: "#fff", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "6px" }}>
         <h6 style={{ margin: 0, fontSize: "11px", fontWeight: 600, color: "#64748b" }}>
           {filteredProjects.length} Project{filteredProjects.length !== 1 ? "s" : ""}
         </h6>
+        <select
+          id="project-list-sort"
+          aria-label="Sort projects"
+          value={sortOrder}
+          onChange={(e) => setSortOrder(e.target.value)}
+          style={{ fontSize: "10px", color: "#475569", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "1px 4px", background: "#fff", cursor: "pointer" }}
+        >
+          <option value="updated">Recently updated</option>
+          <option value="newest">Newest first</option>
+          <option value="oldest">Oldest first</option>
+        </select>
       </div>
       <div style={{ padding: "4px" }}>
         {filteredProjects.length === 0 ? (
@@ -125,7 +150,7 @@ export default function ProjectList({ projects = [], selectedProjectId, onSelect
             No projects found.
           </p>
         ) : (
-          filteredProjects.map((project) => {
+          sortedProjects.map((project) => {
             const statusName = project.proj_s_project_status?.status_name || "";
             const isSelected = project.id === selectedProjectId;
             const amount = getProjectAmountDisplay(project, statuses);

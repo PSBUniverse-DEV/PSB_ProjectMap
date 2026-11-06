@@ -61,6 +61,7 @@ const SETUP_TABLES = {
   buildingCategories: { table: "proj_s_building_categories", pk: "id" },
   permitStatuses: { table: "proj_s_permit_status", pk: "id" },
   welcomeCallStatuses: { table: "proj_s_welcome_call_status", pk: "id" },
+  confirmationStatuses: { table: "proj_s_confirmation_status", pk: "id" },
   paymentMethods: { table: "proj_s_payment_method", pk: "id" },
 };
 
@@ -145,6 +146,7 @@ const SETUP_ROW_USAGE = {
   buildingCategories: [{ table: "proj_t_projects", column: "building_category_id", from: "id", label: "project" }],
   permitStatuses: [{ table: "proj_t_projects", column: "permit_status_id", from: "id", label: "project" }],
   welcomeCallStatuses: [{ table: "proj_t_projects", column: "welcome_call_status_id", from: "id", label: "project" }],
+  confirmationStatuses: [{ table: "proj_t_projects", column: "confirmation_status_id", from: "id", label: "project" }],
   paymentMethods: [{ table: "proj_t_projects", column: "payment_method_type", from: "id", label: "project" }],
 };
 
@@ -705,6 +707,7 @@ const LOOKUP_TABLES = {
   buildingCategories: { table: "proj_s_building_categories", pk: "id", nameField: "building_category_name", descField: "description" },
   permitStatuses: { table: "proj_s_permit_status", pk: "id", nameField: "status_name", descField: "description" },
   welcomeCallStatuses: { table: "proj_s_welcome_call_status", pk: "id", nameField: "status_name", descField: "description" },
+  confirmationStatuses: { table: "proj_s_confirmation_status", pk: "id", nameField: "status_name", descField: "description" },
   paymentMethods: { table: "proj_s_payment_method", pk: "id", nameField: "method_name", descField: "method_description" },
   // Origin addresses only use reorderLookupRows; they have their own create/update/delete.
   originAddresses: { table: "proj_s_origin_addresses", pk: "id", nameField: "origin_name", descField: "formatted_address" },
@@ -1101,6 +1104,7 @@ export async function createProject(project) {
     building_category_id: toIntOrNull(project.building_category_id),
     permit_status_id: toIntOrNull(project.permit_status_id),
     welcome_call_status_id: toIntOrNull(project.welcome_call_status_id),
+    confirmation_status_id: toIntOrNull(project.confirmation_status_id),
     invoice_number: hasValue(project.invoice_number) ? String(project.invoice_number).trim() : null,
     order_received_at: project.order_received_at || null,
     scheduled_project_start: project.scheduled_project_start || null,
@@ -1161,6 +1165,7 @@ export async function updateProject(projectId, updates, { viaRunId = null } = {}
     building_category_id: toIntOrNull,
     permit_status_id: toIntOrNull,
     welcome_call_status_id: toIntOrNull,
+    confirmation_status_id: toIntOrNull,
     invoice_number: (v) => (hasValue(v) ? String(v).trim() : null),
     order_received_at: (v) => v || null,
     scheduled_project_start: (v) => v || null,
@@ -1953,7 +1958,7 @@ export async function loadProjects() {
         "id, client_name, formatted_address, address_line_1, city, state, state_code, " +
         "postal_code, country, address_latitude, address_longitude, site_latitude, site_longitude, " +
         "location_source, location_confirmed, status_id, dealer, " +
-        "building_category_id, permit_status_id, welcome_call_status_id, invoice_number, " +
+        "building_category_id, permit_status_id, welcome_call_status_id, confirmation_status_id, invoice_number, " +
         "order_received_at, scheduled_project_start, scheduled_project_end, install_start, install_end, " +
         "project_subtotal, project_notes, dimension, " +
         "created_at, updated_at, created_by, updated_by, " +
@@ -2040,7 +2045,7 @@ export async function loadRunDetails(runId) {
     supabase.from("proj_t_runs").select("*, proj_s_origin_addresses(*)").eq("id", runId).maybeSingle(),
     supabase
       .from("proj_t_run_projects")
-      .select("*, proj_t_projects(id, client_name, formatted_address, address_line_1, city, state, state_code, postal_code, country, address_latitude, address_longitude, site_latitude, site_longitude, dealer, building_category_id, permit_status_id, welcome_call_status_id, invoice_number, project_subtotal, order_received_at, scheduled_project_start, scheduled_project_end, install_start, install_end, project_notes, dimension, payment_method_type, payment_method_number, paid_sheet_notes, paid_sheet_done, status_before_run_completion_id, proj_s_project_status!proj_t_projects_status_id_fkey(*), previous_project_status:proj_s_project_status!proj_t_projects_status_before_run_completion_id_fkey(*), proj_s_building_categories(*), proj_s_permit_status(*), proj_s_welcome_call_status(*), proj_s_payment_method(id, method_name, method_description))")
+      .select("*, proj_t_projects(id, client_name, formatted_address, address_line_1, city, state, state_code, postal_code, country, address_latitude, address_longitude, site_latitude, site_longitude, dealer, building_category_id, permit_status_id, welcome_call_status_id, confirmation_status_id, invoice_number, project_subtotal, order_received_at, scheduled_project_start, scheduled_project_end, install_start, install_end, project_notes, dimension, payment_method_type, payment_method_number, paid_sheet_notes, paid_sheet_done, status_before_run_completion_id, proj_s_project_status!proj_t_projects_status_id_fkey(*), previous_project_status:proj_s_project_status!proj_t_projects_status_before_run_completion_id_fkey(*), proj_s_building_categories(*), proj_s_permit_status(*), proj_s_welcome_call_status(*), proj_s_confirmation_status(*), proj_s_payment_method(id, method_name, method_description))")
       .eq("run_id", runId)
       .order("stop_sequence"),
   ]);

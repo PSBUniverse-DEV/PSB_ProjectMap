@@ -139,6 +139,23 @@ const TABLE_DEFS = [
     ],
   },
   {
+    key: "confirmationStatuses",
+    label: "Confirmation Statuses",
+    pk: "id",
+    columns: [
+      { key: "status_name", label: "Status Name", sortable: true },
+      { key: "description", label: "Description", sortable: true },
+      { key: "display_order", label: "Order", sortable: true },
+      { key: "is_active", label: "Active", sortable: true },
+    ],
+    fields: [
+      { key: "status_name", label: "Status Name", required: true },
+      { key: "description", label: "Description" },
+      { key: "display_order", label: "Display Order", type: "number" },
+      { key: "is_active", label: "Is Active", type: "boolean" },
+    ],
+  },
+  {
     key: "paymentMethods",
     label: "Payment Methods",
     pk: "id",
@@ -354,7 +371,7 @@ export default function ProjectMapSetupView({ setup = {}, roles = [], roleStatus
   const singularName = tableDef?.label?.replace(/s$/, "") || "Item";
 
   // ─── Custom Tab Components ────────────────────────────────
-  const isCustomTab = ["projectStatuses", "originAddresses", "states", "buildingCategories", "permitStatuses", "welcomeCallStatuses", "runStatuses", "paymentMethods", "roleTabs"].includes(activeTab);
+  const isCustomTab = ["projectStatuses", "originAddresses", "states", "buildingCategories", "permitStatuses", "welcomeCallStatuses", "confirmationStatuses", "runStatuses", "paymentMethods", "roleTabs"].includes(activeTab);
 
   // Lookup table configs
   const lookupTableConfigs = {
@@ -381,6 +398,16 @@ export default function ProjectMapSetupView({ setup = {}, roles = [], roleStatus
     welcomeCallStatuses: {
       title: "Welcome Call Statuses",
       singularName: "Welcome Call Status",
+      nameField: "status_name",
+      nameLabel: "Status Name",
+      descField: "description",
+      descLabel: "Description",
+      searchFields: "status_name,description",
+      hasColor: false,
+    },
+    confirmationStatuses: {
+      title: "Confirmation Statuses",
+      singularName: "Confirmation Status",
       nameField: "status_name",
       nameLabel: "Status Name",
       descField: "description",
@@ -493,7 +520,7 @@ export default function ProjectMapSetupView({ setup = {}, roles = [], roleStatus
           <RoleStatusTabsGrid roles={roles} statuses={setup.projectStatuses || []} mappings={roleStatusMappings} runStatuses={setup.runStatuses || []} runMappings={roleRunStatusMappings} roleOptions={roleOptions} readOnly={readOnly} />
         ) : activeTab === "originAddresses" ? (
           <OriginAddressesGrid data={setup.originAddresses || []} states={setup.states || []} readOnly={readOnly} />
-        ) : ["projectStatuses", "states", "buildingCategories", "permitStatuses", "welcomeCallStatuses", "runStatuses", "paymentMethods"].includes(activeTab) ? (
+        ) : ["projectStatuses", "states", "buildingCategories", "permitStatuses", "welcomeCallStatuses", "confirmationStatuses", "runStatuses", "paymentMethods"].includes(activeTab) ? (
           <LookupTableGrid
             tableKey={activeTab}
             data={setup[activeTab] || []}

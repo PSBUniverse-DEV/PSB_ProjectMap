@@ -1272,36 +1272,43 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
     });
   };
 
+  // Instant: the stop's "Confirmation:" line, the button color, the drawer and
+  // the map card change at once and the window closes; the save runs in the
+  // background. If it fails, the previous value is put back.
   const handleSaveStopConfirmation = async () => {
     if (!editingStopConfirmation) return;
     const { projectId, confirmationStatusId } = editingStopConfirmation;
+    const runId = selectedRunId;
     const statusId = confirmationStatusId ? Number(confirmationStatusId) : null;
     const statusRow = statusId != null ? confirmationStatuses.find((s) => s.id === statusId) || null : null;
-    setBusy(true);
-    try {
-      await updateProject(projectId, {
-        confirmation_status_id: statusId,
-        updated_by: null,
-      }, { viaRunId: selectedRunId });
+    const previousProject = runProjects.find((rp) => rp.project_id === projectId)?.proj_t_projects || {};
+    const previousId = previousProject.confirmation_status_id ?? null;
+    const previousRow = previousProject.proj_s_confirmation_status ?? null;
 
-      // Targeted local patch: the stop's "Confirmation:" line, the button color,
-      // the drawer and map card update at once, without a reload.
+    const applyConfirmation = (id, row) => {
       setProjects((prev) =>
-        prev.map((p) => (p.id === projectId ? { ...p, confirmation_status_id: statusId } : p))
+        prev.map((p) => (p.id === projectId ? { ...p, confirmation_status_id: id } : p))
       );
       setRunProjects((prev) =>
         prev.map((rp) =>
           rp.project_id === projectId
-            ? { ...rp, proj_t_projects: { ...rp.proj_t_projects, confirmation_status_id: statusId, proj_s_confirmation_status: statusRow } }
+            ? { ...rp, proj_t_projects: { ...rp.proj_t_projects, confirmation_status_id: id, proj_s_confirmation_status: row } }
             : rp
         )
       );
+    };
 
-      setEditingStopConfirmation(null);
-      toastSuccess("Confirmation status updated.", "Runs");
+    applyConfirmation(statusId, statusRow);
+    setEditingStopConfirmation(null);
+    try {
+      await updateProject(projectId, {
+        confirmation_status_id: statusId,
+        updated_by: null,
+      }, { viaRunId: runId });
     } catch (err) {
+      applyConfirmation(previousId, previousRow);
       toastError(err?.message || "Failed to update confirmation status.", "Runs");
-    } finally { setBusy(false); }
+    }
   };
 
   const handleEditProjectPrice = (runProject) => {

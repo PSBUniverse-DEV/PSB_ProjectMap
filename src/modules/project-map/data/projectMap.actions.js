@@ -980,15 +980,18 @@ async function requireRunStopEdit(supabase, access, runProjectId) {
 //   must be ticked. Project status ticks do not count there.
 async function requireProjectEdit(supabase, access, projectId, { viaRunId = null } = {}) {
   if (viaRunId != null) {
-    const { data: stop, error: stopError } = await supabase
-      .from("proj_t_run_projects")
-      .select("run_id")
-      .eq("project_id", projectId)
-      .eq("run_id", viaRunId)
-      .maybeSingle();
+    // Both checks at once (one database trip saved on every stop edit).
+    const [{ data: stop, error: stopError }] = await Promise.all([
+      supabase
+        .from("proj_t_run_projects")
+        .select("run_id")
+        .eq("project_id", projectId)
+        .eq("run_id", viaRunId)
+        .maybeSingle(),
+      requireRunEdit(supabase, access, viaRunId),
+    ]);
     if (stopError) throw new Error(stopError.message);
     if (!stop) throw new Error("That project is not on this run.");
-    await requireRunEdit(supabase, access, viaRunId);
     return;
   }
 

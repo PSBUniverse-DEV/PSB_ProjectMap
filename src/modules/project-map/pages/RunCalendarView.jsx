@@ -1024,6 +1024,10 @@ export default function RunCalendarView({ runs = [], runStatuses = [], statuses 
                           <div style={{ fontSize: "11px", color: "#64748b" }}>{[project.city, project.state_code].filter(Boolean).join(", ") || "—"}</div>
                         </div>
                         {status?.status_name && <Pill color={status.display_color || "#64748b"}>{status.status_name}</Pill>}
+                        {/* Confirmation Status (orange like on the map); grey when none is set. */}
+                        {project.proj_s_confirmation_status?.status_name
+                          ? <Pill color="#d97706">{project.proj_s_confirmation_status.status_name}</Pill>
+                          : <Pill color="#94a3b8">No confirmation</Pill>}
                         <span style={{ flexShrink: 0, width: "90px", textAlign: "right", fontSize: "13px", whiteSpace: "nowrap" }}>
                           {project.project_subtotal != null ? money(project.project_subtotal) : "—"}
                         </span>
@@ -1073,7 +1077,6 @@ export default function RunCalendarView({ runs = [], runStatuses = [], statuses 
     </div>
   );
 }
-
 
 
 

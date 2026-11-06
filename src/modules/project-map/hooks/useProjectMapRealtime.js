@@ -65,7 +65,7 @@ export function useProjectMapRealtime(onSync) {
     }
 
     let debounceTimer = null;
-    // One console error per failure streak, reset when the channel recovers.
+    // One console warning per failure streak, reset when the channel recovers.
     let errorLogged = false;
     // True after the channel dropped, so the next SUBSCRIBED does a catch-up sync.
     let wasDown = false;
@@ -101,14 +101,16 @@ export function useProjectMapRealtime(onSync) {
           // this would otherwise spam the console on every attempt).
           if (!errorLogged) {
             errorLogged = true;
-            console.error(
-              `[ProjectMapRealtime] Realtime channel unavailable (${status}). ` +
-              "Cross-user push updates are OFF; the 30-second polling fallback " +
-              "(useProjectMapPolling) keeps data fresh meanwhile. Most common " +
-              "cause: RLS enabled on the proj_t_* tables without SELECT policies " +
-              "for the browser's role — run section 1a, and if needed section 3, " +
-              "of migration/003_enable_realtime_publication.sql. Also check the " +
-              "Network tab's WS entry for .../realtime/v1/websocket (status 101 = connected)."
+            // A warning, not an error: the page keeps working (30-second polling)
+            // and supabase-js reconnects by itself, then a catch-up sync runs.
+            // An error-level log would raise Next.js's red dev overlay for a temporary drop.
+            console.warn(
+              `[ProjectMapRealtime] Live sync dropped (${status}); reconnecting automatically. ` +
+              "Until then, changes from other users are picked up every 30 seconds " +
+              "(useProjectMapPolling). If it never shows \"Live sync connected\", check the " +
+              "Network tab's WS entry for .../realtime/v1/websocket (status 101 = connected), " +
+              "then RLS SELECT policies / the publication: sections 1a and 3 of " +
+              "migration/003_enable_realtime_publication.sql."
             );
           }
         }

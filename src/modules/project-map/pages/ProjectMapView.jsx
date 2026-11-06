@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Modal, toastError, toastSuccess } from "@/shared/components/ui";
 import { startNavbarLoader } from "@/shared/utils/navbar-loader";
-import { deleteProject, calculateRoute, calculateMultiStopRoute, deleteRun, removeProjectFromRun, loadRunDetails, updateStopSequence, addProjectToRun, updateRun, updateProject, getProjectRunAssignment, updateStopNote, updateRunStopsCount, loadProjects, loadRuns, loadAllRunProjects, loadProjectMapSync } from "../data/projectMap.actions";
+import { deleteProject, calculateRoute, calculateMultiStopRoute, deleteRun, removeProjectFromRun, loadRunDetails, updateStopSequence, reorderRunStops, addProjectToRun, updateRun, updateProject, getProjectRunAssignment, updateStopNote, updateRunStopsCount, loadProjects, loadRuns, loadAllRunProjects, loadProjectMapSync } from "../data/projectMap.actions";
 import { computeRunSegmentData } from "../utils/runSegments";
 import { reverseGeocode } from "../utils/geocoding";
 import { useProjectMapRealtime } from "../hooks/useProjectMapRealtime";
@@ -145,6 +145,9 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
   const [runRouteLoading, setRunRouteLoading] = useState(false);
 
   const [runSegmentData, setRunSegmentData] = useState(null);
+  // Runs whose stops were reordered by hand since their last Recalculate Run:
+  // their route line, distance and time still belong to the old order.
+  const [staleRouteRunIds, setStaleRouteRunIds] = useState(() => new Set());
   const [showRouteErrorModal, setShowRouteErrorModal] = useState(false);
   // Status tabs are shown per Project Map role. Users with none never reach this
   // view (ProjectMapPage shows a blocked screen). A missing prop means no restriction.
@@ -212,6 +215,12 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
   // Latest selected run id for async callbacks (refreshRunData) — avoids
   // stale closures when a sync fires long after the callback was created.
   const selectedRunIdRef = useRef(null);
+  // Drag-and-drop stop order: the order waiting to be saved, the save running
+  // now, and a counter bumped on every drop. Live sync checks these so it never
+  // puts an older order back on screen while a save is pending.
+  const pendingStopOrderRef = useRef(null);
+  const stopOrderSaveRef = useRef(null);
+  const stopOrderVersionRef = useRef(0);
   const runProjectsRef = useRef([]);
   const runSelectionInProgressRef = useRef(false);
   // Session cache of computed run routes (see buildRouteFingerprint /
@@ -785,6 +794,8 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
     if (!selectedRunId) return;
     setRecalculating(true);
     try {
+      // Use the order just dragged: wait until it is saved before reading stops.
+      await stopOrderSaveRef.current;
       const details = await loadRunDetails(selectedRunId);
       const freshProjects = details.projects || [];
       setRunProjects(freshProjects);
@@ -811,6 +822,13 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
           segmentData: data,
         });
       }
+      // The route now matches the stop order again: show distance/time again.
+      setStaleRouteRunIds((prev) => {
+        if (!prev.has(selectedRunId)) return prev;
+        const next = new Set(prev);
+        next.delete(selectedRunId);
+        return next;
+      });
       // Repairs are not revenue, so they are left out of the run's saved subtotal.
       const subtotal = splitRunAmounts(freshProjects).revenue;
       const totalMileage = data.totalDistance / 1609.344;
@@ -1018,11 +1036,18 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
   const handleRemoteSync = useCallback(async () => {
     const runId = selectedRunIdRef.current;
     const requestId = runId ? ++runRequestIdRef.current : null;
+    const stopOrderVersion = stopOrderVersionRef.current;
+    const stopOrderSavingAtStart = Boolean(pendingStopOrderRef.current || stopOrderSaveRef.current);
     try {
       const sync = await loadProjectMapSync(runId || null);
+      // A stop order dropped on this screen was not saved yet when this sync
+      // read the database (or changed since): keep the order on screen.
+      const stopOrderChanging = stopOrderSavingAtStart
+        || Boolean(pendingStopOrderRef.current || stopOrderSaveRef.current)
+        || stopOrderVersionRef.current !== stopOrderVersion;
       setProjects(sync.projects);
       setRuns(sync.runs);
-      setAllRunProjects(sync.runProjects);
+      if (!stopOrderChanging) setAllRunProjects(sync.runProjects);
       if (!runId) return;
       if (selectedRunIdRef.current !== runId || requestId !== runRequestIdRef.current) {
         return; // stale — a newer selection/fetch owns the panel now
@@ -1033,6 +1058,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
         clearRunState();
         return;
       }
+      if (stopOrderChanging) return;
       const stops = details.projects || [];
       setRunProjects(stops);
       // Only write the stops count when it actually differs (same rule as
@@ -1318,21 +1344,45 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
     } finally { setBusy(false); }
   };
 
-  const handleReorderStops = async (fromIndex, toIndex) => {
-    if (!selectedRunId || runProjects.length === 0) return;
-    setBusy(true);
-    try {
-      const updated = [...runProjects];
-      const [moved] = updated.splice(fromIndex, 1);
-      updated.splice(toIndex, 0, moved);
-      const promises = updated.map((rp, idx) => updateStopSequence(rp.id, idx));
-      await Promise.all(promises);
-      toastSuccess("Stop order updated.", "Runs");
-      await refreshRunData();
-      await refreshRunProjects();
-    } catch (err) {
-      toastError(err?.message || "Failed to reorder stops.", "Runs");
-    } finally { setBusy(false); }
+  // Saves dropped stop orders one at a time. Only the latest waiting order is
+  // sent, so fast drags never race each other. If a save fails (and nothing
+  // newer is waiting), the saved order is reloaded.
+  const flushStopOrder = useCallback(() => {
+    if (stopOrderSaveRef.current) return stopOrderSaveRef.current;
+    const saving = (async () => {
+      while (pendingStopOrderRef.current) {
+        const { runId, ids } = pendingStopOrderRef.current;
+        pendingStopOrderRef.current = null;
+        try {
+          await reorderRunStops(runId, ids);
+        } catch (err) {
+          toastError(err?.message || "Failed to save the stop order.", "Runs");
+          if (!pendingStopOrderRef.current && selectedRunIdRef.current === runId) await refreshRunData();
+        }
+      }
+    })();
+    stopOrderSaveRef.current = saving.finally(() => { stopOrderSaveRef.current = null; });
+    return stopOrderSaveRef.current;
+  }, [refreshRunData]);
+
+  // Drag-and-drop reorder: instant. The list renumbers at once and the order is
+  // saved in the background. The route line, distance and time are NOT redone
+  // here; the panel shows "—" until the user clicks Recalculate Run.
+  const handleReorderStops = (fromIndex, toIndex) => {
+    if (!selectedRunId || runProjects.length === 0 || fromIndex === toIndex) return;
+    const runId = selectedRunId;
+    const updated = [...runProjects];
+    const [moved] = updated.splice(fromIndex, 1);
+    updated.splice(toIndex, 0, moved);
+    const reordered = updated.map((rp, idx) => ({ ...rp, stop_sequence: idx }));
+    const sequenceById = new Map(reordered.map((rp) => [rp.id, rp.stop_sequence]));
+    stopOrderVersionRef.current += 1;
+    setStaleRouteRunIds((prev) => (prev.has(runId) ? prev : new Set(prev).add(runId)));
+    setRunProjects(reordered);
+    // Keeps "Run: … (2nd stop)" labels on the map in step without a reload.
+    setAllRunProjects((prev) => prev.map((rp) => (sequenceById.has(rp.id) ? { ...rp, stop_sequence: sequenceById.get(rp.id) } : rp)));
+    pendingStopOrderRef.current = { runId, ids: reordered.map((rp) => rp.id) };
+    flushStopOrder();
   };
 
   // Clear selected run if it's no longer in filtered list
@@ -1415,6 +1465,16 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
       return;
     }
 
+    // Stops reordered by hand: keep this run's last drawn route (or none) and
+    // do not recalculate; Recalculate Run redraws it for the new order.
+    if (staleRouteRunIds.has(selectedRunId)) {
+      const lastRoute = runRouteCacheRef.current.get(selectedRunId);
+      setRunRouteData(lastRoute?.routeData || null);
+      setRunSegmentData(lastRoute?.segmentData || null);
+      setRunRouteLoading(false);
+      return;
+    }
+
     const fingerprint = buildRouteFingerprint(selectedRun, runProjects);
     const cached = runRouteCacheRef.current.get(selectedRunId);
     if (cached && cached.fingerprint === fingerprint) {
@@ -1469,7 +1529,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
         if (!cancelled) setRunRouteLoading(false);
       });
     return () => { cancelled = true; };
-  }, [mode, selectedRunId, runProjects]);
+  }, [mode, selectedRunId, runProjects, staleRouteRunIds]);
 
   // Calculate route when origin or selected project changes
   useEffect(() => {
@@ -1609,7 +1669,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
             documented on the two effects above): it shows while either is in
             flight and hides only once ALL panel data is displayed. */}
         {mode === "runs" && selectedRun && (
-          <RunDetailPanel run={selectedRun} runProjects={runProjects} runSegmentData={runSegmentData} onClose={handleCloseRunDetail} onEdit={canEditSelectedRun ? handleEditRun : null} onDelete={canEditSelectedRun ? () => setConfirmDeleteRunId(selectedRun.id) : null} onRemoveProject={canEditSelectedRun ? handleRemoveProjectFromRun : null} onReorderStops={canEditSelectedRun ? handleReorderStops : null} onRecalculate={handleRecalculate} recalculating={recalculating} onEditStopNote={canEditSelectedRun ? handleEditStopNote : null} readOnly={!canEditSelectedRun} filesReadOnly={!canEditSelectedRun && !canAttach} canDeleteFile={(file) => canEditSelectedRun || isOwnFile(statusTabAccess, file)} onEditStopDate={handleEditStopDate} onEditStopInvoice={handleEditStopInvoice} onEditProjectPrice={handleEditProjectPrice} isLoading={isLoadingRunDetails || runRouteLoading} runStatuses={runStatuses} onStatusChange={handleRunStatusChange} />
+          <RunDetailPanel run={selectedRun} runProjects={runProjects} runSegmentData={runSegmentData} onClose={handleCloseRunDetail} onEdit={canEditSelectedRun ? handleEditRun : null} onDelete={canEditSelectedRun ? () => setConfirmDeleteRunId(selectedRun.id) : null} onRemoveProject={canEditSelectedRun ? handleRemoveProjectFromRun : null} onReorderStops={canEditSelectedRun ? handleReorderStops : null} onRecalculate={handleRecalculate} recalculating={recalculating} onEditStopNote={canEditSelectedRun ? handleEditStopNote : null} routeStale={staleRouteRunIds.has(selectedRunId)} readOnly={!canEditSelectedRun} filesReadOnly={!canEditSelectedRun && !canAttach} canDeleteFile={(file) => canEditSelectedRun || isOwnFile(statusTabAccess, file)} onEditStopDate={handleEditStopDate} onEditStopInvoice={handleEditStopInvoice} onEditProjectPrice={handleEditProjectPrice} isLoading={isLoadingRunDetails || runRouteLoading} runStatuses={runStatuses} onStatusChange={handleRunStatusChange} />
         )}
       </div>
 

@@ -1883,6 +1883,51 @@ export async function updateStopSequence(runProjectId, stopSequence) {
   return data;
 }
 
+/**
+ * Saves a run's whole stop order in ONE call (drag-and-drop in the Runs tab).
+ * `orderedRunProjectIds` lists every stop of the run (proj_t_run_projects.id)
+ * in the new order; each stop's stop_sequence becomes its index. Access is
+ * checked once for the run (not once per stop), and only stops whose position
+ * changed are written, so a reorder costs a few queries instead of one full
+ * access check per stop.
+ */
+export async function reorderRunStops(runId, orderedRunProjectIds) {
+  const id = toIntOrNull(runId);
+  if (id === null) throw new Error("Run is required.");
+  const orderedIds = (orderedRunProjectIds || []).map(toIntOrNull);
+  if (orderedIds.length === 0 || orderedIds.some((stopId) => stopId === null)) {
+    throw new Error("Stop order is required.");
+  }
+
+  const supabase = getSupabaseAdmin();
+  await requireRunEdit(supabase, await requireProjectMapAccess(), id);
+
+  const { data: stops, error } = await supabase.from("proj_t_run_projects").select("id, stop_sequence").eq("run_id", id);
+  if (error) throw new Error(error.message);
+  const currentSequence = new Map((stops || []).map((stop) => [Number(stop.id), Number(stop.stop_sequence)]));
+  // The list must be exactly this run's stops, each once; otherwise someone
+  // changed the run meanwhile and the screen's order is out of date.
+  if (
+    currentSequence.size !== orderedIds.length ||
+    new Set(orderedIds).size !== orderedIds.length ||
+    orderedIds.some((stopId) => !currentSequence.has(stopId))
+  ) {
+    throw new Error("This run's stops changed. Please reopen the run and try again.");
+  }
+
+  const changed = orderedIds
+    .map((stopId, index) => ({ stopId, index }))
+    .filter(({ stopId, index }) => currentSequence.get(stopId) !== index);
+  const results = await Promise.all(
+    changed.map(({ stopId, index }) =>
+      supabase.from("proj_t_run_projects").update({ stop_sequence: index }).eq("id", stopId).eq("run_id", id)
+    )
+  );
+  const failed = results.find((result) => result.error);
+  if (failed) throw new Error(failed.error.message);
+  return { success: true, updated: changed.length };
+}
+
 export async function updateStopNote(runProjectId, notes) {
   const supabase = getSupabaseAdmin();
   await requireRunStopEdit(supabase, await requireProjectMapAccess(), runProjectId);

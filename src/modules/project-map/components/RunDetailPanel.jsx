@@ -31,7 +31,7 @@ function formatMileage(miles) {
   return `${Number(miles).toFixed(1)} mi`;
 }
 
-export default function RunDetailPanel({ run, runProjects = [], runSegmentData = null, onClose, onEdit, onDelete, onRemoveProject, onReorderStops, onRecalculate, recalculating = false, onEditStopNote, onEditStopDate, onEditStopInvoice, onEditProjectPrice, onProjectUpdated, isLoading = false, runStatuses = [], onStatusChange, readOnly = false, filesReadOnly = false, canDeleteFile = null }) {
+export default function RunDetailPanel({ run, runProjects = [], runSegmentData = null, onClose, onEdit, onDelete, onRemoveProject, onReorderStops, onRecalculate, recalculating = false, onEditStopNote, onEditStopDate, onEditStopInvoice, onEditProjectPrice, onProjectUpdated, isLoading = false, runStatuses = [], onStatusChange, readOnly = false, filesReadOnly = false, canDeleteFile = null, routeStale = false }) {
   const [dragIndex, setDragIndex] = useState(null);
   const [dragOverIndex, setDragOverIndex] = useState(null);
   const [isEditingStatus, setIsEditingStatus] = useState(false);
@@ -45,9 +45,11 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
 
   const originName = run?.proj_s_origin_addresses?.origin_name || "No Origin";
   const hasStops = runProjects.length > 0;
-  const totalDistance = hasStops ? formatDistance(run?.estimated_distance) : "—";
-  const totalMileage = hasStops ? formatMileage(run?.estimated_mileage) : "—";
-  const totalDuration = hasStops ? formatDuration(run?.estimated_duration) : "—";
+  // After a manual reorder the saved distance/time belong to the old order:
+  // show "—" until Recalculate Run (routeStale). Revenue/repairs don't depend on order.
+  const totalDistance = hasStops && !routeStale ? formatDistance(run?.estimated_distance) : "—";
+  const totalMileage = hasStops && !routeStale ? formatMileage(run?.estimated_mileage) : "—";
+  const totalDuration = hasStops && !routeStale ? formatDuration(run?.estimated_duration) : "—";
   // Revenue excludes repairs; repairs are totalled on their own (never revenue).
   // Computed from the stops so it is right even before the saved estimate refreshes.
   const runAmounts = useMemo(() => splitRunAmounts(runProjects), [runProjects]);
@@ -94,13 +96,13 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
   };
 
   const actionButtons = useMemo(() => {
-    const print = () => generateRunManifestPrint(run, runProjects, runSegmentData);
+    const print = () => generateRunManifestPrint(run, runProjects, routeStale ? null : runSegmentData);
     const btns = readOnly ? [] : [{ label: "Edit", onClick: onEdit, variant: "secondary" }];
     // Same print for every status; a run in progress gets the quieter button style.
     const inProgress = runStatusKeyByName(runStatuses, status) === "in_progress";
     btns.push({ label: "Print Record", onClick: print, variant: inProgress ? "secondary" : "primary" });
     return btns;
-  }, [status, onEdit, run, runProjects, runSegmentData, runStatuses, readOnly]);
+  }, [status, onEdit, run, runProjects, runSegmentData, runStatuses, readOnly, routeStale]);
 
   if (!run) return null;
 
@@ -216,6 +218,11 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
                   <div><div style={{ fontSize: "9px", color: "#fca5a5" }}>Repairs</div><div style={{ fontSize: "16px", fontWeight: 700, color: "#f87171" }}>{totalRepairs}</div></div>
                 )}
               </div>
+              {routeStale && (
+                <div style={{ marginTop: "8px", fontSize: "10px", color: "#fcd34d", lineHeight: 1.4 }}>
+                  Stop order changed. Click <strong>Recalculate Run</strong> when you&apos;re done to redraw the route and update distance and time.
+                </div>
+              )}
             </div>
 
             <div style={{ marginBottom: "10px" }}>
@@ -256,7 +263,7 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
 
                   {runProjects.map((rp, idx) => {
                     const proj = rp.proj_t_projects || {};
-                    const segment = runSegmentData?.segments?.[idx];
+                    const segment = routeStale ? undefined : runSegmentData?.segments?.[idx];
                     const currentProjectStatus = proj.proj_s_project_status?.status_name || "—";
                     const previousProjectStatus = proj.previous_project_status?.status_name || null;
                     const projectStatusLabel = runStatusKeyByName(runStatuses, run.status) === "completed" && previousProjectStatus && currentProjectStatus !== previousProjectStatus
@@ -280,10 +287,13 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
                             <div style={{ width: "10px", height: "10px", borderRadius: "50%", background: "#3b82f6", border: "2px solid #fff", boxShadow: "0 0 0 2px #3b82f6" }} />
                           </div>
                           <div style={{ flex: 1, paddingTop: "2px" }}>
-                            {(segment || idx === 0) && (
+                            {(segment || (idx === 0 && !routeStale)) && (
                               <div style={{ fontSize: "9px", color: hasError ? "#dc2626" : "#64748b", marginBottom: "4px", fontStyle: "italic" }}>{segDistance}{segDuration ? ` · ${segDuration}` : ""}</div>
                             )}
-                            <div draggable={!readOnly} onDragStart={() => setDragIndex(idx)} onDragOver={(e) => { e.preventDefault(); setDragOverIndex(idx); }} onDragLeave={() => setDragOverIndex(null)} onDrop={() => { if (dragIndex !== null && dragIndex !== idx) { onReorderStops?.(dragIndex, idx); } setDragIndex(null); setDragOverIndex(null); }} onDragEnd={() => { setDragIndex(null); setDragOverIndex(null); }} style={{ padding: "5px 8px", background: isDragging ? "#fef3c7" : (isDragOver ? "#f0f9ff" : "#f8fafc"), border: `1px solid ${isDragOver ? "#93c5fd" : "#e2e8f0"}`, borderRadius: "3px", cursor: readOnly ? "default" : "grab", opacity: isDragging ? 0.7 : 1, transition: "all 0.15s", marginBottom: "6px" }}>
+                            {/* Chromium cancels a drag when the dragged element changes during
+                                dragstart, so the "dragging" highlight is applied one frame later.
+                                The stop's index travels in the drag data; drop reads it from there. */}
+                            <div draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", String(idx)); requestAnimationFrame(() => setDragIndex(idx)); }} onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (dragOverIndex !== idx) setDragOverIndex(idx); }} onDragLeave={() => setDragOverIndex(null)} onDrop={(e) => { e.preventDefault(); const raw = e.dataTransfer.getData("text/plain"); const fromIndex = raw !== "" && !Number.isNaN(Number(raw)) ? Number(raw) : dragIndex; if (fromIndex !== null && fromIndex !== idx) { onReorderStops?.(fromIndex, idx); } setDragIndex(null); setDragOverIndex(null); }} onDragEnd={() => { setDragIndex(null); setDragOverIndex(null); }} style={{ padding: "5px 8px", background: isDragging ? "#fef3c7" : (isDragOver ? "#f0f9ff" : "#f8fafc"), border: `1px solid ${isDragOver ? "#93c5fd" : "#e2e8f0"}`, borderRadius: "3px", cursor: readOnly ? "default" : "grab", opacity: isDragging ? 0.7 : 1, transition: "all 0.15s", marginBottom: "6px" }}>
                               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "4px" }}>
                                 <div style={{ flex: 1 }}>
                                   <div style={{ fontWeight: 600, fontSize: "11px", color: "#1e293b", marginBottom: "1px" }}>{idx + 1}. {proj.client_name || "Untitled"}</div>

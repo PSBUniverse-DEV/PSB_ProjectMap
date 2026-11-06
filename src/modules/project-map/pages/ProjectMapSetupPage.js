@@ -12,14 +12,14 @@ export default async function ProjectMapSetupPage() {
     const access = await loadProjectStatusTabAccess();
     return <ProjectMapAccessBlocked access={{ ...access, reason: "no-page-access" }} page="Project Map Setup" />;
   }
-  // Read-only users (no Role Tabs ticks) may open Setup but change nothing.
-  const [loadedSetup, roleTabs, allRunStatuses, access] = await Promise.all([
+  // Having the Setup card is enough to manage Setup; Role Tabs ticks only
+  // decide editing projects and runs on the other Project Map pages.
+  const [loadedSetup, roleTabs, allRunStatuses] = await Promise.all([
     loadProjectMapSetup(),
     loadRoleStatusMappings(),
     loadAllRunStatuses(),
-    loadProjectStatusTabAccess(),
   ]);
   // Setup shows switched-off run statuses too, so they can be switched back on.
   const setup = { ...loadedSetup, runStatuses: allRunStatuses };
-  return <ProjectMapSetupView setup={setup} roles={roleTabs.roles} roleStatusMappings={roleTabs.mappings} roleRunStatusMappings={roleTabs.runMappings} roleOptions={roleTabs.options} readOnly={access.readOnly === true} />;
+  return <ProjectMapSetupView setup={setup} roles={roleTabs.roles} roleStatusMappings={roleTabs.mappings} roleRunStatusMappings={roleTabs.runMappings} roleOptions={roleTabs.options} />;
 }

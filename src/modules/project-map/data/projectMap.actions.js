@@ -71,17 +71,14 @@ function resolveSetupTable(key) {
   return entry;
 }
 
-// Shown when a read-only user tries to change something (see readOnly in loadProjectStatusTabAccess).
-const READ_ONLY_MESSAGE = "Your Project Map roles are view only, so nothing can be changed.";
-
-// Setup actions run only for roles that have the setup page's card (same rule as the page),
-// and never for read-only users (they may open Setup but change nothing).
+// Setup actions run only for roles that have the setup page's card (same rule as the page).
+// Role Tabs ticks are NOT checked here: they decide editing projects and runs on the
+// Map, Run Masterlist and Calendar, not managing Setup. A role with the Setup card
+// (e.g. Dev) can manage Setup even when it ticks no project or run status.
 async function requireSetupAccess() {
   if (!(await loadPageAccess(PROJECT_MAP_PAGES.setup))) {
     throw new Error("Your role does not have access to Project Map Setup.");
   }
-  const access = await loadProjectStatusTabAccess();
-  if (access.readOnly) throw new Error(READ_ONLY_MESSAGE);
 }
 
 export async function createSetupRow(tableKey, row) {

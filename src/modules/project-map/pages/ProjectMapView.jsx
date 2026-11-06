@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Modal, toastError, toastSuccess } from "@/shared/components/ui";
 import { startNavbarLoader } from "@/shared/utils/navbar-loader";
-import { deleteProject, calculateRoute, calculateMultiStopRoute, deleteRun, removeProjectFromRun, loadRunDetails, updateStopSequence, reorderRunStops, addProjectToRun, updateRun, updateProject, getProjectRunAssignment, updateStopNote, updateRunStopsCount, loadProjects, loadRuns, loadAllRunProjects, loadProjectMapSync } from "../data/projectMap.actions";
+import { deleteProject, calculateRoute, calculateMultiStopRoute, deleteRun, removeProjectFromRun, loadRunDetails, reorderRunStops, recalculateRunRoute, addProjectToRun, updateRun, updateProject, getProjectRunAssignment, updateStopNote, updateRunStopsCount, loadProjects, loadRuns, loadAllRunProjects, loadProjectMapSync } from "../data/projectMap.actions";
 import { computeRunSegmentData } from "../utils/runSegments";
 import { reverseGeocode } from "../utils/geocoding";
 import { useProjectMapRealtime } from "../hooks/useProjectMapRealtime";
@@ -791,84 +791,49 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
 
   const handleCloseForm = () => { setShowAddForm(false); setEditingProject(null); setInitialLocation(null); setTempMarker(null); clearMapSearch(); };
 
+  // Recalculate Run: ONE server call (recalculateRunRoute) loads the stops,
+  // gets the route and saves the run's totals, stop count and stop numbers.
+  // The result is applied here directly, so nothing else is reloaded.
   const handleRecalculate = useCallback(async () => {
     if (!selectedRunId) return;
+    const runId = selectedRunId;
     setRecalculating(true);
     try {
-      // Use the order just dragged: wait until it is saved before reading stops.
+      // Use the order just dragged: wait until it is saved before recalculating.
       await stopOrderSaveRef.current;
-      const details = await loadRunDetails(selectedRunId);
-      const freshProjects = details.projects || [];
-      setRunProjects(freshProjects);
-      const origin = selectedRun?.proj_s_origin_addresses;
-      if (!origin || origin.latitude == null || origin.longitude == null) {
-        toastError("Run has no origin address with valid coordinates.", "Recalculate"); return;
-      }
-      const data = await computeRunSegmentData(selectedRun, freshProjects);
-      if (!data) {
-        toastError("Not enough valid coordinates to calculate a route.", "Recalculate"); return;
-      }
+      const result = await recalculateRunRoute(runId);
+      if (selectedRunIdRef.current !== runId) return; // another run was opened meanwhile
+      const data = result.segmentData;
+      const freshProjects = result.projects || [];
       if (data.hasPartialFailure) setShowRouteErrorModal(true);
       const routeData = { distance: data.totalDistance, duration: data.totalDuration, geometry: data.geometry };
       setRunRouteData(routeData);
       setRunSegmentData(data);
-      // Write-through: the manual recalculation is authoritative, so refresh
-      // the route cache with exactly what it produced. Without this, the next
-      // route-effect run (triggered by the setRunProjects above) would hit
-      // the cache and re-serve the previous route.
+      // Write-through so the route effect (triggered by setRunProjects below)
+      // re-serves exactly this route instead of recalculating.
       if (!data.hasPartialFailure) {
-        storeRouteCache(runRouteCacheRef.current, selectedRunId, {
+        storeRouteCache(runRouteCacheRef.current, runId, {
           fingerprint: buildRouteFingerprint(selectedRun, freshProjects),
           routeData,
           segmentData: data,
         });
       }
+      setRunProjects(freshProjects);
+      // New totals for this run only (no reload of every run).
+      if (result.run) setRuns((prev) => prev.map((r) => (r.id === runId ? { ...r, ...result.run } : r)));
       // The route now matches the stop order again: show distance/time again.
       setStaleRouteRunIds((prev) => {
-        if (!prev.has(selectedRunId)) return prev;
+        if (!prev.has(runId)) return prev;
         const next = new Set(prev);
-        next.delete(selectedRunId);
+        next.delete(runId);
         return next;
       });
-      // Repairs are not revenue, so they are left out of the run's saved subtotal.
-      const subtotal = splitRunAmounts(freshProjects).revenue;
-      const totalMileage = data.totalDistance / 1609.344;
-      await updateRun(selectedRunId, { estimated_distance: data.totalDistance, estimated_duration: data.totalDuration, estimated_mileage: totalMileage, estimated_subtotal: subtotal });
-
-      // Normalize stop_sequence to match the display order (0..n-1) after a
-      // recalculation. Sequence drift can happen when stops are removed (the
-      // delete leaves gaps), so this keeps sequences contiguous.
-      //
-      // Only rows whose stored sequence actually differs are written —
-      // identical-value UPDATEs would still fire realtime events on
-      // proj_t_run_projects and cause needless sync passes on other users'
-      // screens.
-      //
-      // Note: an earlier version also computed a per-stop arrival_datetime
-      // here (run date 8:00 AM + cumulative OSRM durations), but it was never
-      // persisted or displayed anywhere — the UI shows the project's agreed
-      // arrival window (install_start/install_end) instead. Removed as dead
-      // code; per-stop ETAs would be a separate feature (see rule.md §12).
-      const sequenceUpdates = [];
-      for (let i = 0; i < freshProjects.length; i++) {
-        const rp = freshProjects[i];
-        if (rp && rp.id && rp.stop_sequence !== i) {
-          sequenceUpdates.push(updateStopSequence(rp.id, i));
-        }
-      }
-      if (sequenceUpdates.length > 0) {
-        await Promise.all(sequenceUpdates);
-      }
-      
-      await updateRunStopsCount(selectedRunId, freshProjects.length);
-      await refreshRuns();
       toastSuccess("Route recalculated successfully.", "Recalculate");
     } catch (err) {
       console.error("[ProjectMapView] Recalculate failed:", err);
       toastError(err?.message || "Failed to recalculate route.", "Recalculate");
-      setRunRouteData(null); setRunSegmentData(null);
     } finally { setRecalculating(false); }
-  }, [selectedRunId, selectedRun, refreshRuns]);
+  }, [selectedRunId, selectedRun]);
 
   // Opens the status pop-up for the stops of a run that was cancelled or deleted.
   const promptForReleasedStops = useCallback((stops, wasDeleted, releaseToken) => {

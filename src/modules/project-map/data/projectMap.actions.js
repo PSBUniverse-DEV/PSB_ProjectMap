@@ -8,7 +8,7 @@ import {
   getSignedFileUrl,
   removeStoredFiles as removeStorageObjects,
 } from "@/core/storage/files.service";
-import { PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, REPAIR_STATUS_KEYS, PROJECT_COMMENT_MAX_LENGTH, PROJECT_MAP_PAGES } from "./projectMap.data";
+import { PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, REPAIR_STATUS_KEYS, PROJECT_COMMENT_MAX_LENGTH, PROJECT_MAP_PAGES, splitRunAmounts } from "./projectMap.data";
 import { getCurrentSession } from "@/core/auth/session.service";
 import { fetchAllRows, loadPageAccess, loadProjectStatusTabAccess, loadRuns as loadRunsForAccess } from "./projectMap.server";
 import projectMapModule from "../index";
@@ -2137,7 +2137,8 @@ async function fetchDrivingRoute(coords) {
       url.searchParams.set("waypoints", coords.map((c) => `${c.lat},${c.lng}`).join("|"));
       url.searchParams.set("mode", "drive");
       url.searchParams.set("apiKey", key);
-      const response = await fetch(url.toString());
+      // Never wait forever on the routing service; fall back to OSRM instead.
+      const response = await fetch(url.toString(), { signal: AbortSignal.timeout(8000) });
       if (response.ok) {
         const data = await response.json();
         const feature = data.features?.[0];
@@ -2162,7 +2163,7 @@ async function fetchDrivingRoute(coords) {
   }
 
   const coordsStr = coords.map((c) => `${c.lng},${c.lat}`).join(";");
-  const response = await fetch(`${OSRM_DEMO_URL}/${coordsStr}?overview=full&geometries=geojson&steps=false`);
+  const response = await fetch(`${OSRM_DEMO_URL}/${coordsStr}?overview=full&geometries=geojson&steps=false`, { signal: AbortSignal.timeout(15000) });
   if (!response.ok) {
     const text = await response.text().catch(() => "");
     throw new Error(`Route request failed (${response.status}): ${text || response.statusText}`);
@@ -2251,6 +2252,68 @@ export async function calculateMultiStopRoute(coordinates) {
 }
 
 // Calculate per-segment routes for a run
+/**
+ * Recalculate Run in ONE server call. Checks access once, loads the run and
+ * its stops (in saved order), gets the driving route (one routing request),
+ * then saves the run's estimates and stop count and makes stop numbers 0..n-1,
+ * all in parallel. Returns what the screen needs, so it reloads nothing:
+ * { run, projects, segmentData }.
+ */
+export async function recalculateRunRoute(runId) {
+  const id = toIntOrNull(runId);
+  if (id === null) throw new Error("Run is required.");
+  const supabase = getSupabaseAdmin();
+  await requireRunEdit(supabase, await requireProjectMapAccess(), id);
+
+  const details = await loadRunDetails(id);
+  const run = details.run;
+  if (!run) throw new Error("Run not found.");
+  const projects = details.projects || [];
+
+  const origin = run.proj_s_origin_addresses;
+  if (!origin || origin.latitude == null || origin.longitude == null) {
+    throw new Error("Run has no origin address with valid coordinates.");
+  }
+  // Same points as computeRunSegmentData: the origin, then each stop with coordinates.
+  const coords = [{ lat: Number(origin.latitude), lng: Number(origin.longitude) }];
+  projects.forEach((rp) => {
+    const proj = rp.proj_t_projects || {};
+    const lat = Number(proj.site_latitude ?? proj.address_latitude);
+    const lng = Number(proj.site_longitude ?? proj.address_longitude);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) coords.push({ lat, lng });
+  });
+  if (coords.length < 2) throw new Error("Not enough valid coordinates to calculate a route.");
+
+  const segmentData = await calculateSegmentRoutes(coords);
+
+  // Repairs are not revenue, so they are left out of the run's saved subtotal.
+  const estimates = {
+    estimated_distance: segmentData.totalDistance,
+    estimated_duration: segmentData.totalDuration,
+    estimated_mileage: segmentData.totalDistance / 1609.344,
+    estimated_subtotal: splitRunAmounts(projects).revenue,
+    stops: projects.length,
+    updated_at: new Date().toISOString(),
+  };
+  // Only stops whose number is off are written (no-op updates still fire realtime events).
+  const sequenceFixes = projects
+    .map((rp, index) => ({ id: rp.id, index, current: rp.stop_sequence }))
+    .filter((stop) => stop.current !== stop.index);
+  const [runResult, ...sequenceResults] = await Promise.all([
+    supabase.from("proj_t_runs").update(estimates).eq("id", id).select("*, proj_s_origin_addresses(*)").single(),
+    ...sequenceFixes.map((stop) => supabase.from("proj_t_run_projects").update({ stop_sequence: stop.index }).eq("id", stop.id).eq("run_id", id)),
+  ]);
+  if (runResult.error) throw new Error(runResult.error.message);
+  const failed = sequenceResults.find((result) => result.error);
+  if (failed) throw new Error(failed.error.message);
+
+  return {
+    run: runResult.data,
+    projects: projects.map((rp, index) => ({ ...rp, stop_sequence: index })),
+    segmentData,
+  };
+}
+
 export async function calculateSegmentRoutes(coordinates) {
   if (!coordinates || coordinates.length < 2) {
     throw new Error("At least 2 coordinates are required.");

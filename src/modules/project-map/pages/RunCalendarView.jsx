@@ -767,6 +767,13 @@ export default function RunCalendarView({ runs = [], runStatuses = [], statuses 
                       <span style={{ color: getRunStatusColor(run.status, runStatuses) }}>{run.status}</span>
                     </span>
                     <strong style={{ color: "#1e293b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>{runTitle(run)}</strong>
+                    {/* Run code (as in the pop-up header); left out when the name shown already is the code. */}
+                    {(() => {
+                      const code = run.run_code || formatRunCode(run.run_number);
+                      return code && code !== runTitle(run)
+                        ? <span style={{ color: "#94a3b8", fontSize: "10px" }}>{code}</span>
+                        : null;
+                    })()}
                   </button>
                 ))
               )}
@@ -1088,5 +1095,4 @@ export default function RunCalendarView({ runs = [], runStatuses = [], statuses 
     </div>
   );
 }
-
 

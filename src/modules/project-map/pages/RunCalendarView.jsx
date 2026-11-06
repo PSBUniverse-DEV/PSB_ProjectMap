@@ -6,7 +6,7 @@ import { Button, Modal, FileAttachments, toastError, toastSuccess } from "@/shar
 import AppIcon from "@/shared/components/ui/AppIcon";
 import { startNavbarLoader } from "@/shared/utils/navbar-loader";
 import { loadRunDetails, updateRun, loadPaidSheet, loadFiles, createFileUpload, saveUploadedFile, getFileUrl, deleteFile } from "../data/projectMap.actions";
-import { formatRunCode, getRunStatusColor, getRunScheduleState, formatDisplayDate, splitRunAmounts, runStatusKeyByName, resolveRunStatusOptions, canEditRunStatusName, canCommentAndAttach, isOwnFile, PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, FINISHED_RUN_STATUS_KEYS, PROJECT_MAP_PAGES } from "../data/projectMap.data";
+import { formatRunCode, getRunStatusColor, getRunScheduleState, formatDisplayDate, splitRunAmounts, runStatusKeyByName, resolveRunStatusOptions, canEditRunStatusName, canCommentAndAttach, isOwnFile, PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, FINISHED_RUN_STATUS_KEYS, PROJECT_MAP_PAGES, formatArrivalWindow } from "../data/projectMap.data";
 import { computeRunSegmentData } from "../utils/runSegments";
 import { generateRunManifestPrint } from "../utils/printRunManifest";
 import { generatePaidSheetPrint } from "../utils/printPaidSheet";
@@ -1014,6 +1014,7 @@ export default function RunCalendarView({ runs = [], runStatuses = [], statuses 
                   {runStops.map((stop, index) => {
                     const project = stop.proj_t_projects || {};
                     const status = project.proj_s_project_status;
+                    const arrivalText = formatArrivalWindow(project.install_start, project.install_end);
                     return (
                       <div key={stop.id} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "8px 12px", borderTop: index === 0 ? "none" : "1px solid #f1f5f9" }}>
                         <span style={{ flexShrink: 0, width: "22px", height: "22px", borderRadius: "50%", background: "#f1f5f9", color: "#475569", fontSize: "11px", fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -1022,6 +1023,16 @@ export default function RunCalendarView({ runs = [], runStatuses = [], statuses 
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: "13px", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{project.client_name || "Untitled"}</div>
                           <div style={{ fontSize: "11px", color: "#64748b" }}>{[project.city, project.state_code].filter(Boolean).join(", ") || "—"}</div>
+                          {/* Same stop details as the Run panel tiles (confirmation and price are on the right). */}
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: "2px 12px", marginTop: "3px", fontSize: "11px", color: "#64748b" }}>
+                            <span>Arrival: <span style={{ color: arrivalText ? "#1e293b" : "#94a3b8", fontWeight: arrivalText ? 600 : 400 }}>{arrivalText || "Not set"}</span></span>
+                            <span>Invoice: <span style={{ color: project.invoice_number ? "#1e293b" : "#94a3b8", fontWeight: project.invoice_number ? 600 : 400 }}>{project.invoice_number || "Not set"}</span></span>
+                          </div>
+                          {stop.notes && (
+                            <div style={{ marginTop: "3px", fontSize: "11px", color: "#475569", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+                              <span style={{ color: "#64748b" }}>Note:</span> {stop.notes}
+                            </div>
+                          )}
                         </div>
                         {status?.status_name && <Pill color={status.display_color || "#64748b"}>{status.status_name}</Pill>}
                         {/* Confirmation Status (orange like on the map); grey when none is set. */}
@@ -1077,6 +1088,5 @@ export default function RunCalendarView({ runs = [], runStatuses = [], statuses 
     </div>
   );
 }
-
 
 

@@ -419,3 +419,32 @@ export function formatStateRoute(values) {
   if (!Array.isArray(values) || values.length === 0) return "";
   return values.map((v) => `{${v}}`).join("");
 }
+
+/**
+ * A stop's arrival window (install_start / install_end) for display, shared
+ * by the Run detail panel tiles and the Run Calendar pop-up:
+ * "Oct 30, 8:00 AM – 5:00 PM" (same day), "Oct 30 – Oct 31", or just
+ * "Oct 30". Midnight (set from the run date) shows the date only.
+ * Empty string when nothing is set.
+ */
+export function formatArrivalWindow(start, end) {
+  const toDate = (value) => {
+    if (!value) return null;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  };
+  const label = (date, withDay) => {
+    const day = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    const isMidnight = date.getHours() === 0 && date.getMinutes() === 0;
+    const time = isMidnight ? "" : date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+    if (!withDay) return time || day;
+    return time ? `${day}, ${time}` : day;
+  };
+  const from = toDate(start);
+  const to = toDate(end);
+  if (!from && !to) return "";
+  if (!from) return `Until ${label(to, true)}`;
+  if (!to || to.getTime() === from.getTime()) return label(from, true);
+  const sameDay = from.toDateString() === to.toDateString();
+  return `${label(from, true)} – ${label(to, !sameDay)}`;
+}

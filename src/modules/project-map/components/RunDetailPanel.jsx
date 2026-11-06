@@ -3,7 +3,7 @@
 
 import { useMemo, useState, useEffect } from "react";
 import { StatusBadge, FileAttachments } from "@/shared/components/ui";
-import { formatProjectDescriptionForDisplay, getRunStatusColor, resolveRunStatusOptions, stripTownshipLabel, PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, getProjectAmountDisplay, splitRunAmounts, runStatusKeyByName, formatDisplayDate } from "../data/projectMap.data";
+import { formatProjectDescriptionForDisplay, getRunStatusColor, resolveRunStatusOptions, stripTownshipLabel, PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, getProjectAmountDisplay, splitRunAmounts, runStatusKeyByName, formatDisplayDate, formatArrivalWindow } from "../data/projectMap.data";
 import { generateRunManifestPrint } from "../utils/printRunManifest";
 import { loadFiles, createFileUpload, saveUploadedFile, getFileUrl, deleteFile } from "../data/projectMap.actions";
 
@@ -29,31 +29,6 @@ function formatCurrency(value) {
 function formatMileage(miles) {
   if (miles == null) return "—";
   return `${Number(miles).toFixed(1)} mi`;
-}
-
-// Arrival window for a stop chip: "Oct 30, 8:00 AM – 5:00 PM" (same day),
-// "Oct 30 – Oct 31", or just "Oct 30". Midnight (set from the run date) shows
-// the date only. Empty string when nothing is set.
-function formatArrivalWindow(start, end) {
-  const toDate = (value) => {
-    if (!value) return null;
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? null : date;
-  };
-  const label = (date, withDay) => {
-    const day = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-    const isMidnight = date.getHours() === 0 && date.getMinutes() === 0;
-    const time = isMidnight ? "" : date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-    if (!withDay) return time || day;
-    return time ? `${day}, ${time}` : day;
-  };
-  const from = toDate(start);
-  const to = toDate(end);
-  if (!from && !to) return "";
-  if (!from) return `Until ${label(to, true)}`;
-  if (!to || to.getTime() === from.getTime()) return label(from, true);
-  const sameDay = from.toDateString() === to.toDateString();
-  return `${label(from, true)} – ${label(to, !sameDay)}`;
 }
 
 // Detail tile on a stop card (2×2 grid plus a full-width note): small label

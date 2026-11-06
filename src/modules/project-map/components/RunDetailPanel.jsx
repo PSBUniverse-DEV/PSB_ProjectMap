@@ -31,6 +31,46 @@ function formatMileage(miles) {
   return `${Number(miles).toFixed(1)} mi`;
 }
 
+// Arrival window for a stop chip: "Oct 30, 8:00 AM – 5:00 PM" (same day),
+// "Oct 30 – Oct 31", or just "Oct 30". Midnight (set from the run date) shows
+// the date only. Empty string when nothing is set.
+function formatArrivalWindow(start, end) {
+  const toDate = (value) => {
+    if (!value) return null;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  };
+  const label = (date, withDay) => {
+    const day = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    const isMidnight = date.getHours() === 0 && date.getMinutes() === 0;
+    const time = isMidnight ? "" : date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+    if (!withDay) return time || day;
+    return time ? `${day}, ${time}` : day;
+  };
+  const from = toDate(start);
+  const to = toDate(end);
+  if (!from && !to) return "";
+  if (!from) return `Until ${label(to, true)}`;
+  if (!to || to.getTime() === from.getTime()) return label(from, true);
+  const sameDay = from.toDateString() === to.toDateString();
+  return `${label(from, true)} – ${label(to, !sameDay)}`;
+}
+
+// Value chip on a stop card. With onClick it is a button that opens that
+// field's editor; without, a plain chip (view-only users).
+const STOP_CHIP_BASE = { fontSize: "9.5px", lineHeight: "16px", padding: "0 6px", borderRadius: "999px", border: "1px solid", whiteSpace: "nowrap", fontFamily: "inherit" };
+const STOP_CHIP_TONES = {
+  indigo: { color: "#6366f1", borderColor: "#c7d2fe", background: "#eef2ff", fontWeight: 600 },
+  amber: { color: "#d97706", borderColor: "#fde68a", background: "#fffbeb", fontWeight: 600 },
+  green: { color: "#16a34a", borderColor: "#bbf7d0", background: "#f0fdf4", fontWeight: 600 },
+  add: { color: "#94a3b8", borderColor: "#cbd5e1", borderStyle: "dashed", background: "transparent", fontWeight: 400 },
+};
+function StopChip({ tone, onClick, title, children }) {
+  const style = { ...STOP_CHIP_BASE, ...STOP_CHIP_TONES[tone] };
+  if (!onClick) return <span title={title} style={{ ...style, cursor: "default" }}>{children}</span>;
+  return <button type="button" onClick={onClick} title={title} style={{ ...style, cursor: "pointer" }}>{children}</button>;
+}
+
 export default function RunDetailPanel({ run, runProjects = [], runSegmentData = null, onClose, onEdit, onDelete, onRemoveProject, onReorderStops, onRecalculate, recalculating = false, onEditStopNote, onEditStopDate, onEditStopInvoice, onEditStopConfirmation, onEditProjectPrice, onProjectUpdated, isLoading = false, runStatuses = [], onStatusChange, readOnly = false, filesReadOnly = false, canDeleteFile = null, routeStale = false }) {
   const [dragIndex, setDragIndex] = useState(null);
   const [dragOverIndex, setDragOverIndex] = useState(null);
@@ -276,8 +316,10 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
                     const amount = getProjectAmountDisplay(proj);
                     const isDragging = dragIndex === idx;
                     const isDragOver = dragOverIndex === idx;
-                    // Date / invoice / price are Runs-tab edits: only the run's status decides.
+                    // Date / invoice / confirmation / price are Runs-tab edits: only the run's status decides.
                     const canEditStop = !readOnly;
+                    const arrivalText = formatArrivalWindow(proj.install_start, proj.install_end);
+                    const confirmationName = proj.proj_s_confirmation_status?.status_name || (proj.confirmation_status_id != null ? "Set" : "");
 
                     return (
                       <div key={rp.id} style={{ marginBottom: "2px" }}>
@@ -297,50 +339,33 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
                               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "4px" }}>
                                 <div style={{ flex: 1 }}>
                                   <div style={{ fontWeight: 600, fontSize: "11px", color: "#1e293b", marginBottom: "1px" }}>{idx + 1}. {proj.client_name || "Untitled"}</div>
-                                  <div style={{ fontSize: "9px", color: "#64748b" }}>{proj.city && proj.state ? `${stripTownshipLabel(proj.city)}, ${proj.state}` : stripTownshipLabel(proj.formatted_address) || "No address"}</div>
-                                  <div style={{ fontSize: "9px", color: "#64748b", marginTop: "2px" }}>Status: {projectStatusLabel}</div>
-                                  <div style={{ fontSize: "9px", color: "#64748b", marginTop: "2px" }}>Confirmation: {proj.proj_s_confirmation_status?.status_name || "—"}</div>
-                                  <div style={{ fontSize: "10px", color: amount.color, fontWeight: amount.isRepair ? 700 : 500, marginTop: "2px" }}>{amount.prefix}{sub}</div>
-                                  <div style={{ marginTop: "3px", display: "flex", gap: "8px", alignItems: "center" }}>
-                                    {!readOnly && (
-                                      <button onClick={() => onEditStopNote?.(rp)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "10px", padding: "0", color: rp.notes ? "#6366f1" : "#94a3b8", fontWeight: rp.notes ? 600 : 400 }} title={rp.notes ? "Edit note" : "Add note"}>{rp.notes ? "📝 Note" : "📄 Note"}</button>
-                                    )}
-                                    {canEditStop && (
-                                    <>
-                                    <button
-                                      onClick={() => onEditStopDate?.(rp)}
-                                      style={{ background: "none", border: "none", cursor: "pointer", fontSize: "10px", padding: "0", color: (rp.proj_t_projects?.install_start || rp.proj_t_projects?.install_end) ? "#6366f1" : "#94a3b8", fontWeight: (rp.proj_t_projects?.install_start || rp.proj_t_projects?.install_end) ? 600 : 400 }}
-                                      title={(rp.proj_t_projects?.install_start || rp.proj_t_projects?.install_end) ? "Edit arrival window" : "Add arrival window"}
-                                    >
-                                      {(rp.proj_t_projects?.install_start || rp.proj_t_projects?.install_end) ? "📅 Date" : "🗓️ Date"}
-                                    </button>
-                                    <button
-                                      onClick={() => onEditStopInvoice?.(rp)}
-                                      style={{ background: "none", border: "none", cursor: "pointer", fontSize: "10px", padding: "0", color: rp.proj_t_projects?.invoice_number ? "#6366f1" : "#94a3b8", fontWeight: rp.proj_t_projects?.invoice_number ? 600 : 400 }}
-                                      title={rp.proj_t_projects?.invoice_number ? "Edit invoice #" : "Add invoice #"}
-                                    >
-                                      🧾 Invoice
-                                    </button>
-                                    <button
-                                      onClick={() => onEditStopConfirmation?.(rp)}
-                                      style={{ background: "none", border: "none", cursor: "pointer", fontSize: "10px", padding: "0", color: rp.proj_t_projects?.confirmation_status_id != null ? "#d97706" : "#94a3b8", fontWeight: rp.proj_t_projects?.confirmation_status_id != null ? 600 : 400 }}
-                                      title={rp.proj_t_projects?.confirmation_status_id != null ? "Edit confirmation" : "Set confirmation"}
-                                    >
-                                      📞 Confirm
-                                    </button>
-                                    <button
-                                      onClick={() => onEditProjectPrice?.(rp)}
-                                      style={{ background: "none", border: "none", cursor: "pointer", fontSize: "10px", padding: "0", color: rp.proj_t_projects?.project_subtotal != null ? "#16a34a" : "#94a3b8", fontWeight: rp.proj_t_projects?.project_subtotal != null ? 600 : 400 }}
-                                      title={rp.proj_t_projects?.project_subtotal != null ? "Edit price" : "Add price"}
-                                    >
-                                      💰 Price
-                                    </button>
-                                    </>
-                                    )}
+                                  <div style={{ fontSize: "9px", color: "#64748b" }}>
+                                    {proj.city && proj.state ? `${stripTownshipLabel(proj.city)}, ${proj.state}` : stripTownshipLabel(proj.formatted_address) || "No address"}
+                                    {" · "}{projectStatusLabel}
                                   </div>
-                                  {readOnly && rp.notes && (
-                                    <div style={{ fontSize: "9px", color: "#475569", marginTop: "3px", whiteSpace: "pre-wrap" }}>📝 {rp.notes}</div>
-                                  )}
+                                  <div style={{ fontSize: "10px", color: amount.color, fontWeight: amount.isRepair ? 700 : 600, marginTop: "2px" }}>{amount.prefix}{sub}</div>
+                                  {/* Stop details as value chips: each shows its value and opens its editor.
+                                      Missing ones are dashed "+" chips, for editors only. */}
+                                  <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginTop: "5px" }}>
+                                    {arrivalText
+                                      ? <StopChip tone="indigo" onClick={canEditStop ? () => onEditStopDate?.(rp) : null} title={canEditStop ? "Edit arrival window" : "Arrival window"}>📅 {arrivalText}</StopChip>
+                                      : canEditStop && <StopChip tone="add" onClick={() => onEditStopDate?.(rp)} title="Add arrival window">+ Date</StopChip>}
+                                    {proj.invoice_number
+                                      ? <StopChip tone="indigo" onClick={canEditStop ? () => onEditStopInvoice?.(rp) : null} title={canEditStop ? "Edit invoice #" : "Invoice #"}>🧾 {proj.invoice_number}</StopChip>
+                                      : canEditStop && <StopChip tone="add" onClick={() => onEditStopInvoice?.(rp)} title="Add invoice #">+ Invoice</StopChip>}
+                                    {confirmationName
+                                      ? <StopChip tone="amber" onClick={canEditStop ? () => onEditStopConfirmation?.(rp) : null} title={canEditStop ? "Edit confirmation" : "Confirmation"}>📞 {confirmationName}</StopChip>
+                                      : canEditStop && <StopChip tone="add" onClick={() => onEditStopConfirmation?.(rp)} title="Set confirmation">+ Confirmation</StopChip>}
+                                    {proj.project_subtotal != null
+                                      ? <StopChip tone="green" onClick={canEditStop ? () => onEditProjectPrice?.(rp) : null} title={canEditStop ? "Edit price" : "Price"}>💰 Price</StopChip>
+                                      : canEditStop && <StopChip tone="add" onClick={() => onEditProjectPrice?.(rp)} title="Add price">+ Price</StopChip>}
+                                    {!rp.notes && canEditStop && <StopChip tone="add" onClick={() => onEditStopNote?.(rp)} title="Add note">+ Note</StopChip>}
+                                  </div>
+                                  {rp.notes && (canEditStop ? (
+                                    <button type="button" onClick={() => onEditStopNote?.(rp)} title="Edit note" style={{ display: "block", width: "100%", textAlign: "left", fontFamily: "inherit", fontSize: "9px", color: "#475569", marginTop: "4px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "3px 6px", whiteSpace: "pre-wrap", cursor: "pointer" }}>📝 {rp.notes}</button>
+                                  ) : (
+                                    <div style={{ fontSize: "9px", color: "#475569", marginTop: "4px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "3px 6px", whiteSpace: "pre-wrap" }}>📝 {rp.notes}</div>
+                                  ))}
                                 </div>
                                 {!readOnly && (
                                   <button onClick={() => onRemoveProject?.(rp.id)} style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: "12px", padding: "0", lineHeight: 1 }} title="Remove from run">×</button>

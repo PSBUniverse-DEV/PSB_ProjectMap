@@ -15,6 +15,34 @@ function getStatusColor(statusName, statuses = []) {
   return found?.display_color || "#6b7280";
 }
 
+// Age flag (requested by Scheduling): how long a project has been on the map,
+// counted from when it was entered (created_at), so old orders aren't missed.
+// Under 14 days green, 14–20 orange, 21+ red.
+const AGE_DAY_MS = 24 * 60 * 60 * 1000;
+const AGE_BANDS = [
+  { maxDays: 13, color: "#16a34a" },
+  { maxDays: 20, color: "#d97706" },
+  { maxDays: Infinity, color: "#dc2626" },
+];
+// Done or past installation: no age flag. Fully Installed / Repaired have
+// system keys; Completed, Pending Payment and Collections have none, so
+// they are matched by name.
+const AGE_EXEMPT_STATUS_KEYS = ["fully_installed", "repaired"];
+const AGE_EXEMPT_STATUS_NAMES = ["completed", "pending payment", "collections"];
+
+// { days, color, label } or null when the project gets no age flag.
+function getProjectAge(project, statuses, now) {
+  if (!project?.created_at) return null;
+  const status = project.proj_s_project_status || statuses.find((s) => s.status_id === project.status_id);
+  if (AGE_EXEMPT_STATUS_KEYS.includes(status?.system_key)) return null;
+  if (AGE_EXEMPT_STATUS_NAMES.includes(String(status?.status_name || "").trim().toLowerCase())) return null;
+  const created = new Date(project.created_at);
+  if (Number.isNaN(created.getTime())) return null;
+  const days = Math.max(0, Math.floor((now.getTime() - created.getTime()) / AGE_DAY_MS));
+  const band = AGE_BANDS.find((b) => days <= b.maxDays);
+  return { days, color: band.color, label: days === 0 ? "Today" : `${days} day${days === 1 ? "" : "s"}` };
+}
+
 export default function ProjectList({ projects = [], selectedProjectId, onSelectProject, filters = {}, statuses = [] }) {
   // Helper to extract calendar date (YYYY-MM-DD) from any date value
   const toDateString = (value) => {
@@ -82,6 +110,8 @@ export default function ProjectList({ projects = [], selectedProjectId, onSelect
     });
   }, [projects, filters]);
 
+  const now = new Date();
+
   return (
     <div style={{ height: "100%", minHeight: 0, overflow: "auto", background: "#f8fafc", borderRight: "1px solid #e2e8f0" }}>
       <div style={{ padding: "6px 10px", borderBottom: "1px solid #e2e8f0", background: "#fff" }}>
@@ -99,6 +129,7 @@ export default function ProjectList({ projects = [], selectedProjectId, onSelect
             const statusName = project.proj_s_project_status?.status_name || "";
             const isSelected = project.id === selectedProjectId;
             const amount = getProjectAmountDisplay(project, statuses);
+            const age = getProjectAge(project, statuses, now);
 
             return (
               <div
@@ -109,6 +140,7 @@ export default function ProjectList({ projects = [], selectedProjectId, onSelect
                   marginBottom: "3px",
                   background: isSelected ? "#dce8f2" : "#fff",
                   border: `1px solid ${isSelected ? "#93c5fd" : "#e2e8f0"}`,
+                  borderLeft: `3px solid ${age ? age.color : (isSelected ? "#93c5fd" : "#e2e8f0")}`,
                   borderRadius: "4px",
                   cursor: "pointer",
                   transition: "all 0.15s",
@@ -122,9 +154,14 @@ export default function ProjectList({ projects = [], selectedProjectId, onSelect
                     background: getStatusColor(statusName, statuses),
                     flexShrink: 0,
                   }} />
-                  <span style={{ fontWeight: 600, fontSize: "11px", color: "#1e293b" }}>
+                  <span style={{ fontWeight: 600, fontSize: "11px", color: "#1e293b", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {project.client_name || "Untitled"}
                   </span>
+                  {age && (
+                    <span title="Days since this project was entered on the map" style={{ marginLeft: "auto", flexShrink: 0, fontSize: "9px", fontWeight: 600, color: age.color }}>
+                      {age.label}
+                    </span>
+                  )}
                 </div>
                 <div style={{ fontSize: "10px", color: "#64748b" }}>
                   {project.city && project.state ? `${stripTownshipLabel(project.city)}, ${project.state}` : stripTownshipLabel(project.formatted_address) || "No location"}

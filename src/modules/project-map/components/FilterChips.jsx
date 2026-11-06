@@ -10,6 +10,7 @@ export default function FilterChips({
   statuses = [],
   permitStatuses = [],
   welcomeCallStatuses = [],
+  confirmationStatuses = [],
 }) {
   // Build readable filter labels
   const filterLabels = useMemo(() => {
@@ -33,6 +34,17 @@ export default function FilterChips({
           key: "welcomeCallStatus",
           value: val,
           label: `Welcome Call: ${welcome.status_name}`,
+        });
+      }
+    });
+
+    (filters.confirmationStatus || []).forEach((val) => {
+      const confirmation = confirmationStatuses.find((c) => String(c.id) === val);
+      if (confirmation) {
+        labels.push({
+          key: "confirmationStatus",
+          value: val,
+          label: `Confirmation: ${confirmation.status_name}`,
         });
       }
     });
@@ -81,7 +93,7 @@ export default function FilterChips({
     }
 
     return labels;
-  }, [filters, permitStatuses, welcomeCallStatuses]);
+  }, [filters, permitStatuses, welcomeCallStatuses, confirmationStatuses]);
 
   if (filterLabels.length === 0) {
     return null;

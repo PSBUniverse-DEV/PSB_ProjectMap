@@ -19,7 +19,7 @@ import { loadFiles, createFileUpload, saveUploadedFile, getFileUrl, deleteFile }
  * the SAME removal flow used by the Runs tab's detail panel (same action, same
  * toasts, same refreshes) so every unassign path stays in sync.
  */
-export default function ProjectDetailDrawer({ project, statuses = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [], projectRunLookup = new Map(), onClose, onEdit = null, onDelete = null, onRemoveFromRun = null, routeInfo = null, readOnly = false, commentsReadOnly = false, filesReadOnly = false, canDeleteFile = null }) {
+export default function ProjectDetailDrawer({ project, statuses = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [], confirmationStatuses = [], projectRunLookup = new Map(), onClose, onEdit = null, onDelete = null, onRemoveFromRun = null, routeInfo = null, readOnly = false, commentsReadOnly = false, filesReadOnly = false, canDeleteFile = null }) {
   const statusName = useMemo(() => {
     if (!project) return "";
     return project.proj_s_project_status?.status_name || statuses.find((s) => s.status_id === project.status_id)?.status_name || "";
@@ -68,6 +68,12 @@ export default function ProjectDetailDrawer({ project, statuses = [], buildingCa
     const s = project.proj_s_welcome_call_status || welcomeCallStatuses.find((w) => w.id === project.welcome_call_status_id);
     return s?.status_name || "";
   }, [project, welcomeCallStatuses]);
+
+  const confirmationStatusName = useMemo(() => {
+    if (!project) return "";
+    const s = project.proj_s_confirmation_status || confirmationStatuses.find((c) => c.id === project.confirmation_status_id);
+    return s?.status_name || "";
+  }, [project, confirmationStatuses]);
 
   function getStatusColor(name) {
     if (!name) return "#6b7280";
@@ -235,6 +241,7 @@ export default function ProjectDetailDrawer({ project, statuses = [], buildingCa
             <tbody>
               <StatusChip label="Project Status" name={statusName} />
               <StatusChip label="Welcome Call" name={welcomeCallStatusName} />
+              <StatusChip label="Confirmation" name={confirmationStatusName} />
               <StatusChip label="Permit" name={permitStatusName} />
             </tbody>
           </table>

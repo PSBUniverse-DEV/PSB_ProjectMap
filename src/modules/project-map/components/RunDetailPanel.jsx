@@ -289,6 +289,7 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
                                   <div style={{ fontWeight: 600, fontSize: "11px", color: "#1e293b", marginBottom: "1px" }}>{idx + 1}. {proj.client_name || "Untitled"}</div>
                                   <div style={{ fontSize: "9px", color: "#64748b" }}>{proj.city && proj.state ? `${stripTownshipLabel(proj.city)}, ${proj.state}` : stripTownshipLabel(proj.formatted_address) || "No address"}</div>
                                   <div style={{ fontSize: "9px", color: "#64748b", marginTop: "2px" }}>Status: {projectStatusLabel}</div>
+                                  <div style={{ fontSize: "9px", color: "#64748b", marginTop: "2px" }}>Confirmation: {proj.proj_s_confirmation_status?.status_name || "—"}</div>
                                   <div style={{ fontSize: "10px", color: amount.color, fontWeight: amount.isRepair ? 700 : 500, marginTop: "2px" }}>{amount.prefix}{sub}</div>
                                   <div style={{ marginTop: "3px", display: "flex", gap: "8px", alignItems: "center" }}>
                                     {!readOnly && (

@@ -6,7 +6,7 @@ import { createProject, updateProject, loadProjectDealerOptions, setProjectDeale
 import { formatProjectDescription, parseProjectDescription } from "../data/projectMap.data";
 import LocationSearch from "./LocationSearch";
 
-export default function AddProjectForm({ show, mode, project, statuses = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [], onClose, onSaved, initialLocation = null, editableStatusIds = null }) {
+export default function AddProjectForm({ show, mode, project, statuses = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [], confirmationStatuses = [], onClose, onSaved, initialLocation = null, editableStatusIds = null }) {
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({
     client_name: "",
@@ -22,6 +22,7 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
     framing_gauge: "",
     permit_status_id: "",
     welcome_call_status_id: "",
+    confirmation_status_id: "",
     invoice_number: "",
     project_subtotal: "",
     order_received_at: "",
@@ -105,6 +106,7 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
   const activeBuildingCategories = useMemo(() => buildingCategories.filter((item) => item?.is_active !== false), [buildingCategories]);
   const activePermitStatuses = useMemo(() => permitStatuses.filter((item) => item?.is_active !== false), [permitStatuses]);
   const activeWelcomeCallStatuses = useMemo(() => welcomeCallStatuses.filter((item) => item?.is_active !== false), [welcomeCallStatuses]);
+  const activeConfirmationStatuses = useMemo(() => confirmationStatuses.filter((item) => item?.is_active !== false), [confirmationStatuses]);
 
   // Populate form when editing or when initialLocation is provided
   useEffect(() => {
@@ -130,6 +132,7 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
         framing_gauge: parsed.framingGauge,
         permit_status_id: project.permit_status_id ? String(project.permit_status_id) : "",
         welcome_call_status_id: project.welcome_call_status_id ? String(project.welcome_call_status_id) : "",
+        confirmation_status_id: project.confirmation_status_id ? String(project.confirmation_status_id) : "",
         invoice_number: project.invoice_number || "",
         project_subtotal: project.project_subtotal != null ? String(project.project_subtotal) : "",
         order_received_at: project.order_received_at || "",
@@ -167,6 +170,7 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
         framing_gauge: "",
         permit_status_id: "",
         welcome_call_status_id: "",
+        confirmation_status_id: "",
         invoice_number: "",
         project_subtotal: "",
         order_received_at: "",
@@ -203,6 +207,7 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
         framing_gauge: "",
         permit_status_id: "",
         welcome_call_status_id: "",
+        confirmation_status_id: "",
         invoice_number: "",
         project_subtotal: "",
         order_received_at: "",
@@ -524,6 +529,19 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
               >
                 <option value="">Select...</option>
                 {activeWelcomeCallStatuses.map((s) => (
+                  <option key={s.id} value={String(s.id)}>{s.status_name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Confirmation Status</label>
+              <select
+                value={form.confirmation_status_id}
+                onChange={(e) => handleChange("confirmation_status_id", e.target.value)}
+                style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px", background: "#fff" }}
+              >
+                <option value="">Select...</option>
+                {activeConfirmationStatuses.map((s) => (
                   <option key={s.id} value={String(s.id)}>{s.status_name}</option>
                 ))}
               </select>

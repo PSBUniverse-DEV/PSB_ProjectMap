@@ -4,7 +4,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faMagnifyingGlass } from "@fortawesome/free-solid-svg-icons";
 import FilterPanel from "./FilterPanel";
 
-export default function FilterBar({ statuses = [], permitStatuses = [], welcomeCallStatuses = [], dealers = [], states = [], filters = {}, onFilterChange, onAddClick }) {
+export default function FilterBar({ statuses = [], permitStatuses = [], welcomeCallStatuses = [], confirmationStatuses = [], dealers = [], states = [], filters = {}, onFilterChange, onAddClick }) {
   return (
     <div style={{
       display: "flex",
@@ -45,6 +45,7 @@ export default function FilterBar({ statuses = [], permitStatuses = [], welcomeC
         statuses={statuses}
         permitStatuses={permitStatuses}
         welcomeCallStatuses={welcomeCallStatuses}
+        confirmationStatuses={confirmationStatuses}
         dealers={dealers}
         states={states}
         filters={filters}

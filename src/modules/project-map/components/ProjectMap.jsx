@@ -36,7 +36,7 @@ const CLUSTER_DISTANCE_METERS = 30;
 // Shared by both the individual marker's hover tooltip and the cluster
 // marker's row-hover detail pane, so the two stay visually identical
 // instead of maintaining two copies of the same large block.
-function buildProjectTooltipHTML(project, { statuses = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [], assignedRunLabel = null } = {}) {
+function buildProjectTooltipHTML(project, { statuses = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [], confirmationStatuses = [], assignedRunLabel = null } = {}) {
   const statusName = project.proj_s_project_status?.status_name || "";
   const amount = getProjectAmountDisplay(project, statuses);
 
@@ -63,6 +63,7 @@ function buildProjectTooltipHTML(project, { statuses = [], buildingCategories = 
   const buildingCategoryName = buildingCategories.find((c) => c.id === project.building_category_id)?.building_category_name || "";
   const permitStatusNameVal = permitStatuses.find((s) => s.id === project.permit_status_id)?.status_name || "";
   const welcomeCallStatusNameVal = welcomeCallStatuses.find((s) => s.id === project.welcome_call_status_id)?.status_name || "";
+  const confirmationStatusNameVal = confirmationStatuses.find((s) => s.id === project.confirmation_status_id)?.status_name || "";
 
   const formatDate = (val) => {
     if (!val) return "—";
@@ -99,6 +100,7 @@ function buildProjectTooltipHTML(project, { statuses = [], buildingCategories = 
       <span style="font-size: 9px; padding: 1px 6px; border-radius: 8px; font-weight: 600; background: ${getStatusColor(statusName, statuses)}20; color: ${getStatusColor(statusName, statuses)}; border: 1px solid ${getStatusColor(statusName, statuses)}40;">${statusName || "—"}</span>
       <span style="font-size: 9px; padding: 1px 6px; border-radius: 8px; font-weight: 600; background: ${permitStatusNameVal ? "#6366f120" : "#6b728020"}; color: ${permitStatusNameVal ? "#6366f1" : "#6b7280"}; border: 1px solid ${permitStatusNameVal ? "#6366f140" : "#6b728040"};">${permitStatusNameVal || "—"}</span>
       <span style="font-size: 9px; padding: 1px 6px; border-radius: 8px; font-weight: 600; background: ${welcomeCallStatusNameVal ? "#0891b220" : "#6b728020"}; color: ${welcomeCallStatusNameVal ? "#0891b2" : "#6b7280"}; border: 1px solid ${welcomeCallStatusNameVal ? "#0891b240" : "#6b728040"};">${welcomeCallStatusNameVal || "—"}</span>
+      <span style="font-size: 9px; padding: 1px 6px; border-radius: 8px; font-weight: 600; background: ${confirmationStatusNameVal ? "#d9770620" : "#6b728020"}; color: ${confirmationStatusNameVal ? "#d97706" : "#6b7280"}; border: 1px solid ${confirmationStatusNameVal ? "#d9770640" : "#6b728040"};">${confirmationStatusNameVal || "—"}</span>
     </div>
 
     <div style="font-size: 9px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 3px; letter-spacing: 0.4px;">Schedule</div>
@@ -135,6 +137,7 @@ export default function ProjectMap({
   buildingCategories = [],
   permitStatuses = [],
   welcomeCallStatuses = [],
+  confirmationStatuses = [],
   searchResults = null,
   mode = "projects",
   runs = [],
@@ -215,6 +218,7 @@ export default function ProjectMap({
     if (Array.isArray(filters.status) && filters.status.length > 0 && !filters.status.includes(String(p.status_id))) return false;
     if (Array.isArray(filters.permitStatus) && filters.permitStatus.length > 0 && !filters.permitStatus.includes(String(p.permit_status_id))) return false;
     if (Array.isArray(filters.welcomeCallStatus) && filters.welcomeCallStatus.length > 0 && !filters.welcomeCallStatus.includes(String(p.welcome_call_status_id))) return false;
+    if (Array.isArray(filters.confirmationStatus) && filters.confirmationStatus.length > 0 && !filters.confirmationStatus.includes(String(p.confirmation_status_id))) return false;
     if (Array.isArray(filters.dealer) && filters.dealer.length > 0 && !filters.dealer.includes(p.dealer)) return false;
     if (Array.isArray(filters.state) && filters.state.length > 0 && !filters.state.includes(p.state_code)) return false;
     
@@ -677,7 +681,7 @@ export default function ProjectMap({
       `;
 
       tooltip.innerHTML = buildProjectTooltipHTML(project, {
-        statuses, buildingCategories, permitStatuses, welcomeCallStatuses, assignedRunLabel,
+        statuses, buildingCategories, permitStatuses, welcomeCallStatuses, confirmationStatuses, assignedRunLabel,
       });
 
       const hoverPopup = new MapLibreGL.Popup({ 
@@ -920,7 +924,7 @@ export default function ProjectMap({
           const rowAssignedRunBase = rowAssignedRun ? rowAssignedRun.run_name || `Run #${rowAssignedRun.run_number || rowAssignedRun.id}` : null;
           const rowAssignedRunLabel = rowAssignedRunBase && rowStopSequence != null ? `${rowAssignedRunBase} (${getOrdinalStop(rowStopSequence)})` : rowAssignedRunBase;
           detailPane.innerHTML = buildProjectTooltipHTML(p, {
-            statuses, buildingCategories, permitStatuses, welcomeCallStatuses, assignedRunLabel: rowAssignedRunLabel,
+            statuses, buildingCategories, permitStatuses, welcomeCallStatuses, confirmationStatuses, assignedRunLabel: rowAssignedRunLabel,
           });
           detailPane.style.visibility = "visible";
         });
@@ -1032,7 +1036,7 @@ export default function ProjectMap({
       }
       initialFitDone.current = true;
     }
-  }, [filteredProjects, stateColorLookup, searchResults, projectRunLookup, statuses, buildingCategories, permitStatuses, welcomeCallStatuses]);
+  }, [filteredProjects, stateColorLookup, searchResults, projectRunLookup, statuses, buildingCategories, permitStatuses, welcomeCallStatuses, confirmationStatuses]);
 
   // Tab changed: forget what was last framed so the new tab frames its own
   // content (Runs → selected run's full route, Projects → selected project).

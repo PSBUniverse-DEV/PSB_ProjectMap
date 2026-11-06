@@ -9,6 +9,7 @@ import MultiSelectDropdown from "../../../shared/components/ui/controls/MultiSel
 export default function FilterPanel({
   permitStatuses = [],
   welcomeCallStatuses = [],
+  confirmationStatuses = [],
   dealers = [],
   states = [],
   filters = {},
@@ -88,6 +89,7 @@ export default function FilterPanel({
       status: "",
       permitStatus: [],
       welcomeCallStatus: [],
+      confirmationStatus: [],
       dealer: [],
       state: [],
       orderReceivedFrom: "",
@@ -116,6 +118,10 @@ export default function FilterPanel({
   const welcomeCallStatusOptions = useMemo(() => {
     return welcomeCallStatuses.map((w) => ({ label: w.status_name, value: String(w.id) }));
   }, [welcomeCallStatuses]);
+
+  const confirmationStatusOptions = useMemo(() => {
+    return confirmationStatuses.map((c) => ({ label: c.status_name, value: String(c.id) }));
+  }, [confirmationStatuses]);
 
   const uniqueDealers = useMemo(() => {
     const set = new Set(dealers.filter(Boolean));
@@ -213,6 +219,19 @@ export default function FilterPanel({
                   options={welcomeCallStatusOptions}
                   selectedValues={localFilters.welcomeCallStatus || []}
                   onChange={(vals) => setLocalFilters({ ...localFilters, welcomeCallStatus: vals })}
+                  placeholder="All"
+                />
+              </div>
+
+              {/* Confirmation Status */}
+              <div style={{ flex: 1 }}>
+                <label style={{ display: "block", fontSize: "10px", fontWeight: 600, color: "#64748b", marginBottom: "3px" }}>
+                  Confirmation Status
+                </label>
+                <MultiSelectDropdown
+                  options={confirmationStatusOptions}
+                  selectedValues={localFilters.confirmationStatus || []}
+                  onChange={(vals) => setLocalFilters({ ...localFilters, confirmationStatus: vals })}
                   placeholder="All"
                 />
               </div>

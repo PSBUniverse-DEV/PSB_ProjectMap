@@ -80,7 +80,7 @@ function storeRouteCache(map, runId, entry) {
 }
 
 
-export default function ProjectMapView({ projects: initialProjects = [], statuses = [], origins = [], states = [], runs: initialRuns = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [], runStatuses = [], statusTabAccess = null, pageAccess = null }) {
+export default function ProjectMapView({ projects: initialProjects = [], statuses = [], origins = [], states = [], runs: initialRuns = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [], confirmationStatuses = [], runStatuses = [], statusTabAccess = null, pageAccess = null }) {
   const router = useRouter();
   const [mode, setMode] = useState("projects");
   const [showLabels, setShowLabels] = useState(true);
@@ -304,7 +304,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
 
   const handleRemoveFilter = useCallback((filterKey, value) => {
     // Called with a specific value: remove just that value from a multi-select
-    // filter array (permitStatus, welcomeCallStatus, dealer, state), leaving
+    // filter array (permitStatus, welcomeCallStatus, confirmationStatus, dealer, state), leaving
     // any other selected values in place.
     if (value !== undefined) {
       setFilters((prev) => ({
@@ -318,6 +318,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
       status: [],
       permitStatus: [],
       welcomeCallStatus: [],
+      confirmationStatus: [],
       dealer: [],
       state: [],
       orderReceived: { orderReceivedFrom: "", orderReceivedTo: "" },
@@ -404,6 +405,9 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
         return false;
       }
       if (Array.isArray(filters.welcomeCallStatus) && filters.welcomeCallStatus.length > 0 && !filters.welcomeCallStatus.includes(String(p.welcome_call_status_id))) {
+        return false;
+      }
+      if (Array.isArray(filters.confirmationStatus) && filters.confirmationStatus.length > 0 && !filters.confirmationStatus.includes(String(p.confirmation_status_id))) {
         return false;
       }
       if (Array.isArray(filters.dealer) && filters.dealer.length > 0 && !filters.dealer.includes(p.dealer)) {
@@ -1567,7 +1571,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
       )}
 
       {mode === "projects" && (
-        <FilterChips filters={filters} onRemoveFilter={handleRemoveFilter} statuses={statuses} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} />
+        <FilterChips filters={filters} onRemoveFilter={handleRemoveFilter} statuses={statuses} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} confirmationStatuses={confirmationStatuses} />
       )}
 
       {mode === "runs" && (
@@ -1578,7 +1582,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
         <div style={{ width: "240px", minWidth: "240px", flexShrink: 0, zIndex: 10, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           {mode === "projects" ? (
             <>
-              <FilterBar statuses={statuses} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} dealers={dealers} states={projectStates} filters={filters} onFilterChange={setFilters} />
+              <FilterBar statuses={statuses} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} confirmationStatuses={confirmationStatuses} dealers={dealers} states={projectStates} filters={filters} onFilterChange={setFilters} />
               <ProjectList projects={projects} selectedProjectId={selectedProjectId} onSelectProject={handleSelectProject} filters={filters} statuses={statuses} />
             </>
           ) : (
@@ -1595,11 +1599,11 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
         </div>
 
         <div style={{ flex: 1, position: "relative", minHeight: 0, minWidth: 0 }}>
-          <ProjectMap projects={mapProjects} selectedProjectId={selectedProjectId} onSelectProject={handleSelectProject} filters={mapFilters} selectedOrigin={selectedOrigin} routeData={routeData} stateColorLookup={stateColorLookup} statuses={statuses} buildingCategories={buildingCategories} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} searchResults={searchResults} mode={mode} runs={runs} selectedRunId={selectedRunId} runProjects={runProjects} runRouteData={runRouteData} onAddToRun={canEditSelectedRun ? handleAddProjectToRun : null} onRemoveFromRun={canEditSelectedRun ? handleRemoveProjectFromRun : null} projectRunLookup={projectRunLookup} showLabels={showLabels} onMapRightClick={handleMapRightClick} canCreateProject={canCreateProject} tempMarker={tempMarker} searchMarker={searchMarker} onSearchMarkerClick={handleSearchMarkerClick} />
+          <ProjectMap projects={mapProjects} selectedProjectId={selectedProjectId} onSelectProject={handleSelectProject} filters={mapFilters} selectedOrigin={selectedOrigin} routeData={routeData} stateColorLookup={stateColorLookup} statuses={statuses} buildingCategories={buildingCategories} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} confirmationStatuses={confirmationStatuses} searchResults={searchResults} mode={mode} runs={runs} selectedRunId={selectedRunId} runProjects={runProjects} runRouteData={runRouteData} onAddToRun={canEditSelectedRun ? handleAddProjectToRun : null} onRemoveFromRun={canEditSelectedRun ? handleRemoveProjectFromRun : null} projectRunLookup={projectRunLookup} showLabels={showLabels} onMapRightClick={handleMapRightClick} canCreateProject={canCreateProject} tempMarker={tempMarker} searchMarker={searchMarker} onSearchMarkerClick={handleSearchMarkerClick} />
         </div>
 
         {mode === "projects" && selectedProject && (
-          <ProjectDetailDrawer project={selectedProject} statuses={statuses} buildingCategories={buildingCategories} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} projectRunLookup={projectRunLookup} onClose={handleCloseDrawer} onEdit={canEditSelectedProject ? handleEdit : null} onDelete={canDeleteSelectedProject ? () => setConfirmDeleteId(selectedProject.id) : null} onRemoveFromRun={canRemoveSelectedProjectFromRun ? handleRemoveProjectFromRunById : null} readOnly={!canEditSelectedProject} commentsReadOnly={!canAttach} filesReadOnly={!canEditSelectedProject && !canAttach} canDeleteFile={(file) => canEditSelectedProject || isOwnFile(statusTabAccess, file)} routeInfo={routeInfo} />
+          <ProjectDetailDrawer project={selectedProject} statuses={statuses} buildingCategories={buildingCategories} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} confirmationStatuses={confirmationStatuses} projectRunLookup={projectRunLookup} onClose={handleCloseDrawer} onEdit={canEditSelectedProject ? handleEdit : null} onDelete={canDeleteSelectedProject ? () => setConfirmDeleteId(selectedProject.id) : null} onRemoveFromRun={canRemoveSelectedProjectFromRun ? handleRemoveProjectFromRunById : null} readOnly={!canEditSelectedProject} commentsReadOnly={!canAttach} filesReadOnly={!canEditSelectedProject && !canAttach} canDeleteFile={(file) => canEditSelectedProject || isOwnFile(statusTabAccess, file)} routeInfo={routeInfo} />
         )}
         {/* Panel spinner = details fetch + OSRM route (loading contract is
             documented on the two effects above): it shows while either is in
@@ -1610,7 +1614,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
       </div>
 
       {mode === "projects" && (
-        <AddProjectForm show={showAddForm} mode={editingProject ? "edit" : "add"} project={editingProject} statuses={statuses} buildingCategories={buildingCategories} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} onClose={handleCloseForm} onSaved={handleSaved} initialLocation={initialLocation} editableStatusIds={statusTabAccess ? statusTabAccess.editableProjectStatusIds || [] : null} />
+        <AddProjectForm show={showAddForm} mode={editingProject ? "edit" : "add"} project={editingProject} statuses={statuses} buildingCategories={buildingCategories} permitStatuses={permitStatuses} welcomeCallStatuses={welcomeCallStatuses} confirmationStatuses={confirmationStatuses} onClose={handleCloseForm} onSaved={handleSaved} initialLocation={initialLocation} editableStatusIds={statusTabAccess ? statusTabAccess.editableProjectStatusIds || [] : null} />
       )}
 
       {mode === "runs" && (

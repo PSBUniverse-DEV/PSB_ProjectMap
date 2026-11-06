@@ -31,7 +31,7 @@ function formatMileage(miles) {
   return `${Number(miles).toFixed(1)} mi`;
 }
 
-export default function RunDetailPanel({ run, runProjects = [], runSegmentData = null, onClose, onEdit, onDelete, onRemoveProject, onReorderStops, onRecalculate, recalculating = false, onEditStopNote, onEditStopDate, onEditStopInvoice, onEditProjectPrice, onProjectUpdated, isLoading = false, runStatuses = [], onStatusChange, readOnly = false, filesReadOnly = false, canDeleteFile = null, routeStale = false }) {
+export default function RunDetailPanel({ run, runProjects = [], runSegmentData = null, onClose, onEdit, onDelete, onRemoveProject, onReorderStops, onRecalculate, recalculating = false, onEditStopNote, onEditStopDate, onEditStopInvoice, onEditStopConfirmation, onEditProjectPrice, onProjectUpdated, isLoading = false, runStatuses = [], onStatusChange, readOnly = false, filesReadOnly = false, canDeleteFile = null, routeStale = false }) {
   const [dragIndex, setDragIndex] = useState(null);
   const [dragOverIndex, setDragOverIndex] = useState(null);
   const [isEditingStatus, setIsEditingStatus] = useState(false);
@@ -320,6 +320,13 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
                                       title={rp.proj_t_projects?.invoice_number ? "Edit invoice #" : "Add invoice #"}
                                     >
                                       🧾 Invoice
+                                    </button>
+                                    <button
+                                      onClick={() => onEditStopConfirmation?.(rp)}
+                                      style={{ background: "none", border: "none", cursor: "pointer", fontSize: "10px", padding: "0", color: rp.proj_t_projects?.confirmation_status_id != null ? "#d97706" : "#94a3b8", fontWeight: rp.proj_t_projects?.confirmation_status_id != null ? 600 : 400 }}
+                                      title={rp.proj_t_projects?.confirmation_status_id != null ? "Edit confirmation" : "Set confirmation"}
+                                    >
+                                      📞 Confirm
                                     </button>
                                     <button
                                       onClick={() => onEditProjectPrice?.(rp)}

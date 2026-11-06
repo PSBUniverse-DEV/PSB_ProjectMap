@@ -163,6 +163,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
   const [editingStopNote, setEditingStopNote] = useState(null);
   const [editingStopDate, setEditingStopDate] = useState(null);
   const [editingStopInvoice, setEditingStopInvoice] = useState(null);
+  const [editingStopConfirmation, setEditingStopConfirmation] = useState(null);
   const [editingProjectPrice, setEditingProjectPrice] = useState(null);
   const [priceValue, setPriceValue] = useState("");
   const [allRunProjects, setAllRunProjects] = useState([]);
@@ -1296,6 +1297,48 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
     } finally { setBusy(false); }
   };
 
+  // Quick Confirmation Status edit from a run stop (same path as Invoice).
+  const handleEditStopConfirmation = (runProject) => {
+    const proj = runProject.proj_t_projects || {};
+    setEditingStopConfirmation({
+      projectId: runProject.project_id,
+      clientName: proj.client_name || runProject.clientName || "",
+      confirmationStatusId: proj.confirmation_status_id != null ? String(proj.confirmation_status_id) : "",
+    });
+  };
+
+  const handleSaveStopConfirmation = async () => {
+    if (!editingStopConfirmation) return;
+    const { projectId, confirmationStatusId } = editingStopConfirmation;
+    const statusId = confirmationStatusId ? Number(confirmationStatusId) : null;
+    const statusRow = statusId != null ? confirmationStatuses.find((s) => s.id === statusId) || null : null;
+    setBusy(true);
+    try {
+      await updateProject(projectId, {
+        confirmation_status_id: statusId,
+        updated_by: null,
+      }, { viaRunId: selectedRunId });
+
+      // Targeted local patch: the stop's "Confirmation:" line, the button color,
+      // the drawer and map card update at once, without a reload.
+      setProjects((prev) =>
+        prev.map((p) => (p.id === projectId ? { ...p, confirmation_status_id: statusId } : p))
+      );
+      setRunProjects((prev) =>
+        prev.map((rp) =>
+          rp.project_id === projectId
+            ? { ...rp, proj_t_projects: { ...rp.proj_t_projects, confirmation_status_id: statusId, proj_s_confirmation_status: statusRow } }
+            : rp
+        )
+      );
+
+      setEditingStopConfirmation(null);
+      toastSuccess("Confirmation status updated.", "Runs");
+    } catch (err) {
+      toastError(err?.message || "Failed to update confirmation status.", "Runs");
+    } finally { setBusy(false); }
+  };
+
   const handleEditProjectPrice = (runProject) => {
     const proj = runProject.proj_t_projects || {};
     setEditingProjectPrice({
@@ -1669,7 +1712,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
             documented on the two effects above): it shows while either is in
             flight and hides only once ALL panel data is displayed. */}
         {mode === "runs" && selectedRun && (
-          <RunDetailPanel run={selectedRun} runProjects={runProjects} runSegmentData={runSegmentData} onClose={handleCloseRunDetail} onEdit={canEditSelectedRun ? handleEditRun : null} onDelete={canEditSelectedRun ? () => setConfirmDeleteRunId(selectedRun.id) : null} onRemoveProject={canEditSelectedRun ? handleRemoveProjectFromRun : null} onReorderStops={canEditSelectedRun ? handleReorderStops : null} onRecalculate={handleRecalculate} recalculating={recalculating} onEditStopNote={canEditSelectedRun ? handleEditStopNote : null} routeStale={staleRouteRunIds.has(selectedRunId)} readOnly={!canEditSelectedRun} filesReadOnly={!canEditSelectedRun && !canAttach} canDeleteFile={(file) => canEditSelectedRun || isOwnFile(statusTabAccess, file)} onEditStopDate={handleEditStopDate} onEditStopInvoice={handleEditStopInvoice} onEditProjectPrice={handleEditProjectPrice} isLoading={isLoadingRunDetails || runRouteLoading} runStatuses={runStatuses} onStatusChange={handleRunStatusChange} />
+          <RunDetailPanel run={selectedRun} runProjects={runProjects} runSegmentData={runSegmentData} onClose={handleCloseRunDetail} onEdit={canEditSelectedRun ? handleEditRun : null} onDelete={canEditSelectedRun ? () => setConfirmDeleteRunId(selectedRun.id) : null} onRemoveProject={canEditSelectedRun ? handleRemoveProjectFromRun : null} onReorderStops={canEditSelectedRun ? handleReorderStops : null} onRecalculate={handleRecalculate} recalculating={recalculating} onEditStopNote={canEditSelectedRun ? handleEditStopNote : null} routeStale={staleRouteRunIds.has(selectedRunId)} readOnly={!canEditSelectedRun} filesReadOnly={!canEditSelectedRun && !canAttach} canDeleteFile={(file) => canEditSelectedRun || isOwnFile(statusTabAccess, file)} onEditStopDate={handleEditStopDate} onEditStopInvoice={handleEditStopInvoice} onEditStopConfirmation={handleEditStopConfirmation} onEditProjectPrice={handleEditProjectPrice} isLoading={isLoadingRunDetails || runRouteLoading} runStatuses={runStatuses} onStatusChange={handleRunStatusChange} />
         )}
       </div>
 
@@ -1813,6 +1856,34 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
             <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
               <Button variant="secondary" onClick={() => setEditingStopInvoice(null)}>Cancel</Button>
               <Button variant="primary" loading={busy} onClick={handleSaveStopInvoice}>Save</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal show={!!editingStopConfirmation} onHide={() => setEditingStopConfirmation(null)} title="Confirmation Status">
+        {editingStopConfirmation && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            <div>
+              <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Project</label>
+              <div style={{ fontSize: "12px", fontWeight: 600, color: "#1e293b" }}>{editingStopConfirmation.clientName}</div>
+            </div>
+            <div>
+              <label style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>Confirmation Status</label>
+              <select
+                value={editingStopConfirmation.confirmationStatusId}
+                onChange={(e) => setEditingStopConfirmation({ ...editingStopConfirmation, confirmationStatusId: e.target.value })}
+                style={{ width: "100%", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px", background: "#fff" }}
+              >
+                <option value="">Select...</option>
+                {confirmationStatuses.filter((s) => s?.is_active !== false || String(s.id) === editingStopConfirmation.confirmationStatusId).map((s) => (
+                  <option key={s.id} value={String(s.id)}>{s.status_name}</option>
+                ))}
+              </select>
+            </div>
+            <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
+              <Button variant="secondary" onClick={() => setEditingStopConfirmation(null)}>Cancel</Button>
+              <Button variant="primary" loading={busy} onClick={handleSaveStopConfirmation}>Save</Button>
             </div>
           </div>
         )}

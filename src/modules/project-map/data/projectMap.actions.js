@@ -1029,7 +1029,7 @@ async function requireFileAdd(supabase, access, ownerType, ownerId, viaRunId = n
 }
 
 // Project fields a stop edit inside a run may change (run panel: date, invoice, price).
-const STOP_PROJECT_FIELDS = ["install_start", "install_end", "invoice_number", "project_subtotal", "updated_by"];
+const STOP_PROJECT_FIELDS = ["install_start", "install_end", "invoice_number", "project_subtotal", "confirmation_status_id", "updated_by"];
 
 // ─── Released stops ─────────────────────────────────────────
 // When stops leave a run (stop removed, run cancelled or deleted), the user who
@@ -1148,7 +1148,7 @@ export async function updateProject(projectId, updates, { viaRunId = null } = {}
 
   const supabase = getSupabaseAdmin();
   if (viaRunId != null && Object.keys(updates || {}).some((key) => !STOP_PROJECT_FIELDS.includes(key))) {
-    throw new Error("Only the stop's date, invoice and price can be changed from a run.");
+    throw new Error("Only the stop's date, invoice, confirmation and price can be changed from a run.");
   }
   // Judged by the project's CURRENT status (Projects tab) or the run's (Runs tab),
   // so moving it into any status is allowed.

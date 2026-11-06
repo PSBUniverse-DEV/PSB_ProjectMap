@@ -164,8 +164,11 @@ export default function ProjectList({ projects = [], selectedProjectId, onSelect
                   padding: "6px 8px",
                   marginBottom: "3px",
                   background: isSelected ? "#dce8f2" : "#fff",
-                  border: `1px solid ${isSelected ? "#93c5fd" : "#e2e8f0"}`,
-                  borderLeft: `3px solid ${age ? age.color : (isSelected ? "#93c5fd" : "#e2e8f0")}`,
+                  // Separate width/color lists: React warns when a shorthand and one of its
+                  // own parts are both set and one changes.
+                  borderStyle: "solid",
+                  borderWidth: "1px 1px 1px 3px",
+                  borderColor: `${isSelected ? "#93c5fd" : "#e2e8f0"} ${isSelected ? "#93c5fd" : "#e2e8f0"} ${isSelected ? "#93c5fd" : "#e2e8f0"} ${age ? age.color : (isSelected ? "#93c5fd" : "#e2e8f0")}`,
                   borderRadius: "4px",
                   cursor: "pointer",
                   transition: "all 0.15s",

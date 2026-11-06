@@ -56,19 +56,34 @@ function formatArrivalWindow(start, end) {
   return `${label(from, true)} – ${label(to, !sameDay)}`;
 }
 
-// Value chip on a stop card. With onClick it is a button that opens that
-// field's editor; without, a plain chip (view-only users).
-const STOP_CHIP_BASE = { fontSize: "9.5px", lineHeight: "16px", padding: "0 6px", borderRadius: "999px", border: "1px solid", whiteSpace: "nowrap", fontFamily: "inherit" };
-const STOP_CHIP_TONES = {
-  indigo: { color: "#6366f1", borderColor: "#c7d2fe", background: "#eef2ff", fontWeight: 600 },
-  amber: { color: "#d97706", borderColor: "#fde68a", background: "#fffbeb", fontWeight: 600 },
-  green: { color: "#16a34a", borderColor: "#bbf7d0", background: "#f0fdf4", fontWeight: 600 },
-  add: { color: "#94a3b8", borderColor: "#cbd5e1", borderStyle: "dashed", background: "transparent", fontWeight: 400 },
-};
-function StopChip({ tone, onClick, title, children }) {
-  const style = { ...STOP_CHIP_BASE, ...STOP_CHIP_TONES[tone] };
-  if (!onClick) return <span title={title} style={{ ...style, cursor: "default" }}>{children}</span>;
-  return <button type="button" onClick={onClick} title={title} style={{ ...style, cursor: "pointer" }}>{children}</button>;
+// Detail tile on a stop card (2×2 grid plus a full-width note): small label
+// on top, value below. With onClick it is a button that opens that field's
+// editor. Empty values read "+ Add" for editors and "—" for view-only users.
+// Values wrap instead of being cut off.
+function StopTile({ label, value, color = "#1e293b", onClick, title, wide = false }) {
+  const empty = value == null || value === "";
+  const style = {
+    display: "block",
+    minWidth: 0,
+    gridColumn: wide ? "1 / -1" : undefined,
+    textAlign: "left",
+    fontFamily: "inherit",
+    background: "#fff",
+    border: "1px solid #e2e8f0",
+    borderRadius: "3px",
+    padding: "3px 6px",
+    cursor: onClick ? "pointer" : "default",
+  };
+  const content = (
+    <>
+      <span style={{ display: "block", fontSize: "8.5px", color: "#64748b", textTransform: "uppercase", letterSpacing: "0.4px" }}>{label}</span>
+      <span style={{ display: "block", fontSize: wide ? "9.5px" : "10px", fontWeight: empty || wide ? 400 : 600, color: empty ? "#94a3b8" : (wide ? "#475569" : color), whiteSpace: wide ? "pre-wrap" : "normal", overflowWrap: "anywhere" }}>
+        {empty ? (onClick ? "+ Add" : "—") : value}
+      </span>
+    </>
+  );
+  if (!onClick) return <div title={title} style={style}>{content}</div>;
+  return <button type="button" onClick={onClick} title={title} style={style}>{content}</button>;
 }
 
 export default function RunDetailPanel({ run, runProjects = [], runSegmentData = null, onClose, onEdit, onDelete, onRemoveProject, onReorderStops, onRecalculate, recalculating = false, onEditStopNote, onEditStopDate, onEditStopInvoice, onEditStopConfirmation, onEditProjectPrice, onProjectUpdated, isLoading = false, runStatuses = [], onStatusChange, readOnly = false, filesReadOnly = false, canDeleteFile = null, routeStale = false }) {
@@ -343,29 +358,44 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
                                     {proj.city && proj.state ? `${stripTownshipLabel(proj.city)}, ${proj.state}` : stripTownshipLabel(proj.formatted_address) || "No address"}
                                     {" · "}{projectStatusLabel}
                                   </div>
-                                  <div style={{ fontSize: "10px", color: amount.color, fontWeight: amount.isRepair ? 700 : 600, marginTop: "2px" }}>{amount.prefix}{sub}</div>
-                                  {/* Stop details as value chips: each shows its value and opens its editor.
-                                      Missing ones are dashed "+" chips, for editors only. */}
-                                  <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginTop: "5px" }}>
-                                    {arrivalText
-                                      ? <StopChip tone="indigo" onClick={canEditStop ? () => onEditStopDate?.(rp) : null} title={canEditStop ? "Edit arrival window" : "Arrival window"}>📅 {arrivalText}</StopChip>
-                                      : canEditStop && <StopChip tone="add" onClick={() => onEditStopDate?.(rp)} title="Add arrival window">+ Date</StopChip>}
-                                    {proj.invoice_number
-                                      ? <StopChip tone="indigo" onClick={canEditStop ? () => onEditStopInvoice?.(rp) : null} title={canEditStop ? "Edit invoice #" : "Invoice #"}>🧾 {proj.invoice_number}</StopChip>
-                                      : canEditStop && <StopChip tone="add" onClick={() => onEditStopInvoice?.(rp)} title="Add invoice #">+ Invoice</StopChip>}
-                                    {confirmationName
-                                      ? <StopChip tone="amber" onClick={canEditStop ? () => onEditStopConfirmation?.(rp) : null} title={canEditStop ? "Edit confirmation" : "Confirmation"}>📞 {confirmationName}</StopChip>
-                                      : canEditStop && <StopChip tone="add" onClick={() => onEditStopConfirmation?.(rp)} title="Set confirmation">+ Confirmation</StopChip>}
-                                    {proj.project_subtotal != null
-                                      ? <StopChip tone="green" onClick={canEditStop ? () => onEditProjectPrice?.(rp) : null} title={canEditStop ? "Edit price" : "Price"}>💰 Price</StopChip>
-                                      : canEditStop && <StopChip tone="add" onClick={() => onEditProjectPrice?.(rp)} title="Add price">+ Price</StopChip>}
-                                    {!rp.notes && canEditStop && <StopChip tone="add" onClick={() => onEditStopNote?.(rp)} title="Add note">+ Note</StopChip>}
+                                  {/* Stop details as tiles: 2×2 grid + full-width note. Each tile opens its editor. */}
+                                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px", marginTop: "5px" }}>
+                                    <StopTile
+                                      label="Arrival"
+                                      value={arrivalText}
+                                      onClick={canEditStop ? () => onEditStopDate?.(rp) : null}
+                                      title={canEditStop ? "Edit arrival window" : "Arrival window"}
+                                    />
+                                    <StopTile
+                                      label="Invoice"
+                                      value={proj.invoice_number}
+                                      onClick={canEditStop ? () => onEditStopInvoice?.(rp) : null}
+                                      title={canEditStop ? "Edit invoice #" : "Invoice #"}
+                                    />
+                                    <StopTile
+                                      label="Confirmation"
+                                      value={confirmationName}
+                                      color="#d97706"
+                                      onClick={canEditStop ? () => onEditStopConfirmation?.(rp) : null}
+                                      title={canEditStop ? "Edit confirmation" : "Confirmation"}
+                                    />
+                                    <StopTile
+                                      label={amount.isRepair ? "Repairs" : "Price"}
+                                      value={proj.project_subtotal != null ? sub : ""}
+                                      color={amount.color}
+                                      onClick={canEditStop ? () => onEditProjectPrice?.(rp) : null}
+                                      title={canEditStop ? "Edit price" : "Price"}
+                                    />
+                                    {(rp.notes || canEditStop) && (
+                                      <StopTile
+                                        wide
+                                        label="Note"
+                                        value={rp.notes}
+                                        onClick={canEditStop ? () => onEditStopNote?.(rp) : null}
+                                        title={canEditStop ? (rp.notes ? "Edit note" : "Add note") : "Note"}
+                                      />
+                                    )}
                                   </div>
-                                  {rp.notes && (canEditStop ? (
-                                    <button type="button" onClick={() => onEditStopNote?.(rp)} title="Edit note" style={{ display: "block", width: "100%", textAlign: "left", fontFamily: "inherit", fontSize: "9px", color: "#475569", marginTop: "4px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "3px 6px", whiteSpace: "pre-wrap", cursor: "pointer" }}>📝 {rp.notes}</button>
-                                  ) : (
-                                    <div style={{ fontSize: "9px", color: "#475569", marginTop: "4px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "3px 6px", whiteSpace: "pre-wrap" }}>📝 {rp.notes}</div>
-                                  ))}
                                 </div>
                                 {!readOnly && (
                                   <button onClick={() => onRemoveProject?.(rp.id)} style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: "12px", padding: "0", lineHeight: 1 }} title="Remove from run">×</button>

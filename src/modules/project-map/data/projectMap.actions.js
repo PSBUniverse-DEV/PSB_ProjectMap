@@ -1737,7 +1737,7 @@ export async function deleteRun(runId) {
   };
 }
 
-export async function addProjectToRun(runId, projectId, stopSequence = 0) {
+export async function addProjectToRun(runId, projectId, stopSequence = 0, { keepArrival = false } = {}) {
   const supabase = getSupabaseAdmin();
   await requireRunEdit(supabase, await requireProjectMapAccess(), runId);
   const pid = Number(projectId);
@@ -1784,12 +1784,13 @@ export async function addProjectToRun(runId, projectId, stopSequence = 0) {
   if (error) throw new Error(error.message);
 
   // A stop on a dated run gets the run date as its arrival window (12:00 AM for
-  // both), the same rule as a run date change in updateRun. The screen asks the
+  // both), the same rule as a run date change in updateRun — unless keepArrival
+  // is set ("No" in the Add to Run dialog: add it but keep its own date). The screen asks the
   // user first. Failures are logged; the stop itself was added.
   try {
     const { data: run, error: runError } = await supabase.from("proj_t_runs").select("run_date").eq("id", runId).maybeSingle();
     if (runError) throw runError;
-    if (run?.run_date) {
+    if (run?.run_date && !keepArrival) {
       const arrival = arrivalOnRunDate(run.run_date);
       const { error: arrivalError } = await supabase
         .from("proj_t_projects")

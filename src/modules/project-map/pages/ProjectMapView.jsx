@@ -1050,7 +1050,8 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
 
   // Right-click → Add to Run. On a run with a date the stop's arrival window is
   // set to the run date (12:00 AM, see addProjectToRun), so ask first unless it
-  // already has exactly that. "No" cancels the add.
+  // already has exactly that. "Yes" adds it and changes the date; "No" adds it
+  // and keeps its own date; closing the dialog (X) cancels.
   const handleAddProjectToRun = (projectId) => {
     if (!selectedRunId) return;
     const runDate = selectedRun?.run_date ? String(selectedRun.run_date).slice(0, 10) : "";
@@ -1068,17 +1069,18 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
     setConfirmAddProject({ projectId, clientName: project?.client_name || "This project", runDate });
   };
 
-  const handleConfirmAddProject = async () => {
+  // Yes: add and change the arrival date to the run date. No: add and keep the project's own date.
+  const handleConfirmAddProject = async (keepArrival) => {
     const projectId = confirmAddProject?.projectId;
     setConfirmAddProject(null);
-    if (projectId != null) await addProjectToSelectedRun(projectId);
+    if (projectId != null) await addProjectToSelectedRun(projectId, { keepArrival });
   };
 
-  const addProjectToSelectedRun = async (projectId) => {
+  const addProjectToSelectedRun = async (projectId, { keepArrival = false } = {}) => {
     if (!selectedRunId) return;
     setBusy(true);
     try {
-      await addProjectToRun(selectedRunId, projectId, runProjects.length);
+      await addProjectToRun(selectedRunId, projectId, runProjects.length, { keepArrival });
       toastSuccess("Project added to run.", "Runs");
       await refreshRunData();
       await refreshRunProjects();
@@ -1720,12 +1722,15 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
 
       {mode === "runs" && (
         <Modal show={!!confirmAddProject} onHide={() => setConfirmAddProject(null)} title="Add to Run">
-          <p style={{ fontSize: "13px", color: "#1e293b", margin: "0 0 16px" }}>
-            {confirmAddProject?.clientName}&apos;s arrival date will be changed to the run date ({formatDisplayDate(confirmAddProject?.runDate)}, 12:00 AM). Proceed?
+          <p style={{ fontSize: "13px", color: "#1e293b", margin: "0 0 6px" }}>
+            Change {confirmAddProject?.clientName}&apos;s arrival date to the run date ({formatDisplayDate(confirmAddProject?.runDate)}, 12:00 AM)?
+          </p>
+          <p style={{ fontSize: "12px", color: "#475569", margin: "0 0 16px" }}>
+            Yes adds it to the run and changes the date. No adds it to the run and keeps its current date.
           </p>
           <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
-            <Button variant="secondary" onClick={() => setConfirmAddProject(null)}>No</Button>
-            <Button variant="primary" loading={busy} onClick={handleConfirmAddProject}>Yes</Button>
+            <Button variant="secondary" loading={busy} onClick={() => handleConfirmAddProject(true)}>No</Button>
+            <Button variant="primary" loading={busy} onClick={() => handleConfirmAddProject(false)}>Yes</Button>
           </div>
         </Modal>
       )}

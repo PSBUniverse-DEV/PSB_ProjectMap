@@ -20,12 +20,13 @@ import StopStatusPrompt from "../components/StopStatusPrompt";
 import FilterBar from "../components/FilterBar";
 import AddProjectForm from "../components/AddProjectForm";
 import MapSearch from "../components/MapSearch";
-import { splitRunAmounts, getStatusTabGroupIds, runStatusNameByKey, canEditProjectStatusId, canEditRunStatusName, canCommentAndAttach, isOwnFile, formatDisplayDate } from "../data/projectMap.data";
+import { splitRunAmounts, getStatusTabGroupIds, runStatusNameByKey, canEditProjectStatusId, canEditRunStatusName, canCommentAndAttach, isOwnFile, formatDisplayDate, getStaleProjects } from "../data/projectMap.data";
 import FilterChips from "../components/FilterChips";
 import RunFilterPanel from "../components/RunFilterPanel";
 import RunFilterChips from "../components/RunFilterChips";
 import RunStatusTabs from "../components/RunStatusTabs";
 import ProjectStatusTabs from "../components/ProjectStatusTabs";
+import StaleProjectsBell from "../components/StaleProjectsBell";
 // Stable empty filter object handed to ProjectMap while on the Runs tab.
 // ProjectMap applies whatever filters object it receives to its pins; on the
 // Runs tab the run status tabs must govern the map instead, so the project
@@ -655,6 +656,18 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
   }, [states]);
 
   const handleSelectProject = useCallback((id) => { setSelectedProjectId(id); }, []);
+
+  // Bell: open projects (that this user may see) not updated for 14+ days.
+  const staleProjects = useMemo(() => getStaleProjects(projects, statuses), [projects, statuses]);
+
+  // Bell → open a project: go to the Projects tab; if the current status tab or
+  // filters hide it, go back to "All" with no filters; then pick it, so the list
+  // scrolls to it, the map flies to it and the drawer opens.
+  const handleOpenStaleProject = useCallback((projectId) => {
+    setMode("projects");
+    if (!filteredProjects.some((p) => p.id === projectId)) setFilters({});
+    setSelectedProjectId(projectId);
+  }, [filteredProjects]);
 
   const handleCloseDrawer = () => { setSelectedProjectId(null); };
 
@@ -1577,10 +1590,13 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
           <h2 style={{ margin: 0, fontSize: "12px", fontWeight: 600, color: "#1e293b", lineHeight: "1.2" }}>Projects Map</h2>
           <p style={{ margin: "1px 0 0", fontSize: "9px", color: "#64748b", lineHeight: "1.2" }}>View and track project locations, schedules, and statuses on an interactive map.</p>
         </div>
-        <label style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "11px", color: "#1e293b", cursor: "pointer", whiteSpace: "nowrap" }}>
-          <input type="checkbox" checked={showLabels} onChange={(e) => setShowLabels(e.target.checked)} />
-          Show Labels
-        </label>
+        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "11px", color: "#1e293b", cursor: "pointer", whiteSpace: "nowrap" }}>
+            <input type="checkbox" checked={showLabels} onChange={(e) => setShowLabels(e.target.checked)} />
+            Show Labels
+          </label>
+          <StaleProjectsBell items={staleProjects} statuses={statuses} onOpenProject={handleOpenStaleProject} />
+        </div>
       </div>
 
       <div style={{ display: "flex", borderBottom: "1px solid #e2e8f0", background: "#fff", flexShrink: 0 }}>

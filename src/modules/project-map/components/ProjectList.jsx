@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { StatusBadge } from "@/shared/components/ui";
-import { stripTownshipLabel, getProjectAmountDisplay } from "../data/projectMap.data";
+import { stripTownshipLabel, getProjectAmountDisplay, isPastInstallProject } from "../data/projectMap.data";
 
 function getStatusTone(statusName) {
   if (!statusName) return "secondary";
@@ -24,18 +24,11 @@ const AGE_BANDS = [
   { maxDays: 20, color: "#d97706" },
   { maxDays: Infinity, color: "#dc2626" },
 ];
-// Done or past installation: no age flag. Fully Installed / Repaired have
-// system keys; Completed, Pending Payment and Collections have none, so
-// they are matched by name.
-const AGE_EXEMPT_STATUS_KEYS = ["fully_installed", "repaired"];
-const AGE_EXEMPT_STATUS_NAMES = ["completed", "pending payment", "collections"];
-
-// { days, color, label } or null when the project gets no age flag.
+// { days, color, label } or null when the project gets no age flag
+// (done or past installation: isPastInstallProject in projectMap.data).
 function getProjectAge(project, statuses, now) {
   if (!project?.created_at) return null;
-  const status = project.proj_s_project_status || statuses.find((s) => s.status_id === project.status_id);
-  if (AGE_EXEMPT_STATUS_KEYS.includes(status?.system_key)) return null;
-  if (AGE_EXEMPT_STATUS_NAMES.includes(String(status?.status_name || "").trim().toLowerCase())) return null;
+  if (isPastInstallProject(project, statuses)) return null;
   const created = new Date(project.created_at);
   if (Number.isNaN(created.getTime())) return null;
   const days = Math.max(0, Math.floor((now.getTime() - created.getTime()) / AGE_DAY_MS));
@@ -124,10 +117,19 @@ export default function ProjectList({ projects = [], selectedProjectId, onSelect
     return [...filteredProjects].sort((a, b) => (time(a) - time(b)) * direction || (Number(a.id) - Number(b.id)));
   }, [filteredProjects, sortOrder]);
 
+  // Bring the picked project into view (picked on the map, or from the bell).
+  // Only when the pick changes, so a background refresh never jumps the list.
+  const listRef = useRef(null);
+  useEffect(() => {
+    if (selectedProjectId == null) return;
+    const row = listRef.current?.querySelector(`[data-project-id="${String(selectedProjectId)}"]`);
+    row?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [selectedProjectId]);
+
   const now = new Date();
 
   return (
-    <div style={{ height: "100%", minHeight: 0, overflow: "auto", background: "#f8fafc", borderRight: "1px solid #e2e8f0" }}>
+    <div ref={listRef} style={{ height: "100%", minHeight: 0, overflow: "auto", background: "#f8fafc", borderRight: "1px solid #e2e8f0" }}>
       <div style={{ padding: "6px 10px", borderBottom: "1px solid #e2e8f0", background: "#fff", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "6px" }}>
         <h6 style={{ margin: 0, fontSize: "11px", fontWeight: 600, color: "#64748b" }}>
           {filteredProjects.length} Project{filteredProjects.length !== 1 ? "s" : ""}
@@ -159,6 +161,7 @@ export default function ProjectList({ projects = [], selectedProjectId, onSelect
             return (
               <div
                 key={project.id}
+                data-project-id={String(project.id)}
                 onClick={() => onSelectProject?.(project.id)}
                 style={{
                   padding: "6px 8px",

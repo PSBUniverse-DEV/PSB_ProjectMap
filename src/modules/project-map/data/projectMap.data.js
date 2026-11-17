@@ -341,6 +341,36 @@ export function isRepairProject(project, statuses = []) {
  * "Repairs", everything else is green and labelled "Project Subtotal".
  * `prefix` is for compact spots that show the amount without a label cell.
  */
+// Done or past installation. Fully Installed / Repaired have system keys;
+// Completed, Pending Payment and Collections have none, so they are matched by name.
+const PAST_INSTALL_STATUS_KEYS = ["fully_installed", "repaired"];
+const PAST_INSTALL_STATUS_NAMES = ["completed", "pending payment", "collections"];
+
+/** True when the project is done or past installation (no age flag, never in the "not updated" bell). */
+export function isPastInstallProject(project, statuses = []) {
+  const status = project?.proj_s_project_status || statuses.find((s) => s.status_id === project?.status_id);
+  if (PAST_INSTALL_STATUS_KEYS.includes(status?.system_key)) return true;
+  return PAST_INSTALL_STATUS_NAMES.includes(String(status?.status_name || "").trim().toLowerCase());
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+export const STALE_AFTER_DAYS = 14;
+
+/**
+ * Open projects not updated (updated_at, else created_at) for STALE_AFTER_DAYS
+ * days or more, oldest first: [{ project, days }].
+ */
+export function getStaleProjects(projects = [], statuses = [], now = new Date()) {
+  return projects
+    .filter((project) => !isPastInstallProject(project, statuses))
+    .map((project) => {
+      const touched = new Date(project.updated_at || project.created_at).getTime();
+      return Number.isNaN(touched) ? null : { project, days: Math.floor((now.getTime() - touched) / DAY_MS) };
+    })
+    .filter((item) => item && item.days >= STALE_AFTER_DAYS)
+    .sort((a, b) => b.days - a.days || Number(a.project.id) - Number(b.project.id));
+}
+
 export function getProjectAmountDisplay(project, statuses = []) {
   const isRepair = isRepairProject(project, statuses);
   return {

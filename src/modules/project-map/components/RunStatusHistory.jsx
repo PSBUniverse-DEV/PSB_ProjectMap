@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { FINISHED_RUN_STATUS_KEYS, getRunStatusColor } from "../data/projectMap.data";
 
 // "3 d 4 h", "5 h 12 m", "12 m", "under 1 m"
@@ -31,7 +31,8 @@ function secondsBetween(from, to) {
 /**
  * "History" section of the run panel: every run status change
  * (proj_t_run_status_log, written by the app on every status save, loaded with
- * the run list so it shows instantly), oldest first, with how long the run sat
+ * the run list so it shows instantly), newest first (latest 3 until "Show all
+ * changes"), with how long the run sat
  * in the previous status; how long it has been in its current status; and the
  * total time since it was created, which stops once the run reaches a status
  * that ends a run (FINISHED_RUN_STATUS_KEYS).
@@ -54,6 +55,9 @@ export default function RunStatusHistory({ run, runStatuses = [] }) {
     .sort((a, b) => new Date(a.changedAt) - new Date(b.changedAt) || Number(a.logId) - Number(b.logId)),
   [run?.proj_t_run_status_log]);
 
+  const [showAll, setShowAll] = useState(false);
+  const PREVIEW_COUNT = 3;
+
   const finishedNames = new Set(runStatuses.filter((s) => FINISHED_RUN_STATUS_KEYS.includes(s.system_key)).map((s) => s.status_name));
   const finished = finishedNames.has(run?.status);
   const last = rows.length ? rows[rows.length - 1] : null;
@@ -61,55 +65,62 @@ export default function RunStatusHistory({ run, runStatuses = [] }) {
   const inCurrentSeconds = last ? secondsBetween(last.changedAt, now) : null;
   const totalEnd = finished && last ? last.changedAt : now;
   const totalSeconds = run?.created_at ? secondsBetween(run.created_at, totalEnd) : null;
+  const showCurrent = !finished && last && inCurrentSeconds != null;
+  const currentColor = last ? getRunStatusColor(last.toStatus, runStatuses) : "#6b7280";
+  // Newest first; only the latest few until "Show all changes" is clicked.
+  const newestFirst = [...rows].reverse();
+  const visibleRows = showAll ? newestFirst : newestFirst.slice(0, PREVIEW_COUNT);
 
   return (
-    <div style={{ marginBottom: "10px" }}>
-      <div style={{ fontSize: "10px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", marginBottom: "4px" }}>History</div>
+    <section style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "10px 12px", display: "flex", flexDirection: "column", gap: "8px" }}>
+      <h3 style={{ margin: 0, fontSize: "11px", fontWeight: 700, color: "#475569", letterSpacing: "0.04em", textTransform: "uppercase" }}>History</h3>
 
       {rows.length === 0 ? (
         <div style={{ fontSize: "11px", color: "#94a3b8" }}>No status changes recorded yet.</div>
       ) : (
-        <ol style={{ listStyle: "none", margin: 0, padding: 0, borderLeft: "2px solid #e2e8f0" }}>
-          {rows.map((row) => (
-            <li key={row.logId} style={{ position: "relative", padding: "0 0 8px 12px" }}>
-              <span aria-hidden="true" style={{ position: "absolute", left: "-5px", top: "4px", width: "8px", height: "8px", borderRadius: "50%", background: getRunStatusColor(row.toStatus, runStatuses) }} />
-              <div style={{ display: "flex", justifyContent: "space-between", gap: "6px", alignItems: "baseline" }}>
-                <span style={{ fontSize: "11px", fontWeight: 700, color: "#1e293b" }}>{row.toStatus || "No status"}</span>
-                <span style={{ fontSize: "10px", color: "#64748b", whiteSpace: "nowrap" }}>{formatDateTime(row.changedAt)}</span>
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "6px" }}>
+            {showCurrent ? (
+              <div style={{ padding: "6px 8px", background: `${currentColor}14`, borderRadius: "8px", minWidth: 0 }}>
+                <div style={{ fontSize: "10px", fontWeight: 600, color: currentColor, overflowWrap: "anywhere" }}>In {last.toStatus || "this status"}</div>
+                <div style={{ fontSize: "12px", fontWeight: 700, color: "#0f172a" }}>{last.isBaseline ? `${formatDuration(inCurrentSeconds)}+` : formatDuration(inCurrentSeconds)}</div>
               </div>
-              <div style={{ fontSize: "10px", color: "#64748b", marginTop: "1px" }}>
-                {row.isBaseline
-                  ? "Already in this status when tracking started"
-                  : row.fromStatus
-                    ? `From ${row.fromStatus}${row.durationSeconds != null ? ` after ${formatDuration(row.durationSeconds)}` : ""}`
-                    : "First status"}
-                {row.changedByName ? ` · by ${row.changedByName}` : ""}
-              </div>
-            </li>
-          ))}
-        </ol>
-      )}
-
-      {rows.length > 0 ? (
-        <table style={{ width: "100%", borderCollapse: "collapse", marginTop: "4px" }}>
-          <tbody>
-            {!finished && last && inCurrentSeconds != null ? (
-              <tr style={{ borderBottom: "1px solid #f2f2f2" }}>
-                <td style={{ padding: "4px 0", fontSize: "11px", color: "#64748b", fontWeight: 500 }}>In {last.toStatus || "this status"}</td>
-                <td style={{ padding: "4px 0", fontSize: "12px", color: "#1e293b", fontWeight: 600, textAlign: "right" }}>
-                  {last.isBaseline ? `${formatDuration(inCurrentSeconds)}+` : formatDuration(inCurrentSeconds)}
-                </td>
-              </tr>
             ) : null}
             {totalSeconds != null ? (
-              <tr>
-                <td style={{ padding: "4px 0", fontSize: "11px", color: "#64748b", fontWeight: 500 }}>{finished ? "Total time (finished)" : "Total time so far"}</td>
-                <td style={{ padding: "4px 0", fontSize: "12px", color: "#1e293b", fontWeight: 600, textAlign: "right" }}>{formatDuration(totalSeconds)}</td>
-              </tr>
+              <div style={{ padding: "6px 8px", background: "#f1f5f9", borderRadius: "8px", minWidth: 0 }}>
+                <div style={{ fontSize: "10px", color: "#475569" }}>{finished ? "Total time (finished)" : "Total time so far"}</div>
+                <div style={{ fontSize: "12px", fontWeight: 700, color: "#0f172a" }}>{formatDuration(totalSeconds)}</div>
+              </div>
             ) : null}
-          </tbody>
-        </table>
-      ) : null}
-    </div>
+          </div>
+
+          <ol style={{ listStyle: "none", margin: 0, padding: 0, borderLeft: "2px solid #e2e8f0" }}>
+            {visibleRows.map((row) => (
+              <li key={row.logId} style={{ position: "relative", padding: "0 0 8px 12px" }}>
+                <span aria-hidden="true" style={{ position: "absolute", left: "-5px", top: "4px", width: "8px", height: "8px", borderRadius: "50%", background: getRunStatusColor(row.toStatus, runStatuses) }} />
+                <div style={{ display: "flex", justifyContent: "space-between", gap: "6px", alignItems: "baseline" }}>
+                  <span style={{ fontSize: "11px", fontWeight: 700, color: "#1e293b" }}>{row.toStatus || "No status"}</span>
+                  <span style={{ fontSize: "10px", color: "#64748b", whiteSpace: "nowrap" }}>{formatDateTime(row.changedAt)}</span>
+                </div>
+                <div style={{ fontSize: "10px", color: "#64748b", marginTop: "1px" }}>
+                  {row.isBaseline
+                    ? "Already in this status when tracking started"
+                    : row.fromStatus
+                      ? `From ${row.fromStatus}${row.durationSeconds != null ? ` after ${formatDuration(row.durationSeconds)}` : ""}`
+                      : "First status"}
+                  {row.changedByName ? ` · by ${row.changedByName}` : ""}
+                </div>
+              </li>
+            ))}
+          </ol>
+
+          {rows.length > PREVIEW_COUNT ? (
+            <button type="button" onClick={() => setShowAll((value) => !value)} style={{ alignSelf: "flex-start", padding: 0, border: "none", background: "none", color: "#1d4ed8", fontFamily: "inherit", fontSize: "11px", fontWeight: 600, cursor: "pointer" }}>
+              {showAll ? "Show fewer" : `Show all changes (${rows.length})`}
+            </button>
+          ) : null}
+        </>
+      )}
+    </section>
   );
 }

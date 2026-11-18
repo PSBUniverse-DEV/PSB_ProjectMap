@@ -936,6 +936,88 @@ export async function loadWelcomeCallStatuses() {
 // viewers). They are bookkeeping, not edits, so they skip the status check.
 const RUN_BOOKKEEPING_FIELDS = ["estimated_distance", "estimated_duration", "estimated_mileage", "estimated_subtotal"];
 
+// ─── Status logs ───────────────────────────────────────────
+// Every project/run status change is logged here by the app (no database
+// triggers): one row per change in proj_t_project_status_log /
+// proj_t_run_status_log, with the status names as they are now (so a status
+// renamed or removed later still reads right), who changed it, and how long
+// the project/run sat in the previous status (since its previous log row).
+// Called right after the status is saved. A failed log write is reported in
+// the server log and never undoes or fails the save.
+
+// changes: [{ projectId, fromStatusId, toStatusId }]; rows whose status did not change are skipped.
+async function logProjectStatusChanges(supabase, changes, userId) {
+  const real = (changes || []).filter((c) => c && c.projectId != null && c.toStatusId != null
+    && String(c.fromStatusId ?? "") !== String(c.toStatusId));
+  if (!real.length) return;
+  try {
+    const projectIds = [...new Set(real.map((c) => Number(c.projectId)))];
+    const statusIds = [...new Set(real.flatMap((c) => [c.fromStatusId, c.toStatusId]).filter((id) => id != null).map(Number))];
+    const [statusRes, lastRes] = await Promise.all([
+      supabase.from("proj_s_project_status").select("status_id, status_name").in("status_id", statusIds),
+      supabase.from("proj_t_project_status_log").select("project_id, changed_at").in("project_id", projectIds)
+        .order("changed_at", { ascending: false }),
+    ]);
+    if (statusRes.error) throw statusRes.error;
+    if (lastRes.error) throw lastRes.error;
+    const nameOf = new Map((statusRes.data || []).map((s) => [String(s.status_id), s.status_name]));
+    const lastAt = new Map();
+    (lastRes.data || []).forEach((row) => {
+      if (!lastAt.has(String(row.project_id))) lastAt.set(String(row.project_id), row.changed_at);
+    });
+    const now = new Date();
+    const rows = real.map((c) => {
+      const from = c.fromStatusId != null ? Number(c.fromStatusId) : null;
+      const previousAt = lastAt.get(String(c.projectId));
+      return {
+        project_id: Number(c.projectId),
+        from_status_id: from,
+        from_status_name: from != null ? nameOf.get(String(from)) ?? null : null,
+        to_status_id: Number(c.toStatusId),
+        to_status_name: nameOf.get(String(c.toStatusId)) ?? null,
+        changed_at: now.toISOString(),
+        changed_by: userId ?? null,
+        duration_seconds: from != null && previousAt
+          ? Math.max(0, Math.floor((now.getTime() - new Date(previousAt).getTime()) / 1000))
+          : null,
+      };
+    });
+    const { error } = await supabase.from("proj_t_project_status_log").insert(rows);
+    if (error) throw error;
+  } catch (err) {
+    console.error("[logProjectStatusChanges]", err?.message ?? err);
+  }
+}
+
+// Runs store their status by name. Skipped when the status did not change.
+async function logRunStatusChange(supabase, runId, fromStatus, toStatus, userId) {
+  if (runId == null || !toStatus || fromStatus === toStatus) return;
+  try {
+    const { data: last, error: lastError } = await supabase
+      .from("proj_t_run_status_log")
+      .select("changed_at")
+      .eq("run_id", runId)
+      .order("changed_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (lastError) throw lastError;
+    const now = new Date();
+    const { error } = await supabase.from("proj_t_run_status_log").insert({
+      run_id: Number(runId),
+      from_status: fromStatus ?? null,
+      to_status: toStatus,
+      changed_at: now.toISOString(),
+      changed_by: userId ?? null,
+      duration_seconds: fromStatus && last?.changed_at
+        ? Math.max(0, Math.floor((now.getTime() - new Date(last.changed_at).getTime()) / 1000))
+        : null,
+    });
+    if (error) throw error;
+  } catch (err) {
+    console.error("[logRunStatusChange]", err?.message ?? err);
+  }
+}
+
 // Access of the signed-in user; throws when they may not use Project Map at all.
 async function requireProjectMapAccess() {
   const access = await loadProjectStatusTabAccess();
@@ -1112,8 +1194,8 @@ export async function createProject(project) {
     install_start: project.install_start || null,
     install_end: project.install_end || null,
     project_subtotal: project.project_subtotal != null ? Number(project.project_subtotal) : null,
-    created_by: toIntOrNull(project.created_by),
-    updated_by: toIntOrNull(project.updated_by),
+    created_by: toIntOrNull(access.user?.userId),
+    updated_by: toIntOrNull(access.user?.userId),
     project_notes: hasValue(project.project_notes) ? String(project.project_notes).trim() : null,
     dimension: hasValue(project.dimension) ? String(project.dimension).trim() : null,
     created_at: now,
@@ -1122,6 +1204,7 @@ export async function createProject(project) {
 
   const { data, error } = await supabase.from("proj_t_projects").insert(payload).select("*").single();
   if (error) throw new Error(error.message);
+  await logProjectStatusChanges(supabase, [{ projectId: data.id, fromStatusId: null, toStatusId: data.status_id }], toIntOrNull(access.user?.userId));
   return data;
 }
 
@@ -1155,7 +1238,8 @@ export async function updateProject(projectId, updates, { viaRunId = null } = {}
   }
   // Judged by the project's CURRENT status (Projects tab) or the run's (Runs tab),
   // so moving it into any status is allowed.
-  await requireProjectEdit(supabase, await requireProjectMapAccess(), id, { viaRunId });
+  const access = await requireProjectMapAccess();
+  await requireProjectEdit(supabase, access, id, { viaRunId });
   const now = new Date().toISOString();
 
   // Per-field normalizers — applied only when the caller passed that field.
@@ -1180,9 +1264,24 @@ export async function updateProject(projectId, updates, { viaRunId = null } = {}
   for (const [key, value] of Object.entries(updates)) {
     payload[key] = normalizers[key] ? normalizers[key](value) : value;
   }
+  // Always the signed-in user, whatever the browser sent.
+  const userId = toIntOrNull(access.user?.userId);
+  payload.updated_by = userId;
+
+  // The status before this save, for the status log.
+  const changesStatus = Object.prototype.hasOwnProperty.call(updates, "status_id");
+  let previousStatusId = null;
+  if (changesStatus) {
+    const { data: before, error: beforeError } = await supabase.from("proj_t_projects").select("status_id").eq("id", id).maybeSingle();
+    if (beforeError) throw new Error(beforeError.message);
+    previousStatusId = before?.status_id ?? null;
+  }
 
   const { data, error } = await supabase.from("proj_t_projects").update(payload).eq("id", id).select("*").single();
   if (error) throw new Error(error.message);
+  if (changesStatus) {
+    await logProjectStatusChanges(supabase, [{ projectId: id, fromStatusId: previousStatusId, toStatusId: data.status_id }], userId);
+  }
 
   if (Object.prototype.hasOwnProperty.call(updates, "project_notes")) {
     const { error: syncError } = await supabase
@@ -1389,7 +1488,7 @@ async function resolveCascadeTargets(supabase, runStatusName) {
  * others. Same rules as the cascade in updateRun. Failures are logged, never
  * thrown: the stop itself was added fine.
  */
-async function matchProjectStatusToRun(supabase, runId, projectId) {
+async function matchProjectStatusToRun(supabase, runId, projectId, userId = null) {
   try {
     const { data: run, error: runError } = await supabase.from("proj_t_runs").select("status").eq("id", runId).maybeSingle();
     if (runError) throw runError;
@@ -1405,9 +1504,10 @@ async function matchProjectStatusToRun(supabase, runId, projectId) {
 
     const { error } = await supabase
       .from("proj_t_projects")
-      .update({ status_id: nextStatusId, updated_at: new Date().toISOString() })
+      .update({ status_id: nextStatusId, updated_at: new Date().toISOString(), updated_by: userId })
       .eq("id", projectId);
     if (error) throw error;
+    await logProjectStatusChanges(supabase, [{ projectId, fromStatusId: project.status_id, toStatusId: nextStatusId }], userId);
   } catch (err) {
     console.error(`[matchProjectStatusToRun] project #${projectId} on run #${runId}:`, err?.message ?? err);
   }
@@ -1434,6 +1534,8 @@ export async function createRun(runData) {
     estimated_subtotal: runData.estimated_subtotal != null ? Number(runData.estimated_subtotal) : null,
     created_at: now,
     updated_at: now,
+    created_by: toIntOrNull(access.user?.userId),
+    updated_by: toIntOrNull(access.user?.userId),
   };
 
   if (!canEditRunStatus(access, payload.status)) {
@@ -1442,6 +1544,7 @@ export async function createRun(runData) {
 
   const { data: inserted, error: insertError } = await supabase.from("proj_t_runs").insert(payload).select("*").single();
   if (insertError) throw new Error(insertError.message);
+  await logRunStatusChange(supabase, inserted.id, null, inserted.status, toIntOrNull(access.user?.userId));
 
   const runNumber = inserted?.run_number;
   const runCode = runNumber == null ? null : `PSBR-${String(runNumber).padStart(6, "0")}`;
@@ -1525,7 +1628,8 @@ export async function updateRun(runId, updates) {
     .maybeSingle();
   if (fetchError) throw new Error(fetchError.message);
 
-  const payload = { ...updates, updated_at: now };
+  const userId = toIntOrNull(access.user?.userId);
+  const payload = { ...updates, updated_at: now, updated_by: userId };
 
   // Ensure run_name is properly handled
   if (payload.run_name !== undefined) {
@@ -1544,6 +1648,7 @@ export async function updateRun(runId, updates) {
 
   const { data, error } = await supabase.from("proj_t_runs").update(payload).eq("id", runId).select("*").single();
   if (error) throw new Error(error.message);
+  await logRunStatusChange(supabase, runId, existingRun?.status ?? null, data.status, userId);
 
   // ─── Run date → stops' arrival dates ───
   // Business rule: when the run's date changes, every stop's arrival window
@@ -1637,10 +1742,12 @@ export async function updateRun(runId, updates) {
             .update({
               status_id: nextStatusId,
               updated_at: now,
+              updated_by: userId,
             })
             .eq("id", mapping.project_id);
 
           if (cascadeError) throw cascadeError;
+          await logProjectStatusChanges(supabase, [{ projectId: mapping.project_id, fromStatusId: project.status_id, toStatusId: nextStatusId }], userId);
         }
 
         if (Object.keys(statusByProjectId).length > 0) {
@@ -1739,7 +1846,8 @@ export async function deleteRun(runId) {
 
 export async function addProjectToRun(runId, projectId, stopSequence = 0, { keepArrival = false } = {}) {
   const supabase = getSupabaseAdmin();
-  await requireRunEdit(supabase, await requireProjectMapAccess(), runId);
+  const access = await requireProjectMapAccess();
+  await requireRunEdit(supabase, access, runId);
   const pid = Number(projectId);
 
   // Check if project is already assigned to ANY run (including this one)
@@ -1803,7 +1911,7 @@ export async function addProjectToRun(runId, projectId, stopSequence = 0, { keep
   }
 
   // A stop added to a run that is already under way gets the same project status as the others.
-  await matchProjectStatusToRun(supabase, runId, pid);
+  await matchProjectStatusToRun(supabase, runId, pid, toIntOrNull(access.user?.userId));
   return data;
 }
 
@@ -1873,8 +1981,12 @@ export async function saveReleasedStopStatuses(releaseToken, choices) {
     const statusId = toIntOrNull(choice?.statusId);
     if (projectId === null || statusId === null) throw new Error("Project status is required.");
     if (!allowed.has(String(projectId))) throw new Error("That project was not part of this run.");
-    const { error } = await supabase.from("proj_t_projects").update({ status_id: statusId, updated_at: now }).eq("id", projectId);
+    const { data: before, error: beforeError } = await supabase.from("proj_t_projects").select("status_id").eq("id", projectId).maybeSingle();
+    if (beforeError) throw new Error(beforeError.message);
+    const userId = toIntOrNull(access.user?.userId);
+    const { error } = await supabase.from("proj_t_projects").update({ status_id: statusId, updated_at: now, updated_by: userId }).eq("id", projectId);
     if (error) throw new Error(error.message);
+    await logProjectStatusChanges(supabase, [{ projectId, fromStatusId: before?.status_id ?? null, toStatusId: statusId }], userId);
   }
   return { success: true };
 }

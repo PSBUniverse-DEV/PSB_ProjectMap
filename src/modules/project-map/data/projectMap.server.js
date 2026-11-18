@@ -56,7 +56,7 @@ export async function loadProjectMapSetup() {
       "project_subtotal, project_notes, dimension, " +
       "created_at, updated_at, created_by, updated_by, " +
       "proj_s_project_status!proj_t_projects_status_id_fkey(status_id, status_name, status_description, system_key), " +
-      // Status history (written by a database trigger); the drawer shows it with no extra call.
+      // History (written by logProjectStatusChanges in projectMap.actions.js on every status save); the drawer shows it with no extra call.
       "proj_t_project_status_log(log_id, from_status_id, from_status_name, to_status_id, to_status_name, changed_at, duration_seconds, is_baseline, psb_s_user(first_name, last_name, username))"
     )
     .order("updated_at", { ascending: false })

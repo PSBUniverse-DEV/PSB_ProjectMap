@@ -51,7 +51,7 @@ function toHistoryRows(logRows) {
 
 /**
  * "History" section of the project drawer: every status change
- * (proj_t_project_status_log, written by a database trigger, loaded with the
+ * (proj_t_project_status_log, written by the app on every status save, loaded with the
  * project list so it shows instantly), oldest first, with how long the project
  * sat in the previous status; how long it has been in its current status; and
  * the total time since it was created, which stops once the project reaches a

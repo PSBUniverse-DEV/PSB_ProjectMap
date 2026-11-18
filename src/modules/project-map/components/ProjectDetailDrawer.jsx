@@ -6,6 +6,7 @@ import { faLocationDot, faCalendarDays, faBuilding, faDollarSign, faTag } from "
 import { formatProjectDescriptionForDisplay, stripTownshipLabel, PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, getProjectAmountDisplay } from "../data/projectMap.data";
 import { FileAttachments } from "@/shared/components/ui";
 import ProjectComments from "./ProjectComments";
+import ProjectStatusHistory from "./ProjectStatusHistory";
 import { loadFiles, createFileUpload, saveUploadedFile, getFileUrl, deleteFile } from "../data/projectMap.actions";
 
 /**
@@ -246,6 +247,9 @@ export default function ProjectDetailDrawer({ project, statuses = [], buildingCa
             </tbody>
           </table>
         </div>
+
+        {/* Status History: every status change with dates and durations (database log). */}
+        <ProjectStatusHistory key={`history-${project.id}`} project={project} statuses={statuses} />
 
         {/* Schedule */}
         <div style={{ marginBottom: "14px" }}>

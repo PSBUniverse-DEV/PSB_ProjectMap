@@ -50,7 +50,7 @@ function toHistoryRows(logRows) {
 }
 
 /**
- * "Status History" section of the project drawer: every status change
+ * "History" section of the project drawer: every status change
  * (proj_t_project_status_log, written by a database trigger, loaded with the
  * project list so it shows instantly), oldest first, with how long the project
  * sat in the previous status; how long it has been in its current status; and
@@ -70,7 +70,7 @@ export default function ProjectStatusHistory({ project, statuses = [] }) {
 
   return (
     <div style={{ marginBottom: "14px" }}>
-      <div style={{ fontSize: "10px", fontWeight: 700, color: "#27374f", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}><u>Status History</u></div>
+      <div style={{ fontSize: "10px", fontWeight: 700, color: "#27374f", textTransform: "uppercase", marginBottom: "6px", letterSpacing: "0.5px" }}><u>History</u></div>
 
       {rows.length === 0 ? (
         <div style={{ fontSize: "11px", color: "#94a3b8" }}>No status changes recorded yet.</div>

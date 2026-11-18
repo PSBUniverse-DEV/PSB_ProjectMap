@@ -248,7 +248,7 @@ export default function ProjectDetailDrawer({ project, statuses = [], buildingCa
           </table>
         </div>
 
-        {/* Status History: every status change with dates and durations (database log). */}
+        {/* History: every status change with dates, durations and who made it. */}
         <ProjectStatusHistory key={`history-${project.id}`} project={project} statuses={statuses} />
 
         {/* Schedule */}

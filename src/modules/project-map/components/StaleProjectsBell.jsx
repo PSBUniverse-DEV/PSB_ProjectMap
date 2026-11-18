@@ -3,6 +3,35 @@
 import { useEffect, useRef, useState } from "react";
 import { stripTownshipLabel, STALE_AFTER_DAYS } from "../data/projectMap.data";
 
+function formatShortDate(value) {
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+// The project's latest History entry (proj_t_project_status_log rows embedded on
+// the project), as one line: "Pending Permits since Oct 3, 2026 · from Welcome
+// Email / Call · by Mark Coles", or for a starting row "Pending Permits · already
+// in it when tracking started (Nov 18, 2026)". Empty when there is no history.
+function latestHistoryText(project) {
+  const rows = Array.isArray(project?.proj_t_project_status_log) ? project.proj_t_project_status_log : [];
+  const latest = rows.reduce((best, row) => {
+    if (!best) return row;
+    const diff = new Date(row.changed_at) - new Date(best.changed_at);
+    return diff > 0 || (diff === 0 && Number(row.log_id) > Number(best.log_id)) ? row : best;
+  }, null);
+  if (!latest) return "";
+  const status = latest.to_status_name || "No status";
+  const date = formatShortDate(latest.changed_at);
+  if (latest.is_baseline) return `${status} · already in it when tracking started (${date})`;
+  const user = latest.psb_s_user;
+  const by = user ? `${user.first_name || ""} ${user.last_name || ""}`.trim() || user.username || "" : "";
+  return [
+    `${status} since ${date}`,
+    latest.from_status_name ? `from ${latest.from_status_name}` : "",
+    by ? `by ${by}` : "",
+  ].filter(Boolean).join(" · ");
+}
+
 function BellIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -86,6 +115,11 @@ export default function StaleProjectsBell({ items = [], statuses = [], onOpenPro
                   <div style={{ fontSize: "10px", color: "#64748b", marginTop: "1px" }}>
                     {[place, status?.status_name].filter(Boolean).join(" · ")}
                   </div>
+                  {latestHistoryText(project) ? (
+                    <div style={{ fontSize: "10px", color: "#94a3b8", marginTop: "1px" }}>
+                      Latest: {latestHistoryText(project)}
+                    </div>
+                  ) : null}
                 </button>
               );
             })}

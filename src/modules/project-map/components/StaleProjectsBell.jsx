@@ -1,35 +1,45 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { stripTownshipLabel, STALE_AFTER_DAYS } from "../data/projectMap.data";
+import { stripTownshipLabel, STALE_AFTER_DAYS, getRunStatusColor } from "../data/projectMap.data";
 
 function formatShortDate(value) {
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
-// The project's latest History entry (proj_t_project_status_log rows embedded on
-// the project), as one line: "Pending Permits since Oct 3, 2026 · from Welcome
-// Email / Call · by Mark Coles", or for a starting row "Pending Permits · already
-// in it when tracking started (Nov 18, 2026)". Empty when there is no history.
-function latestHistoryText(project) {
-  const rows = Array.isArray(project?.proj_t_project_status_log) ? project.proj_t_project_status_log : [];
-  const latest = rows.reduce((best, row) => {
+function userName(user) {
+  return user ? `${user.first_name || ""} ${user.last_name || ""}`.trim() || user.username || "" : "";
+}
+
+function latestOf(rows) {
+  return (Array.isArray(rows) ? rows : []).reduce((best, row) => {
     if (!best) return row;
     const diff = new Date(row.changed_at) - new Date(best.changed_at);
     return diff > 0 || (diff === 0 && Number(row.log_id) > Number(best.log_id)) ? row : best;
   }, null);
+}
+
+// The latest History entry as one line: "Pending Permits since Oct 3, 2026 · from
+// Welcome Email / Call · by Mark Coles", or for a starting row "Pending Permits ·
+// already in it when tracking started (Nov 18, 2026)". Empty when there is no history.
+function historyText(latest, toName, fromName) {
   if (!latest) return "";
-  const status = latest.to_status_name || "No status";
+  const status = toName || "No status";
   const date = formatShortDate(latest.changed_at);
   if (latest.is_baseline) return `${status} · already in it when tracking started (${date})`;
-  const user = latest.psb_s_user;
-  const by = user ? `${user.first_name || ""} ${user.last_name || ""}`.trim() || user.username || "" : "";
-  return [
-    `${status} since ${date}`,
-    latest.from_status_name ? `from ${latest.from_status_name}` : "",
-    by ? `by ${by}` : "",
-  ].filter(Boolean).join(" · ");
+  const by = userName(latest.psb_s_user);
+  return [`${status} since ${date}`, fromName ? `from ${fromName}` : "", by ? `by ${by}` : ""].filter(Boolean).join(" · ");
+}
+
+function latestProjectHistoryText(project) {
+  const latest = latestOf(project?.proj_t_project_status_log);
+  return historyText(latest, latest?.to_status_name, latest?.from_status_name);
+}
+
+function latestRunHistoryText(run) {
+  const latest = latestOf(run?.proj_t_run_status_log);
+  return historyText(latest, latest?.to_status, latest?.from_status);
 }
 
 function BellIcon() {
@@ -41,12 +51,17 @@ function BellIcon() {
   );
 }
 
+const ROW_STYLE = { display: "block", width: "100%", textAlign: "left", padding: "7px 10px", border: "none", borderBottom: "1px solid #f1f5f9", background: "#fff", cursor: "pointer" };
+const GROUP_LABEL_STYLE = { padding: "6px 10px 4px", fontSize: "10px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.04em", background: "#f8fafc", borderBottom: "1px solid #f1f5f9" };
+
 /**
- * Bell next to "Show Labels": open projects nobody has updated for
- * STALE_AFTER_DAYS days or more. items = getStaleProjects(...) ([{ project, days }],
- * oldest first). Picking one closes the list and calls onOpenProject(projectId).
+ * Bell next to "Show Labels": open projects and open runs nobody has updated
+ * for STALE_AFTER_DAYS days or more, oldest first in each group.
+ * items = getStaleProjects(...) ([{ project, days }]); runItems = getStaleRuns(...)
+ * ([{ run, days }]). Picking one closes the list and calls onOpenProject(projectId)
+ * or onOpenRun(runId).
  */
-export default function StaleProjectsBell({ items = [], statuses = [], onOpenProject }) {
+export default function StaleProjectsBell({ items = [], statuses = [], onOpenProject, runItems = [], runStatuses = [], onOpenRun }) {
   const [open, setOpen] = useState(false);
   const boxRef = useRef(null);
 
@@ -63,12 +78,18 @@ export default function StaleProjectsBell({ items = [], statuses = [], onOpenPro
     };
   }, [open]);
 
-  const count = items.length;
+  const projectCount = items.length;
+  const runCount = runItems.length;
+  const count = projectCount + runCount;
   const statusOf = (project) => project.proj_s_project_status
     || statuses.find((s) => s.status_id === project.status_id) || null;
+  const parts = [
+    projectCount ? `${projectCount} project${projectCount === 1 ? "" : "s"}` : "",
+    runCount ? `${runCount} run${runCount === 1 ? "" : "s"}` : "",
+  ].filter(Boolean);
   const label = count
-    ? `${count} project${count === 1 ? "" : "s"} not updated for ${STALE_AFTER_DAYS}+ days`
-    : `No projects waiting ${STALE_AFTER_DAYS}+ days`;
+    ? `${parts.join(" and ")} not updated for ${STALE_AFTER_DAYS}+ days`
+    : `Nothing waiting ${STALE_AFTER_DAYS}+ days`;
 
   return (
     <div ref={boxRef} style={{ position: "relative" }}>
@@ -84,45 +105,69 @@ export default function StaleProjectsBell({ items = [], statuses = [], onOpenPro
       </button>
 
       {open && (
-        <div role="dialog" aria-label="Projects not updated"
-          style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, width: "320px", maxHeight: "420px", display: "flex", flexDirection: "column", background: "#fff", border: "1px solid #e2e8f0", borderRadius: "6px", boxShadow: "0 8px 24px rgba(15, 23, 42, 0.15)", zIndex: 2000 }}>
+        <div role="dialog" aria-label="Projects and runs not updated"
+          style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, width: "340px", maxHeight: "460px", display: "flex", flexDirection: "column", background: "#fff", border: "1px solid #e2e8f0", borderRadius: "6px", boxShadow: "0 8px 24px rgba(15, 23, 42, 0.15)", zIndex: 2000 }}>
           <div style={{ padding: "8px 10px", borderBottom: "1px solid #e2e8f0" }}>
             <div style={{ fontSize: "12px", fontWeight: 600, color: "#1e293b" }}>Not updated for {STALE_AFTER_DAYS}+ days</div>
-            <div style={{ fontSize: "10px", color: "#64748b" }}>Open projects nobody has changed in a while. Oldest first.</div>
+            <div style={{ fontSize: "10px", color: "#64748b" }}>Open projects and runs nobody has changed in a while. Oldest first.</div>
           </div>
           <div style={{ overflowY: "auto" }}>
             {count === 0 ? (
               <p style={{ margin: 0, padding: "12px 10px", fontSize: "11px", color: "#94a3b8", textAlign: "center" }}>
-                Every open project was updated in the last {STALE_AFTER_DAYS} days.
+                Every open project and run was updated in the last {STALE_AFTER_DAYS} days.
               </p>
-            ) : items.map(({ project, days }) => {
-              const status = statusOf(project);
-              const place = project.city && project.state
-                ? `${stripTownshipLabel(project.city)}, ${project.state}`
-                : stripTownshipLabel(project.formatted_address);
-              return (
-                <button key={project.id} type="button" onClick={() => { setOpen(false); onOpenProject?.(project.id); }}
-                  style={{ display: "block", width: "100%", textAlign: "left", padding: "7px 10px", border: "none", borderBottom: "1px solid #f1f5f9", background: "#fff", cursor: "pointer" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                    <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: status?.display_color || "#6b7280", flexShrink: 0 }} />
-                    <span style={{ fontWeight: 600, fontSize: "11px", color: "#1e293b", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {project.client_name || "Untitled"}
-                    </span>
-                    <span style={{ marginLeft: "auto", flexShrink: 0, fontSize: "10px", fontWeight: 600, color: "#dc2626" }}>
-                      {days} days
-                    </span>
-                  </div>
-                  <div style={{ fontSize: "10px", color: "#64748b", marginTop: "1px" }}>
-                    {[place, status?.status_name].filter(Boolean).join(" · ")}
-                  </div>
-                  {latestHistoryText(project) ? (
-                    <div style={{ fontSize: "10px", color: "#94a3b8", marginTop: "1px" }}>
-                      Latest: {latestHistoryText(project)}
-                    </div>
-                  ) : null}
-                </button>
-              );
-            })}
+            ) : null}
+
+            {projectCount > 0 ? (
+              <>
+                <div style={GROUP_LABEL_STYLE}>Projects · {projectCount}</div>
+                {items.map(({ project, days }) => {
+                  const status = statusOf(project);
+                  const place = project.city && project.state
+                    ? `${stripTownshipLabel(project.city)}, ${project.state}`
+                    : stripTownshipLabel(project.formatted_address);
+                  const latest = latestProjectHistoryText(project);
+                  return (
+                    <button key={`p-${project.id}`} type="button" onClick={() => { setOpen(false); onOpenProject?.(project.id); }} style={ROW_STYLE}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: status?.display_color || "#6b7280", flexShrink: 0 }} />
+                        <span style={{ fontWeight: 600, fontSize: "11px", color: "#1e293b", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {project.client_name || "Untitled"}
+                        </span>
+                        <span style={{ marginLeft: "auto", flexShrink: 0, fontSize: "10px", fontWeight: 600, color: "#dc2626" }}>{days} days</span>
+                      </div>
+                      <div style={{ fontSize: "10px", color: "#64748b", marginTop: "1px" }}>
+                        {[place, status?.status_name].filter(Boolean).join(" · ")}
+                      </div>
+                      {latest ? <div style={{ fontSize: "10px", color: "#94a3b8", marginTop: "1px" }}>Latest: {latest}</div> : null}
+                    </button>
+                  );
+                })}
+              </>
+            ) : null}
+
+            {runCount > 0 ? (
+              <>
+                <div style={GROUP_LABEL_STYLE}>Runs · {runCount}</div>
+                {runItems.map(({ run, days }) => {
+                  const latest = latestRunHistoryText(run);
+                  const title = [run.run_code, run.run_name].filter(Boolean).join(" · ") || `Run #${run.run_number || run.id}`;
+                  return (
+                    <button key={`r-${run.id}`} type="button" onClick={() => { setOpen(false); onOpenRun?.(run.id); }} style={ROW_STYLE}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: getRunStatusColor(run.status, runStatuses), flexShrink: 0 }} />
+                        <span style={{ fontWeight: 600, fontSize: "11px", color: "#1e293b", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</span>
+                        <span style={{ marginLeft: "auto", flexShrink: 0, fontSize: "10px", fontWeight: 600, color: "#dc2626" }}>{days} days</span>
+                      </div>
+                      <div style={{ fontSize: "10px", color: "#64748b", marginTop: "1px" }}>
+                        {[run.run_date ? formatShortDate(`${String(run.run_date).slice(0, 10)}T00:00:00`) : "No run date", run.status].filter(Boolean).join(" · ")}
+                      </div>
+                      {latest ? <div style={{ fontSize: "10px", color: "#94a3b8", marginTop: "1px" }}>Latest: {latest}</div> : null}
+                    </button>
+                  );
+                })}
+              </>
+            ) : null}
           </div>
         </div>
       )}

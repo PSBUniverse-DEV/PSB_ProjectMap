@@ -20,7 +20,7 @@ import StopStatusPrompt from "../components/StopStatusPrompt";
 import FilterBar from "../components/FilterBar";
 import AddProjectForm from "../components/AddProjectForm";
 import MapSearch from "../components/MapSearch";
-import { splitRunAmounts, getStatusTabGroupIds, runStatusNameByKey, canEditProjectStatusId, canEditRunStatusName, canCommentAndAttach, isOwnFile, formatDisplayDate, getStaleProjects } from "../data/projectMap.data";
+import { splitRunAmounts, getStatusTabGroupIds, runStatusNameByKey, canEditProjectStatusId, canEditRunStatusName, canCommentAndAttach, isOwnFile, formatDisplayDate, getStaleProjects, getStaleRuns } from "../data/projectMap.data";
 import FilterChips from "../components/FilterChips";
 import RunFilterPanel from "../components/RunFilterPanel";
 import RunFilterChips from "../components/RunFilterChips";
@@ -659,6 +659,8 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
 
   // Bell: open projects (that this user may see) not updated for 14+ days.
   const staleProjects = useMemo(() => getStaleProjects(projects, statuses), [projects, statuses]);
+  // Bell: open runs (that this user may see) not updated for 14+ days.
+  const staleRuns = useMemo(() => (canSeeRuns ? getStaleRuns(runs, runStatuses) : []), [canSeeRuns, runs, runStatuses]);
 
   // Bell → open a project: go to the Projects tab; if the current status tab or
   // filters hide it, go back to "All" with no filters; then pick it, so the list
@@ -914,6 +916,17 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
     setRunSegmentData(null);
     setRunRouteLoading(false);
     setRunReloadKey((k) => k + 1);
+  };
+
+  // Bell → open a run: go to the Runs tab; if the run status tab, filters or
+  // search hide it, show all runs; then select it (same as clicking it in the list).
+  const handleOpenStaleRun = (runId) => {
+    setMode("runs");
+    if (!filteredRuns.some((run) => run.id === runId)) {
+      setRunFilters({ status: [] });
+      setRunSearch("");
+    }
+    handleSelectRun(runId);
   };
 
   const handleCloseRunDetail = () => {
@@ -1595,7 +1608,8 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
             <input type="checkbox" checked={showLabels} onChange={(e) => setShowLabels(e.target.checked)} />
             Show Labels
           </label>
-          <StaleProjectsBell items={staleProjects} statuses={statuses} onOpenProject={handleOpenStaleProject} />
+          <StaleProjectsBell items={staleProjects} statuses={statuses} onOpenProject={handleOpenStaleProject}
+            runItems={staleRuns} runStatuses={runStatuses} onOpenRun={handleOpenStaleRun} />
         </div>
       </div>
 

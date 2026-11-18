@@ -490,7 +490,8 @@ export async function loadRuns(access, { statusScope = "all", runDateFrom = null
     fetchAllRows(() => {
       let query = supabase
         .from("proj_t_runs")
-        .select("*, proj_s_origin_addresses(*), proj_t_run_projects(id, proj_t_projects(client_name, city, payment_method_type, project_subtotal, proj_s_project_status!proj_t_projects_status_id_fkey(status_name, system_key)))")
+        // proj_t_run_status_log: the run's History (written by logRunStatusChange in projectMap.actions.js).
+        .select("*, proj_s_origin_addresses(*), proj_t_run_projects(id, proj_t_projects(client_name, city, payment_method_type, project_subtotal, proj_s_project_status!proj_t_projects_status_id_fkey(status_name, system_key))), proj_t_run_status_log(log_id, from_status, to_status, changed_at, duration_seconds, is_baseline, psb_s_user(first_name, last_name, username))")
         .in("status", statusNames);
       if (isDateKey(runDateFrom)) query = query.gte("run_date", runDateFrom);
       if (isDateKey(runDateBefore)) query = query.lt("run_date", runDateBefore);

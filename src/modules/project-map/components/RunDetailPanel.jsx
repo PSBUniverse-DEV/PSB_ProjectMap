@@ -5,6 +5,7 @@ import { useMemo, useState, useEffect } from "react";
 import { StatusBadge, FileAttachments } from "@/shared/components/ui";
 import { formatProjectDescriptionForDisplay, getRunStatusColor, resolveRunStatusOptions, stripTownshipLabel, PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, getProjectAmountDisplay, splitRunAmounts, runStatusKeyByName, formatDisplayDate, formatArrivalWindow } from "../data/projectMap.data";
 import { generateRunManifestPrint } from "../utils/printRunManifest";
+import RunStatusHistory from "./RunStatusHistory";
 import { loadFiles, createFileUpload, saveUploadedFile, getFileUrl, deleteFile } from "../data/projectMap.actions";
 
 function formatDistance(meters) {
@@ -393,6 +394,9 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
                 </div>
               )}
             </div>
+
+            {/* History: every run status change with dates, durations and who made it. */}
+            <RunStatusHistory key={`run-history-${run.id}`} run={run} runStatuses={runStatuses} />
 
             {run.notes && (
               <div style={{ marginBottom: "10px" }}>

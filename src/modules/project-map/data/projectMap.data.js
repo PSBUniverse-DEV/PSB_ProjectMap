@@ -371,6 +371,25 @@ export function getStaleProjects(projects = [], statuses = [], now = new Date())
     .sort((a, b) => b.days - a.days || Number(a.project.id) - Number(b.project.id));
 }
 
+/**
+ * Open runs (status not one that ends a run: FINISHED_RUN_STATUS_KEYS) not
+ * updated (updated_at, else created_at) for STALE_AFTER_DAYS days or more,
+ * oldest first: [{ run, days }].
+ */
+export function getStaleRuns(runs = [], runStatuses = [], now = new Date()) {
+  const finishedNames = new Set(runStatuses
+    .filter((s) => FINISHED_RUN_STATUS_KEYS.includes(s.system_key))
+    .map((s) => s.status_name));
+  return runs
+    .filter((run) => !finishedNames.has(run.status))
+    .map((run) => {
+      const touched = new Date(run.updated_at || run.created_at).getTime();
+      return Number.isNaN(touched) ? null : { run, days: Math.floor((now.getTime() - touched) / DAY_MS) };
+    })
+    .filter((item) => item && item.days >= STALE_AFTER_DAYS)
+    .sort((a, b) => b.days - a.days || Number(a.run.id) - Number(b.run.id));
+}
+
 export function getProjectAmountDisplay(project, statuses = []) {
   const isRepair = isRepairProject(project, statuses);
   return {

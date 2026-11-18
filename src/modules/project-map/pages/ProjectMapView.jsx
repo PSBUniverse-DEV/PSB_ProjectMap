@@ -1609,7 +1609,8 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
             Show Labels
           </label>
           <StaleProjectsBell items={staleProjects} statuses={statuses} onOpenProject={handleOpenStaleProject}
-            runItems={staleRuns} runStatuses={runStatuses} onOpenRun={handleOpenStaleRun} />
+            runItems={staleRuns} runStatuses={runStatuses} onOpenRun={handleOpenStaleRun}
+            mode={mode} showRuns={canSeeRuns} />
         </div>
       </div>
 

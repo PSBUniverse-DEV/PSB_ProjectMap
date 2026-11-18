@@ -2008,7 +2008,9 @@ export async function loadProjects() {
         "order_received_at, scheduled_project_start, scheduled_project_end, install_start, install_end, " +
         "project_subtotal, project_notes, dimension, " +
         "created_at, updated_at, created_by, updated_by, " +
-        "proj_s_project_status!proj_t_projects_status_id_fkey(status_id, status_name, status_description, system_key)"
+        "proj_s_project_status!proj_t_projects_status_id_fkey(status_id, status_name, status_description, system_key), " +
+        // Status history (written by a database trigger); the drawer shows it with no extra call.
+        "proj_t_project_status_log(log_id, from_status_id, from_status_name, to_status_id, to_status_name, changed_at, duration_seconds, is_baseline, psb_s_user(first_name, last_name, username))"
       )
       .order("updated_at", { ascending: false })
       .order("id", { ascending: true });
@@ -2581,44 +2583,6 @@ async function resolveCommentAuthor(fallbackAuthor) {
     userId: toIntOrNull(fallbackAuthor?.userId),
     name: hasValue(fallbackAuthor?.name) ? String(fallbackAuthor.name).trim() : "Unknown",
   };
-}
-
-/**
- * A project's status history, oldest first (proj_t_project_status_log).
- * Rows are written by a database trigger on proj_t_projects.status_id, never by
- * the app. Each row: from → to status (names as they were then), when, and how
- * long the project sat in the "from" status (duration_seconds). is_baseline =
- * "already in this status when tracking started".
- */
-export async function loadProjectStatusLog(projectId) {
-  const id = toIntOrNull(projectId);
-  if (id === null) throw new Error("projectId is required.");
-  await requireProjectMapAccess();
-
-  const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
-    .from("proj_t_project_status_log")
-    .select("log_id, from_status_id, from_status_name, to_status_id, to_status_name, changed_at, duration_seconds, is_baseline, changed_by, psb_s_user(first_name, last_name, username)")
-    .eq("project_id", id)
-    .order("changed_at", { ascending: true })
-    .order("log_id", { ascending: true });
-  if (error) throw new Error(error.message);
-
-  return (data || []).map((row) => {
-    const user = row.psb_s_user;
-    const name = user ? `${user.first_name || ""} ${user.last_name || ""}`.trim() || user.username || "" : "";
-    return {
-      logId: row.log_id,
-      fromStatusId: row.from_status_id,
-      fromStatusName: row.from_status_name || "",
-      toStatusId: row.to_status_id,
-      toStatusName: row.to_status_name || "",
-      changedAt: row.changed_at,
-      durationSeconds: row.duration_seconds,
-      isBaseline: Boolean(row.is_baseline),
-      changedByName: name,
-    };
-  });
 }
 
 export async function loadProjectComments(projectId) {

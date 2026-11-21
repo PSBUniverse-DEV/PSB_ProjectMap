@@ -7,6 +7,7 @@ import { formatProjectDescriptionForDisplay, stripTownshipLabel, PROJECT_FILE_MA
 import { FileAttachments } from "@/shared/components/ui";
 import ProjectComments from "./ProjectComments";
 import ProjectStatusHistory from "./ProjectStatusHistory";
+import RepairFormCard from "./RepairFormCard";
 import { loadFiles, createFileUpload, saveUploadedFile, getFileUrl, deleteFile } from "../data/projectMap.actions";
 
 /**
@@ -177,6 +178,19 @@ export default function ProjectDetailDrawer({ project, statuses = [], buildingCa
             </div>
           ))}
         </div>
+
+        {/* Repair form: only for projects in a repair status (amount.isRepair = isRepairProject). */}
+        {amount.isRepair && (
+          <RepairFormCard
+            key={`repair-${project.id}`}
+            project={project}
+            addressText={addressText}
+            amountText={subtotal}
+            readOnly={readOnly}
+            filesReadOnly={filesReadOnly}
+            canDeleteFile={canDeleteFile}
+          />
+        )}
 
         {/* Details */}
         <section style={card}>

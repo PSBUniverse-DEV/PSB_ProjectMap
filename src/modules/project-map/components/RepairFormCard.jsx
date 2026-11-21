@@ -41,14 +41,23 @@ export default function RepairFormCard({ project, addressText = "", amountText =
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [saving, setSaving] = useState(false);
   const [printing, setPrinting] = useState(false);
-  // Photos are added and deleted in the pop-up; the card's read-only list
-  // reloads (new key) each time the pop-up closes.
+  // Photos are added and deleted in the pop-up; the card only shows how many
+  // there are. The count reloads each time the pop-up closes.
   const [photosVersion, setPhotosVersion] = useState(0);
+  const [photoCount, setPhotoCount] = useState(null); // null = still loading or failed
   const wasEditOpen = useRef(false);
   useEffect(() => {
     if (wasEditOpen.current && !showEdit) setPhotosVersion((v) => v + 1);
     wasEditOpen.current = showEdit;
   }, [showEdit]);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadFiles("repair", projectId)
+      .then((files) => { if (!cancelled) setPhotoCount(Array.isArray(files) ? files.length : 0); })
+      .catch(() => { if (!cancelled) setPhotoCount(null); });
+    return () => { cancelled = true; };
+  }, [projectId, photosVersion]);
 
   useEffect(() => {
     let cancelled = false;
@@ -170,20 +179,12 @@ return (
         <div style={{ color: "#475569" }}>No repair form yet.</div>
       )}
 
-      {/* Read-only here: photos are added and deleted in the repair form pop-up. */}
-      <div style={{ paddingTop: "6px", borderTop: "1px solid #f1f5f9" }}>
-        <FileAttachments
-          key={`repair-photos-${projectId}-${photosVersion}`}
-          title="Repair photos"
-          loadFiles={() => loadFiles("repair", projectId)}
-          createUpload={(meta) => createFileUpload("repair", projectId, meta)}
-          saveFile={(storagePath, meta) => saveUploadedFile("repair", projectId, storagePath, meta)}
-          getFileUrl={(file) => getFileUrl(file.id)}
-          deleteFile={(file) => deleteFile(file.id)}
-          maxBytes={PROJECT_FILE_MAX_BYTES}
-          accept={REPAIR_PHOTO_TYPES.join(",")}
-          readOnly
-        />
+      {/* Only the number of repair photos here; they are added, opened and deleted in the repair form pop-up. */}
+      <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", paddingTop: "6px", borderTop: "1px solid #f1f5f9" }}>
+        <span style={{ color: "#64748b" }}>Repair photos</span>
+        <span style={photoCount ? { fontWeight: 600, color: "#0f172a" } : { color: "#94a3b8" }}>
+          {photoCount == null ? "—" : photoCount === 0 ? "None" : `${photoCount} photo${photoCount === 1 ? "" : "s"}`}
+        </span>
       </div>
 
       {!loading && (

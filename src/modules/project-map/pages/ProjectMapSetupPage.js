@@ -1,4 +1,4 @@
-import { loadAllRunStatuses, loadPageAccess, loadProjectMapSetup, loadProjectStatusTabAccess, loadRoleStatusMappings } from "../data/projectMap.server";
+import { loadAllRunStatuses, loadPageAccess, loadProjectMapSetup, loadProjectStatusTabAccess, loadRoleStatusMappings, loadRunStatusCascade } from "../data/projectMap.server";
 import { PROJECT_MAP_PAGES } from "../data/projectMap.data";
 import ProjectMapAccessBlocked from "../components/ProjectMapAccessBlocked";
 import ProjectMapSetupView from "./setup/ProjectMapSetupView";
@@ -14,12 +14,13 @@ export default async function ProjectMapSetupPage() {
   }
   // Having the Setup card is enough to manage Setup; Role Tabs ticks only
   // decide editing projects and runs on the other Project Map pages.
-  const [loadedSetup, roleTabs, allRunStatuses] = await Promise.all([
+  const [loadedSetup, roleTabs, allRunStatuses, cascadeRules] = await Promise.all([
     loadProjectMapSetup(),
     loadRoleStatusMappings(),
     loadAllRunStatuses(),
+    loadRunStatusCascade(),
   ]);
   // Setup shows switched-off run statuses too, so they can be switched back on.
   const setup = { ...loadedSetup, runStatuses: allRunStatuses };
-  return <ProjectMapSetupView setup={setup} roles={roleTabs.roles} roleStatusMappings={roleTabs.mappings} roleRunStatusMappings={roleTabs.runMappings} roleOptions={roleTabs.options} />;
+  return <ProjectMapSetupView setup={setup} roles={roleTabs.roles} roleStatusMappings={roleTabs.mappings} roleRunStatusMappings={roleTabs.runMappings} roleOptions={roleTabs.options} cascadeRules={cascadeRules} />;
 }

@@ -12,6 +12,7 @@ import OriginAddressesGrid from "../../components/OriginAddressesGrid";
 import LookupTableGrid from "../../components/LookupTableGrid";
 import RoleStatusTabsGrid from "../../components/RoleStatusTabsGrid";
 import ProjectMapSettingsPanel from "../../components/ProjectMapSettingsPanel";
+import RunStatusCascadeGrid from "../../components/RunStatusCascadeGrid";
 
 // ─── Table Definitions ─────────────────────────────────────────────
 
@@ -173,7 +174,7 @@ const TABLE_DEFS = [
 
 // ─── Main Setup View ─────────────────────────────────────────────────────────
 
-export default function ProjectMapSetupView({ setup = {}, roles = [], roleStatusMappings = [], roleRunStatusMappings = [], roleOptions = [], readOnly = false }) {
+export default function ProjectMapSetupView({ setup = {}, roles = [], roleStatusMappings = [], roleRunStatusMappings = [], roleOptions = [], cascadeRules = [], readOnly = false }) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("projectStatuses");
   const [modalMode, setModalMode] = useState(null); // "add" | "edit" | null
@@ -220,12 +221,14 @@ export default function ProjectMapSetupView({ setup = {}, roles = [], roleStatus
         label: t.label,
         count: Array.isArray(setup[t.key]) ? setup[t.key].length : 0,
       })),
+      // Not a lookup table: run status → project status rules (proj_m_run_status_cascade).
+      { key: "statusCascade", label: "Status Cascade", count: cascadeRules.filter((rule) => rule.project_status_id != null || rule.repair_project_status_id != null).length },
       // Not a lookup table: maps Project Map roles to the status tabs they give.
       { key: "roleTabs", label: "Role Tabs", count: roles.length },
       // Not a lookup table: Project Map settings (proj_s_settings).
       { key: "generalSettings", label: "General Settings", count: Array.isArray(setup.settings) ? setup.settings.length : 0 },
     ],
-    [setup, roles]
+    [setup, roles, cascadeRules]
   );
 
   // Reset search when switching tabs
@@ -374,7 +377,7 @@ export default function ProjectMapSetupView({ setup = {}, roles = [], roleStatus
   const singularName = tableDef?.label?.replace(/s$/, "") || "Item";
 
   // ─── Custom Tab Components ────────────────────────────────
-  const isCustomTab = ["projectStatuses", "originAddresses", "states", "buildingCategories", "permitStatuses", "welcomeCallStatuses", "confirmationStatuses", "runStatuses", "paymentMethods", "roleTabs", "generalSettings"].includes(activeTab);
+  const isCustomTab = ["projectStatuses", "originAddresses", "states", "buildingCategories", "permitStatuses", "welcomeCallStatuses", "confirmationStatuses", "runStatuses", "paymentMethods", "roleTabs", "generalSettings", "statusCascade"].includes(activeTab);
 
   // "Finished" column for project and run statuses (proj_s_*_status.is_finished).
   const finishedColumn = {
@@ -572,7 +575,9 @@ export default function ProjectMapSetupView({ setup = {}, roles = [], roleStatus
           )
         }
       >
-        {activeTab === "generalSettings" ? (
+        {activeTab === "statusCascade" ? (
+          <RunStatusCascadeGrid runStatuses={setup.runStatuses || []} projectStatuses={setup.projectStatuses || []} rules={cascadeRules} readOnly={readOnly} />
+        ) : activeTab === "generalSettings" ? (
           <ProjectMapSettingsPanel settings={setup.settings || []} readOnly={readOnly} />
         ) : activeTab === "roleTabs" ? (
           <RoleStatusTabsGrid roles={roles} statuses={setup.projectStatuses || []} mappings={roleStatusMappings} runStatuses={setup.runStatuses || []} runMappings={roleRunStatusMappings} roleOptions={roleOptions} readOnly={readOnly} />

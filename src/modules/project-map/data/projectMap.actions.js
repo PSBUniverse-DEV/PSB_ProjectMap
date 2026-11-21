@@ -8,7 +8,7 @@ import {
   getSignedFileUrl,
   removeStoredFiles as removeStorageObjects,
 } from "@/core/storage/files.service";
-import { PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, REPAIR_STATUS_KEYS, PROJECT_COMMENT_MAX_LENGTH, PROJECT_MAP_PAGES, splitRunAmounts } from "./projectMap.data";
+import { PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, REPAIR_STATUS_KEYS, PROJECT_COMMENT_MAX_LENGTH, PROJECT_MAP_PAGES, PROJECT_MAP_SETTING_KEYS, STALE_AFTER_DAYS_LIMITS, splitRunAmounts } from "./projectMap.data";
 import { getCurrentSession } from "@/core/auth/session.service";
 import { fetchAllRows, loadPageAccess, loadProjectStatusTabAccess, loadRuns as loadRunsForAccess } from "./projectMap.server";
 import projectMapModule from "../index";
@@ -196,6 +196,47 @@ export async function deleteSetupTableRow(tableKey, id) {
     throw new Error(error.message);
   }
   return { success: true };
+}
+
+// ─── General Settings ────────────────────────────────────────
+
+// Each setting this page may save, with its check. Returns the value to save,
+// or null when the value is not allowed.
+const SETTING_CHECKS = {
+  [PROJECT_MAP_SETTING_KEYS.staleAfterDays]: (value) => {
+    const days = Number(value);
+    return Number.isInteger(days) && days >= STALE_AFTER_DAYS_LIMITS.min && days <= STALE_AFTER_DAYS_LIMITS.max
+      ? String(days)
+      : null;
+  },
+};
+
+/**
+ * Saves one Project Map setting (proj_s_settings, Setup → General Settings).
+ * Returns { success, error } so the message also shows in production.
+ */
+export async function updateProjectMapSetting(settingKey, value) {
+  try {
+    await requireSetupAccess();
+    const check = SETTING_CHECKS[settingKey];
+    if (!check) return { success: false, error: "Unknown setting." };
+    const cleanValue = check(value);
+    if (cleanValue == null) {
+      return { success: false, error: `Enter a whole number from ${STALE_AFTER_DAYS_LIMITS.min} to ${STALE_AFTER_DAYS_LIMITS.max}.` };
+    }
+    const session = await getCurrentSession();
+    const supabase = getSupabaseAdmin();
+    const { error } = await supabase
+      .from("proj_s_settings")
+      .upsert(
+        { setting_key: settingKey, setting_value: cleanValue, updated_at: new Date().toISOString(), updated_by: session?.userId ?? null },
+        { onConflict: "setting_key" }
+      );
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err?.message || "Unable to save the setting." };
+  }
 }
 
 // ─── Project Status Specific Actions ─────────────────────────

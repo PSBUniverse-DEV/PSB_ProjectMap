@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { stripTownshipLabel, STALE_AFTER_DAYS, getRunStatusColor } from "../data/projectMap.data";
+import { stripTownshipLabel, DEFAULT_STALE_AFTER_DAYS, getRunStatusColor } from "../data/projectMap.data";
 
 function formatShortDate(value) {
   const d = new Date(value);
@@ -56,7 +56,7 @@ const EMPTY_STYLE = { margin: 0, padding: "12px 10px", fontSize: "11px", color: 
 
 /**
  * Bell next to "Show Labels": open projects and open runs nobody has updated
- * for STALE_AFTER_DAYS days or more, oldest first, in two tabs. Each time it is
+ * for staleAfterDays days or more, oldest first, in two tabs. Each time it is
  * opened it shows the tab of the page's current tab (`mode`); without run
  * access (`showRuns` false) there are no tabs, only projects.
  * items = getStaleProjects(...) ([{ project, days }]); runItems = getStaleRuns(...)
@@ -67,6 +67,7 @@ export default function StaleProjectsBell({
   items = [], statuses = [], onOpenProject,
   runItems = [], runStatuses = [], onOpenRun,
   mode = "projects", showRuns = false,
+  staleAfterDays = DEFAULT_STALE_AFTER_DAYS,
 }) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState("projects");
@@ -102,8 +103,8 @@ export default function StaleProjectsBell({
     runCount ? `${runCount} run${runCount === 1 ? "" : "s"}` : "",
   ].filter(Boolean);
   const label = count
-    ? `${parts.join(" and ")} not updated for ${STALE_AFTER_DAYS}+ days`
-    : `Nothing waiting ${STALE_AFTER_DAYS}+ days`;
+    ? `${parts.join(" and ")} not updated for ${staleAfterDays}+ days`
+    : `Nothing waiting ${staleAfterDays}+ days`;
 
   const tabButton = (key, text, n) => {
     const on = activeTab === key;
@@ -133,7 +134,7 @@ export default function StaleProjectsBell({
         <div role="dialog" aria-label="Projects and runs not updated"
           style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, width: "340px", maxHeight: "460px", display: "flex", flexDirection: "column", background: "#fff", border: "1px solid #e2e8f0", borderRadius: "6px", boxShadow: "0 8px 24px rgba(15, 23, 42, 0.15)", zIndex: 2000 }}>
           <div style={{ padding: "8px 10px", borderBottom: "1px solid #e2e8f0" }}>
-            <div style={{ fontSize: "12px", fontWeight: 600, color: "#1e293b" }}>Not updated for {STALE_AFTER_DAYS}+ days</div>
+            <div style={{ fontSize: "12px", fontWeight: 600, color: "#1e293b" }}>Not updated for {staleAfterDays}+ days</div>
             <div style={{ fontSize: "10px", color: "#64748b" }}>Nobody has changed these in a while. Oldest first.</div>
           </div>
 
@@ -147,7 +148,7 @@ export default function StaleProjectsBell({
           <div role={showRuns ? "tabpanel" : undefined} style={{ overflowY: "auto" }}>
             {activeTab === "projects" ? (
               projectCount === 0 ? (
-                <p style={EMPTY_STYLE}>Every open project was updated in the last {STALE_AFTER_DAYS} days.</p>
+                <p style={EMPTY_STYLE}>Every open project was updated in the last {staleAfterDays} days.</p>
               ) : items.map(({ project, days }) => {
                 const status = statusOf(project);
                 const place = project.city && project.state
@@ -172,7 +173,7 @@ export default function StaleProjectsBell({
               })
             ) : (
               runCount === 0 ? (
-                <p style={EMPTY_STYLE}>Every open run was updated in the last {STALE_AFTER_DAYS} days.</p>
+                <p style={EMPTY_STYLE}>Every open run was updated in the last {staleAfterDays} days.</p>
               ) : runItems.map(({ run, days }) => {
                 const latest = latestRunHistoryText(run);
                 const title = [run.run_code, run.run_name].filter(Boolean).join(" · ") || `Run #${run.run_number || run.id}`;

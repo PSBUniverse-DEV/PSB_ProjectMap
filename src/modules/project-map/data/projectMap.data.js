@@ -362,29 +362,48 @@ export function isPastInstallProject(project, statuses = []) {
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-export const STALE_AFTER_DAYS = 14;
+// Days without an update before the bell lists a project or run, used when
+// Setup → General Settings has no saved value (proj_s_settings).
+export const DEFAULT_STALE_AFTER_DAYS = 14;
+// Allowed range for that setting.
+export const STALE_AFTER_DAYS_LIMITS = { min: 1, max: 365 };
+// setting_key values in proj_s_settings (one row per setting).
+export const PROJECT_MAP_SETTING_KEYS = { staleAfterDays: "stale_after_days" };
 
 /**
- * Open projects not updated (updated_at, else created_at) for STALE_AFTER_DAYS
+ * Days without an update before the bell lists a project or run: the value
+ * saved in Setup → General Settings (`settings` = proj_s_settings rows), else
+ * DEFAULT_STALE_AFTER_DAYS when it is missing or out of range.
+ */
+export function getStaleAfterDays(settings = []) {
+  const row = (Array.isArray(settings) ? settings : []).find((s) => s.setting_key === PROJECT_MAP_SETTING_KEYS.staleAfterDays);
+  const days = Number(row?.setting_value);
+  return Number.isInteger(days) && days >= STALE_AFTER_DAYS_LIMITS.min && days <= STALE_AFTER_DAYS_LIMITS.max
+    ? days
+    : DEFAULT_STALE_AFTER_DAYS;
+}
+
+/**
+ * Open projects not updated (updated_at, else created_at) for `staleAfterDays`
  * days or more, oldest first: [{ project, days }].
  */
-export function getStaleProjects(projects = [], statuses = [], now = new Date()) {
+export function getStaleProjects(projects = [], statuses = [], staleAfterDays = DEFAULT_STALE_AFTER_DAYS, now = new Date()) {
   return projects
     .filter((project) => !isPastInstallProject(project, statuses))
     .map((project) => {
       const touched = new Date(project.updated_at || project.created_at).getTime();
       return Number.isNaN(touched) ? null : { project, days: Math.floor((now.getTime() - touched) / DAY_MS) };
     })
-    .filter((item) => item && item.days >= STALE_AFTER_DAYS)
+    .filter((item) => item && item.days >= staleAfterDays)
     .sort((a, b) => b.days - a.days || Number(a.project.id) - Number(b.project.id));
 }
 
 /**
  * Open runs (status without the "Finished" tick: isFinishedRunStatus) not
- * updated (updated_at, else created_at) for STALE_AFTER_DAYS days or more,
+ * updated (updated_at, else created_at) for `staleAfterDays` days or more,
  * oldest first: [{ run, days }].
  */
-export function getStaleRuns(runs = [], runStatuses = [], now = new Date()) {
+export function getStaleRuns(runs = [], runStatuses = [], staleAfterDays = DEFAULT_STALE_AFTER_DAYS, now = new Date()) {
   const finishedNames = new Set(getFinishedRunStatusNames(runStatuses));
   return runs
     .filter((run) => !finishedNames.has(run.status))
@@ -392,7 +411,7 @@ export function getStaleRuns(runs = [], runStatuses = [], now = new Date()) {
       const touched = new Date(run.updated_at || run.created_at).getTime();
       return Number.isNaN(touched) ? null : { run, days: Math.floor((now.getTime() - touched) / DAY_MS) };
     })
-    .filter((item) => item && item.days >= STALE_AFTER_DAYS)
+    .filter((item) => item && item.days >= staleAfterDays)
     .sort((a, b) => b.days - a.days || Number(a.run.id) - Number(b.run.id));
 }
 

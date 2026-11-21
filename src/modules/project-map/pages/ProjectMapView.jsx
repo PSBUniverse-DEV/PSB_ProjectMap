@@ -20,7 +20,7 @@ import StopStatusPrompt from "../components/StopStatusPrompt";
 import FilterBar from "../components/FilterBar";
 import AddProjectForm from "../components/AddProjectForm";
 import MapSearch from "../components/MapSearch";
-import { splitRunAmounts, getStatusTabGroupIds, runStatusNameByKey, canEditProjectStatusId, canEditRunStatusName, canCommentAndAttach, isOwnFile, formatDisplayDate, getStaleProjects, getStaleRuns } from "../data/projectMap.data";
+import { splitRunAmounts, getStatusTabGroupIds, runStatusNameByKey, canEditProjectStatusId, canEditRunStatusName, canCommentAndAttach, isOwnFile, formatDisplayDate, getStaleProjects, getStaleRuns, getStaleAfterDays } from "../data/projectMap.data";
 import FilterChips from "../components/FilterChips";
 import RunFilterPanel from "../components/RunFilterPanel";
 import RunFilterChips from "../components/RunFilterChips";
@@ -81,7 +81,7 @@ function storeRouteCache(map, runId, entry) {
 }
 
 
-export default function ProjectMapView({ projects: initialProjects = [], statuses = [], origins = [], states = [], runs: initialRuns = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [], confirmationStatuses = [], runStatuses = [], statusTabAccess = null, pageAccess = null }) {
+export default function ProjectMapView({ projects: initialProjects = [], statuses = [], origins = [], states = [], runs: initialRuns = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [], confirmationStatuses = [], runStatuses = [], statusTabAccess = null, pageAccess = null, settings = [] }) {
   const router = useRouter();
   const [mode, setMode] = useState("projects");
   const [showLabels, setShowLabels] = useState(true);
@@ -657,10 +657,12 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
 
   const handleSelectProject = useCallback((id) => { setSelectedProjectId(id); }, []);
 
-  // Bell: open projects (that this user may see) not updated for 14+ days.
-  const staleProjects = useMemo(() => getStaleProjects(projects, statuses), [projects, statuses]);
-  // Bell: open runs (that this user may see) not updated for 14+ days.
-  const staleRuns = useMemo(() => (canSeeRuns ? getStaleRuns(runs, runStatuses) : []), [canSeeRuns, runs, runStatuses]);
+  // Bell: days without an update (Setup → General Settings, else 14).
+  const staleAfterDays = useMemo(() => getStaleAfterDays(settings), [settings]);
+  // Bell: open projects (that this user may see) not updated for that many days.
+  const staleProjects = useMemo(() => getStaleProjects(projects, statuses, staleAfterDays), [projects, statuses, staleAfterDays]);
+  // Bell: open runs (that this user may see) not updated for that many days.
+  const staleRuns = useMemo(() => (canSeeRuns ? getStaleRuns(runs, runStatuses, staleAfterDays) : []), [canSeeRuns, runs, runStatuses, staleAfterDays]);
 
   // Bell → open a project: go to the Projects tab; if the current status tab or
   // filters hide it, go back to "All" with no filters; then pick it, so the list
@@ -1610,7 +1612,7 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
           </label>
           <StaleProjectsBell items={staleProjects} statuses={statuses} onOpenProject={handleOpenStaleProject}
             runItems={staleRuns} runStatuses={runStatuses} onOpenRun={handleOpenStaleRun}
-            mode={mode} showRuns={canSeeRuns} />
+            mode={mode} showRuns={canSeeRuns} staleAfterDays={staleAfterDays} />
         </div>
       </div>
 

@@ -109,6 +109,10 @@ export async function loadProjectMapSetup() {
       .select("*")
       .order("display_order", { ascending: true })
       .order("method_name", { ascending: true }),
+    // Project Map settings (Setup → General Settings), one row per setting_key.
+    settings: supabase
+      .from("proj_s_settings")
+      .select("*"),
   };
 
   const keys = Object.keys(queries);

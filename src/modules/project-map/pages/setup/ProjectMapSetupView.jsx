@@ -11,6 +11,7 @@ import SetupFormModal from "./SetupFormModal";
 import OriginAddressesGrid from "../../components/OriginAddressesGrid";
 import LookupTableGrid from "../../components/LookupTableGrid";
 import RoleStatusTabsGrid from "../../components/RoleStatusTabsGrid";
+import ProjectMapSettingsPanel from "../../components/ProjectMapSettingsPanel";
 
 // ─── Table Definitions ─────────────────────────────────────────────
 
@@ -221,6 +222,8 @@ export default function ProjectMapSetupView({ setup = {}, roles = [], roleStatus
       })),
       // Not a lookup table: maps Project Map roles to the status tabs they give.
       { key: "roleTabs", label: "Role Tabs", count: roles.length },
+      // Not a lookup table: Project Map settings (proj_s_settings).
+      { key: "generalSettings", label: "General Settings", count: Array.isArray(setup.settings) ? setup.settings.length : 0 },
     ],
     [setup, roles]
   );
@@ -371,7 +374,7 @@ export default function ProjectMapSetupView({ setup = {}, roles = [], roleStatus
   const singularName = tableDef?.label?.replace(/s$/, "") || "Item";
 
   // ─── Custom Tab Components ────────────────────────────────
-  const isCustomTab = ["projectStatuses", "originAddresses", "states", "buildingCategories", "permitStatuses", "welcomeCallStatuses", "confirmationStatuses", "runStatuses", "paymentMethods", "roleTabs"].includes(activeTab);
+  const isCustomTab = ["projectStatuses", "originAddresses", "states", "buildingCategories", "permitStatuses", "welcomeCallStatuses", "confirmationStatuses", "runStatuses", "paymentMethods", "roleTabs", "generalSettings"].includes(activeTab);
 
   // "Finished" column for project and run statuses (proj_s_*_status.is_finished).
   const finishedColumn = {
@@ -547,7 +550,9 @@ export default function ProjectMapSetupView({ setup = {}, roles = [], roleStatus
           )
         }
       >
-        {activeTab === "roleTabs" ? (
+        {activeTab === "generalSettings" ? (
+          <ProjectMapSettingsPanel settings={setup.settings || []} readOnly={readOnly} />
+        ) : activeTab === "roleTabs" ? (
           <RoleStatusTabsGrid roles={roles} statuses={setup.projectStatuses || []} mappings={roleStatusMappings} runStatuses={setup.runStatuses || []} runMappings={roleRunStatusMappings} roleOptions={roleOptions} readOnly={readOnly} />
         ) : activeTab === "originAddresses" ? (
           <OriginAddressesGrid data={setup.originAddresses || []} states={setup.states || []} readOnly={readOnly} />

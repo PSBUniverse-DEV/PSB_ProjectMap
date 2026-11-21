@@ -193,7 +193,7 @@ return (
           )}
         </div>
       )}
-<Modal show={showEdit} onHide={() => { if (!saving) setShowEdit(false); }} title="Repair form">
+      <Modal show={showEdit} onHide={() => { if (!saving) setShowEdit(false); }} title="Repair form">
         <div style={{ display: "flex", flexDirection: "column", gap: "12px", fontSize: "13px" }}>
           <div style={{ padding: "10px 12px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "8px", display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "8px 16px" }}>
             <div><div style={{ fontSize: "11px", color: "#64748b" }}>Customer name</div><div style={{ fontWeight: 600 }}>{project.client_name || "—"}</div></div>

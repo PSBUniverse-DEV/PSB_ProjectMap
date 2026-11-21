@@ -33,7 +33,7 @@ export function generateRepairFormPrint(printWindow, data = {}) {
   const photosHtml = (data.photos || []).length
     ? (data.photos || []).map((photo) => `<figure><img src="${escapeHtml(photo.url)}" alt="${escapeHtml(photo.name)}"><figcaption>${escapeHtml(photo.name)}</figcaption></figure>`).join("")
     : `<p class="empty">No photos.</p>`;
-printWindow.document.write(`<!DOCTYPE html>
+  printWindow.document.write(`<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">

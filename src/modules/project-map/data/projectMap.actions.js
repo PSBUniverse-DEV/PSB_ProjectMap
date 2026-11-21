@@ -8,7 +8,7 @@ import {
   getSignedFileUrl,
   removeStoredFiles as removeStorageObjects,
 } from "@/core/storage/files.service";
-import { PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, REPAIR_STATUS_KEYS, PROJECT_COMMENT_MAX_LENGTH, PROJECT_MAP_PAGES, PROJECT_MAP_SETTING_KEYS, STALE_AFTER_DAYS_LIMITS, splitRunAmounts } from "./projectMap.data";
+import { PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, REPAIR_PHOTO_TYPES, REPAIR_PROBLEM_MAX_LENGTH, REPAIR_STATUS_KEYS, PROJECT_COMMENT_MAX_LENGTH, PROJECT_MAP_PAGES, PROJECT_MAP_SETTING_KEYS, STALE_AFTER_DAYS_LIMITS, splitRunAmounts } from "./projectMap.data";
 import { getCurrentSession } from "@/core/auth/session.service";
 import { fetchAllRows, loadPageAccess, loadProjectStatusTabAccess, loadRuns as loadRunsForAccess } from "./projectMap.server";
 import projectMapModule from "../index";
@@ -239,6 +239,117 @@ export async function updateProjectMapSetting(settingKey, value) {
     return { success: true };
   } catch (err) {
     return { success: false, error: err?.message || "Unable to save the setting." };
+  }
+}
+
+// ─── Repair Form ─────────────────────────────────────────────
+
+// One repair form per project (proj_t_repair_forms), for projects in a repair
+// status (system_key in REPAIR_STATUS_KEYS). Customer name, repair address,
+// invoice number and amount owed are read from the project itself; the form
+// stores only what the project has no field for. Repair photos are files with
+// owner type "repair" (proj_t_files.repair_project_id).
+const REPAIR_FORM_COLUMNS = "id, project_id, phone_number, form_date, original_installer, reported_problem, created_at, updated_at";
+
+// Installer (proj_t_runs.team_assigned) of the earliest run this project was
+// on, to pre-fill "Original installer". Null when no run has one.
+async function findOriginalInstaller(supabase, projectId) {
+  const { data, error } = await supabase
+    .from("proj_t_run_projects")
+    .select("proj_t_runs(team_assigned, run_date)")
+    .eq("project_id", projectId);
+  if (error) throw new Error(error.message);
+  const runs = (data || [])
+    .map((row) => row.proj_t_runs)
+    .filter((run) => run && String(run.team_assigned || "").trim())
+    .sort((a, b) => String(a.run_date || "9999").localeCompare(String(b.run_date || "9999")));
+  return runs[0] ? String(runs[0].team_assigned).trim() : null;
+}
+
+/**
+ * The repair form of one project, plus the suggested original installer.
+ * Returns { success, form (null when none yet), suggestedInstaller, error }.
+ */
+export async function loadRepairForm(projectId) {
+  try {
+    const id = toIntOrNull(projectId);
+    if (id === null) return { success: false, error: "projectId is required." };
+    await requireProjectMapAccess();
+    const supabase = getSupabaseAdmin();
+    const [{ data: form, error }, suggestedInstaller] = await Promise.all([
+      supabase.from("proj_t_repair_forms").select(REPAIR_FORM_COLUMNS).eq("project_id", id).maybeSingle(),
+      findOriginalInstaller(supabase, id),
+    ]);
+    if (error) return { success: false, error: error.message };
+    return { success: true, form: form || null, suggestedInstaller };
+  } catch (err) {
+    return { success: false, error: err?.message || "Unable to load the repair form." };
+  }
+}
+
+/**
+ * Saves the repair form of one project (creates it the first time). Only for
+ * projects in a repair status, and only for users who may edit the project.
+ * `fields` = { phone_number, form_date ("YYYY-MM-DD"), original_installer, reported_problem }.
+ * Returns { success, form, error } so the message also shows in production.
+ */
+export async function saveRepairForm(projectId, fields = {}) {
+  try {
+    const id = toIntOrNull(projectId);
+    if (id === null) return { success: false, error: "projectId is required." };
+    const supabase = getSupabaseAdmin();
+    const access = await requireProjectMapAccess();
+    await requireProjectEdit(supabase, access, id);
+
+    const { data: project, error: projectError } = await supabase
+      .from("proj_t_projects")
+      .select("id, proj_s_project_status!proj_t_projects_status_id_fkey(system_key)")
+      .eq("id", id)
+      .maybeSingle();
+    if (projectError) return { success: false, error: projectError.message };
+    if (!project) return { success: false, error: "Project not found." };
+    if (!REPAIR_STATUS_KEYS.includes(project.proj_s_project_status?.system_key)) {
+      return { success: false, error: "Only projects in a repair status have a repair form." };
+    }
+
+    const text = (value, max) => {
+      const clean = String(value ?? "").trim();
+      return clean ? clean.slice(0, max) : null;
+    };
+    const formDate = String(fields.form_date || "").trim();
+    if (formDate && !/^\d{4}-\d{2}-\d{2}$/.test(formDate)) {
+      return { success: false, error: "Form date is not a valid date." };
+    }
+    const problem = String(fields.reported_problem ?? "").trim();
+    if (problem.length > REPAIR_PROBLEM_MAX_LENGTH) {
+      return { success: false, error: `Reported problem must be ${REPAIR_PROBLEM_MAX_LENGTH} characters or less.` };
+    }
+
+    const userId = toIntOrNull(access.user?.userId);
+    const now = new Date().toISOString();
+    const values = {
+      phone_number: text(fields.phone_number, 40),
+      form_date: formDate || null,
+      original_installer: text(fields.original_installer, 200),
+      reported_problem: problem || null,
+      updated_at: now,
+      updated_by: userId,
+    };
+
+    const { data: existing, error: existingError } = await supabase
+      .from("proj_t_repair_forms")
+      .select("id")
+      .eq("project_id", id)
+      .maybeSingle();
+    if (existingError) return { success: false, error: existingError.message };
+    const query = existing
+      ? supabase.from("proj_t_repair_forms").update(values).eq("id", existing.id)
+      : supabase.from("proj_t_repair_forms").insert({ ...values, project_id: id, created_at: now, created_by: userId });
+    const { data: form, error } = await query.select(REPAIR_FORM_COLUMNS).single();
+    if (error) return { success: false, error: error.message };
+    return { success: true, form };
+  } catch (err) {
+    return { success: false, error: err?.message || "Unable to save the repair form." };
   }
 }
 
@@ -1254,6 +1365,7 @@ async function requireProjectEdit(supabase, access, projectId, { viaRunId = null
 async function requireFileOwnerEdit(supabase, access, ownerType, ownerId, viaRunId = null) {
   if (ownerType === "project") return requireProjectEdit(supabase, access, ownerId, { viaRunId });
   if (ownerType === "run") return requireRunEdit(supabase, access, ownerId);
+  if (ownerType === "repair") return requireProjectEdit(supabase, access, ownerId, { viaRunId });
   throw new Error(`Unknown file owner type: "${ownerType}"`);
 }
 
@@ -1558,6 +1670,7 @@ export async function deleteProject(projectId) {
 
   // Remove the project's stored attachments (their rows cascade with the project)
   await removeStoredFiles(supabase, "project", id);
+  await removeStoredFiles(supabase, "repair", id);
 
   // First, remove all run-project mappings (unassign the project from every run)
   const { error: mappingError } = await supabase.from("proj_t_run_projects").delete().eq("project_id", id);
@@ -2673,6 +2786,9 @@ function resolveFileOwner(ownerType, ownerId) {
   if (id === null) throw new Error("ownerId is required.");
   if (ownerType === "project") return { column: "project_id", folder: "projects", id };
   if (ownerType === "run") return { column: "run_id", folder: "runs", id };
+  // Repair photos: the Repair form's own pictures and PDFs, kept apart from
+  // the project's Files. ownerId is the project id.
+  if (ownerType === "repair") return { column: "repair_project_id", folder: "repairs", id, allowedTypes: REPAIR_PHOTO_TYPES };
   throw new Error(`Unknown file owner type: "${ownerType}"`);
 }
 
@@ -2712,14 +2828,14 @@ export async function loadFiles(ownerType, ownerId) {
  * upload target. `file` is plain metadata: { name, type, size }.
  */
 export async function createFileUpload(ownerType, ownerId, file, { viaRunId = null } = {}) {
-  const { folder, id } = resolveFileOwner(ownerType, ownerId);
+  const { folder, id, allowedTypes } = resolveFileOwner(ownerType, ownerId);
   await requireFileAdd(getSupabaseAdmin(), await requireProjectMapAccess(), ownerType, id, viaRunId);
   return createSignedFileUpload({
     bucket: FILES_BUCKET,
     folder: `${folder}/${id}`,
     file,
     maxBytes: PROJECT_FILE_MAX_BYTES,
-    allowedTypes: PROJECT_FILE_TYPES,
+    allowedTypes: allowedTypes || PROJECT_FILE_TYPES,
   });
 }
 
@@ -2728,8 +2844,8 @@ export async function createFileUpload(ownerType, ownerId, file, { viaRunId = nu
  * the owner's own folder so a row can never point at another owner's file.
  */
 export async function saveUploadedFile(ownerType, ownerId, storagePath, file, { viaRunId = null } = {}) {
-  const { column, folder, id } = resolveFileOwner(ownerType, ownerId);
-  assertFileAllowed(file, { maxBytes: PROJECT_FILE_MAX_BYTES, allowedTypes: PROJECT_FILE_TYPES });
+  const { column, folder, id, allowedTypes } = resolveFileOwner(ownerType, ownerId);
+  assertFileAllowed(file, { maxBytes: PROJECT_FILE_MAX_BYTES, allowedTypes: allowedTypes || PROJECT_FILE_TYPES });
   if (!String(storagePath || "").startsWith(`${folder}/${id}/`)) {
     throw new Error("Invalid storage path.");
   }
@@ -2773,7 +2889,7 @@ export async function deleteFile(fileId, { viaRunId = null } = {}) {
   if (id === null) throw new Error("fileId is required.");
 
   const supabase = getSupabaseAdmin();
-  const { data: row, error } = await supabase.from("proj_t_files").select("storage_path, project_id, run_id, created_by").eq("id", id).maybeSingle();
+  const { data: row, error } = await supabase.from("proj_t_files").select("storage_path, project_id, run_id, repair_project_id, created_by").eq("id", id).maybeSingle();
   if (error) throw new Error(error.message);
   if (!row) return { success: true };
 
@@ -2784,6 +2900,7 @@ export async function deleteFile(fileId, { viaRunId = null } = {}) {
   if (!isOwnFile) {
     if (row.project_id != null) await requireFileOwnerEdit(supabase, access, "project", row.project_id, viaRunId);
     else if (row.run_id != null) await requireFileOwnerEdit(supabase, access, "run", row.run_id);
+    else if (row.repair_project_id != null) await requireFileOwnerEdit(supabase, access, "repair", row.repair_project_id);
   }
 
   await removeStorageObjects({ bucket: FILES_BUCKET, storagePaths: [row.storage_path] });

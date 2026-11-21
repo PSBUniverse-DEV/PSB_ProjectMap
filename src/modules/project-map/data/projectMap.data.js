@@ -289,6 +289,15 @@ export const PROJECT_FILE_MAX_BYTES = 30 * 1024 * 1024;
  */
 export const PROJECT_FILE_TYPES = ["application/pdf"];
 
+/**
+ * Repair photos (the Repair form on a project in a repair status): pictures
+ * and PDFs. Same size limit as other files (PROJECT_FILE_MAX_BYTES).
+ */
+export const REPAIR_PHOTO_TYPES = ["image/*", "application/pdf"];
+
+/** Longest "Reported problem" on a repair form, in characters. */
+export const REPAIR_PROBLEM_MAX_LENGTH = 4000;
+
 /** Longest project comment, in characters. Checked in the UI and on the server. */
 export const PROJECT_COMMENT_MAX_LENGTH = 2000;
 

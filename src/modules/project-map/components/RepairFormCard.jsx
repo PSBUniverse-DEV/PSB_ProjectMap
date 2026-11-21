@@ -32,60 +32,50 @@ function todayKey() {
  * formatted amount); readOnly (form edits, same as editing the project);
  * filesReadOnly / canDeleteFile (photos, same rules as the project's Files).
  */
-export default function RepairFormCard({ project, addressText = "", amountText = null, readOnly = false, filesReadOnly = false, canDeleteFile = null }) {
+export default function RepairFormCard({ project, addressText = "", amountText = null, readOnly = false, filesReadOnly = false, canDeleteFile = null, onChanged = null }) {
   const projectId = project?.id;
-  const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState(null);
-  const [suggestedInstaller, setSuggestedInstaller] = useState(null);
+  // The form and the photo count come with the project list (proj_t_repair_forms
+  // and repair_photos embeds in loadProjectMapSetup / loadProjects), so the card
+  // shows at once with no server call. The embed can be an object or a one-item array.
+  const embeddedForm = Array.isArray(project?.proj_t_repair_forms)
+    ? project.proj_t_repair_forms[0] || null
+    : project?.proj_t_repair_forms || null;
+  const photoCount = Array.isArray(project?.repair_photos) ? Number(project.repair_photos[0]?.count ?? 0) : null;
+  const [form, setForm] = useState(embeddedForm);
   const [showEdit, setShowEdit] = useState(false);
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [saving, setSaving] = useState(false);
   const [printing, setPrinting] = useState(false);
-  // Photos are added and deleted in the pop-up; the card only shows how many
-  // there are. The count reloads each time the pop-up closes.
-  const [photosVersion, setPhotosVersion] = useState(0);
-  const [photoCount, setPhotoCount] = useState(null); // null = still loading or failed
+
+  // A refreshed project list brings the latest form.
+  useEffect(() => { setForm(embeddedForm); }, [embeddedForm]);
+
+  // Photos are added and deleted in the pop-up: when it closes, the page
+  // refreshes the project list so the form and photo count stay current.
   const wasEditOpen = useRef(false);
   useEffect(() => {
-    if (wasEditOpen.current && !showEdit) setPhotosVersion((v) => v + 1);
+    if (wasEditOpen.current && !showEdit) onChanged?.();
     wasEditOpen.current = showEdit;
-  }, [showEdit]);
-
-  useEffect(() => {
-    let cancelled = false;
-    loadFiles("repair", projectId)
-      .then((files) => { if (!cancelled) setPhotoCount(Array.isArray(files) ? files.length : 0); })
-      .catch(() => { if (!cancelled) setPhotoCount(null); });
-    return () => { cancelled = true; };
-  }, [projectId, photosVersion]);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    loadRepairForm(projectId)
-      .then((result) => {
-        if (cancelled) return;
-        if (!result?.success) toastError(result?.error || "Unable to load the repair form.", "Repair form");
-        setForm(result?.form || null);
-        setSuggestedInstaller(result?.suggestedInstaller || null);
-      })
-      .catch((err) => {
-        if (!cancelled) toastError(err?.message || "Unable to load the repair form.", "Repair form");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => { cancelled = true; };
-  }, [projectId]);
+  }, [showEdit, onChanged]);
 
   const openEdit = () => {
     setDraft({
       phone_number: form?.phone_number || "",
       form_date: form?.form_date || todayKey(),
-      original_installer: form?.original_installer || suggestedInstaller || "",
+      original_installer: form?.original_installer || "",
       reported_problem: form?.reported_problem || "",
     });
     setShowEdit(true);
+    // No installer yet: suggest the one from the project's earliest run. The
+    // pop-up opens at once; the name fills in if the field is still empty.
+    if (!form?.original_installer) {
+      loadRepairForm(projectId)
+        .then((result) => {
+          const suggestion = result?.suggestedInstaller;
+          if (suggestion) setDraft((prev) => (prev.original_installer ? prev : { ...prev, original_installer: suggestion }));
+        })
+        .catch(() => {});
+    }
   };
 
   const handleChange = (field, value) => setDraft((prev) => ({ ...prev, [field]: value }));
@@ -145,19 +135,15 @@ return (
     <section aria-label="Repair form" style={CARD}>
       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
         <h3 style={{ margin: 0, fontSize: "11px", fontWeight: 700, color: "#991b1b", letterSpacing: "0.04em", textTransform: "uppercase" }}>Repair form</h3>
-        {!loading && (
-          <span style={{ padding: "1px 8px", borderRadius: "999px", fontSize: "10px", fontWeight: 600, background: form ? "#dcfce7" : "#f1f5f9", color: form ? "#166534" : "#475569" }}>
-            {form ? "Filled in" : "Not filled in"}
-          </span>
-        )}
+        <span style={{ padding: "1px 8px", borderRadius: "999px", fontSize: "10px", fontWeight: 600, background: form ? "#dcfce7" : "#f1f5f9", color: form ? "#166534" : "#475569" }}>
+          {form ? "Filled in" : "Not filled in"}
+        </span>
         {form?.form_date && (
           <span style={{ marginLeft: "auto", fontSize: "10px", color: "#64748b" }}>Form date {formatDisplayDate(form.form_date)}</span>
         )}
       </div>
 
-      {loading ? (
-        <div style={{ color: "#94a3b8" }}>Loading repair form...</div>
-      ) : form ? (
+      {form ? (
         <>
           <div style={ROW}><span style={LABEL}>Phone</span>{valueOrNotSet(form.phone_number)}</div>
           <div style={ROW}><span style={LABEL}>Original installer</span>{valueOrNotSet(form.original_installer)}</div>
@@ -187,20 +173,18 @@ return (
         </span>
       </div>
 
-      {!loading && (
-        <div style={{ display: "flex", gap: "8px", paddingTop: "4px" }}>
-          {!readOnly && (
-            <button type="button" onClick={openEdit} style={{ flex: 1, padding: "7px 10px", border: "1px solid #cbd5e1", borderRadius: "8px", background: "#fff", color: "#334155", fontFamily: "inherit", fontSize: "12px", fontWeight: 600, cursor: "pointer" }}>
-              {form ? "Edit form" : "Fill in repair form"}
-            </button>
-          )}
-          {form && (
-            <button type="button" onClick={handlePrint} disabled={printing} style={{ flex: 1, padding: "7px 10px", border: "none", borderRadius: "8px", background: "#0f172a", color: "#fff", fontFamily: "inherit", fontSize: "12px", fontWeight: 600, cursor: printing ? "default" : "pointer", opacity: printing ? 0.6 : 1 }}>
-              {printing ? "Preparing..." : "Print form"}
-            </button>
-          )}
-        </div>
-      )}
+      <div style={{ display: "flex", gap: "8px", paddingTop: "4px" }}>
+        {!readOnly && (
+          <button type="button" onClick={openEdit} style={{ flex: 1, padding: "7px 10px", border: "1px solid #cbd5e1", borderRadius: "8px", background: "#fff", color: "#334155", fontFamily: "inherit", fontSize: "12px", fontWeight: 600, cursor: "pointer" }}>
+            {form ? "Edit form" : "Fill in repair form"}
+          </button>
+        )}
+        {form && (
+          <button type="button" onClick={handlePrint} disabled={printing} style={{ flex: 1, padding: "7px 10px", border: "none", borderRadius: "8px", background: "#0f172a", color: "#fff", fontFamily: "inherit", fontSize: "12px", fontWeight: 600, cursor: printing ? "default" : "pointer", opacity: printing ? 0.6 : 1 }}>
+            {printing ? "Preparing..." : "Print form"}
+          </button>
+        )}
+      </div>
       <Modal show={showEdit} onHide={() => { if (!saving) setShowEdit(false); }} title="Repair form">
         <div style={{ display: "flex", flexDirection: "column", gap: "12px", fontSize: "13px" }}>
           <div style={{ padding: "10px 12px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "8px", display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "8px 16px" }}>

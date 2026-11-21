@@ -57,7 +57,10 @@ export async function loadProjectMapSetup() {
       "created_at, updated_at, created_by, updated_by, " +
       "proj_s_project_status!proj_t_projects_status_id_fkey(status_id, status_name, status_description, system_key), " +
       // History (written by logProjectStatusChanges in projectMap.actions.js on every status save); the drawer shows it with no extra call.
-      "proj_t_project_status_log(log_id, from_status_id, from_status_name, to_status_id, to_status_name, changed_at, duration_seconds, is_baseline, psb_s_user(first_name, last_name, username))"
+      "proj_t_project_status_log(log_id, from_status_id, from_status_name, to_status_id, to_status_name, changed_at, duration_seconds, is_baseline, psb_s_user(first_name, last_name, username)), " +
+      // Repair form and how many repair photos it has; the drawer's Repair form card shows them with no extra call.
+      "proj_t_repair_forms(id, phone_number, form_date, original_installer, reported_problem, updated_at), " +
+      "repair_photos:proj_t_files!proj_t_files_repair_project_id_fkey(count)"
     )
     .order("updated_at", { ascending: false })
     .order("id", { ascending: true });

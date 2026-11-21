@@ -133,6 +133,9 @@ const SETUP_ROW_USAGE = {
     // Status a project had before its run completed (foreign key). Checked here so
     // role mappings are never removed for a delete the database would refuse.
     { table: "proj_t_projects", column: "status_before_run_completion_id", from: "status_id", label: "project" },
+    // Setup → Status Cascade rules that send stops to this status.
+    { table: "proj_m_run_status_cascade", column: "project_status_id", from: "status_id", label: "Status Cascade rule" },
+    { table: "proj_m_run_status_cascade", column: "repair_project_status_id", from: "status_id", label: "Status Cascade rule" },
   ],
   runStatuses: [{ table: "proj_t_runs", column: "status", from: "status_name", label: "run" }],
   originAddresses: [{ table: "proj_t_runs", column: "origin_id", from: "id", label: "run" }],
@@ -236,6 +239,61 @@ export async function updateProjectMapSetting(settingKey, value) {
     return { success: true };
   } catch (err) {
     return { success: false, error: err?.message || "Unable to save the setting." };
+  }
+}
+
+// ─── Status Cascade ──────────────────────────────────────────
+
+/**
+ * Saves Project Map Setup → Status Cascade: for each run status, the project
+ * status its stops move to and the one repair stops move to
+ * (proj_m_run_status_cascade, one row per run status; null = no change).
+ * `rules` = [{ run_status_id, project_status_id, repair_project_status_id }].
+ * Returns { success, error } so the message also shows in production.
+ */
+export async function saveRunStatusCascade(rules) {
+  try {
+    await requireSetupAccess();
+    if (!Array.isArray(rules)) return { success: false, error: "Nothing to save." };
+    const supabase = getSupabaseAdmin();
+    const [runResult, projectResult] = await Promise.all([
+      supabase.from("proj_s_run_status").select("status_id"),
+      supabase.from("proj_s_project_status").select("status_id"),
+    ]);
+    if (runResult.error) return { success: false, error: runResult.error.message };
+    if (projectResult.error) return { success: false, error: projectResult.error.message };
+    const runIds = new Set((runResult.data || []).map((row) => Number(row.status_id)));
+    const projectIds = new Set((projectResult.data || []).map((row) => Number(row.status_id)));
+    const toId = (value) => (value === "" || value == null ? null : Number(value));
+
+    const session = await getCurrentSession();
+    const now = new Date().toISOString();
+    const rows = [];
+    for (const rule of rules) {
+      const runStatusId = Number(rule?.run_status_id);
+      const projectStatusId = toId(rule?.project_status_id);
+      const repairProjectStatusId = toId(rule?.repair_project_status_id);
+      if (!runIds.has(runStatusId)) {
+        return { success: false, error: "A run status in the list no longer exists. Reload the page and try again." };
+      }
+      if ([projectStatusId, repairProjectStatusId].some((id) => id != null && !projectIds.has(id))) {
+        return { success: false, error: "A project status in the list no longer exists. Reload the page and try again." };
+      }
+      rows.push({
+        run_status_id: runStatusId,
+        project_status_id: projectStatusId,
+        repair_project_status_id: repairProjectStatusId,
+        updated_at: now,
+        updated_by: session?.userId ?? null,
+      });
+    }
+    if (rows.length === 0) return { success: true };
+
+    const { error } = await supabase.from("proj_m_run_status_cascade").upsert(rows, { onConflict: "run_status_id" });
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err?.message || "Unable to save the status cascade." };
   }
 }
 
@@ -1536,50 +1594,46 @@ async function fallbackRunStatusName(supabase) {
   return data.status_name;
 }
 
-// Run status system_key → project status system_key for the stops on that run
-// (updateRun and addProjectToRun). draft, scheduled and cancelled change nothing.
-const projectStatusByRunStatus = {
-  planned: "ready_for_install",
-  in_progress: "currently_being_installed",
-  completed: "fully_installed",
-};
-// Repairs follow their own flow so a repair never turns into an install.
-const repairStatusByRunStatus = {
-  planned: "for_repair",
-  in_progress: "currently_being_repaired",
-  completed: "repaired",
-};
-
 /**
- * Where a run status sends the project statuses of its stops, or null when
- * it changes nothing: { targetKey, repairKey, targetStatusId,
- * targetRepairStatusId, repairStatusIds }. Everything is found by system_key,
- * so renaming any of these statuses in setup changes nothing here.
+ * Where a run status sends the project statuses of its stops (updateRun and
+ * addProjectToRun), or null when it changes nothing:
+ * { targetStatusId, targetRepairStatusId, repairStatusIds }.
+ * The rules are Project Map Setup → Status Cascade (proj_m_run_status_cascade:
+ * one row per run status, the project status for normal stops and the one for
+ * repair stops; empty = no change). Statuses are linked by id, so renaming any
+ * of them in setup changes nothing here. A stop counts as a repair when its
+ * project status system_key is in REPAIR_STATUS_KEYS; a repair never falls
+ * back to the normal status.
  */
 async function resolveCascadeTargets(supabase, runStatusName) {
   if (!runStatusName) return null;
   const { data: runStatus, error: runStatusError } = await supabase
     .from("proj_s_run_status")
-    .select("system_key")
+    .select("status_id")
     .eq("status_name", runStatusName)
     .maybeSingle();
   if (runStatusError) throw runStatusError;
-  const targetKey = projectStatusByRunStatus[runStatus?.system_key];
-  if (!targetKey) return null;
-  const repairKey = repairStatusByRunStatus[runStatus.system_key];
+  if (!runStatus) return null;
+
+  const { data: rule, error: ruleError } = await supabase
+    .from("proj_m_run_status_cascade")
+    .select("project_status_id, repair_project_status_id")
+    .eq("run_status_id", runStatus.status_id)
+    .maybeSingle();
+  if (ruleError) throw ruleError;
+  const targetStatusId = rule?.project_status_id ?? null;
+  const targetRepairStatusId = rule?.repair_project_status_id ?? null;
+  if (targetStatusId == null && targetRepairStatusId == null) return null;
 
   const { data, error } = await supabase
     .from("proj_s_project_status")
-    .select("status_id, system_key")
-    .in("system_key", [targetKey, repairKey, ...REPAIR_STATUS_KEYS]);
+    .select("status_id")
+    .in("system_key", REPAIR_STATUS_KEYS);
   if (error) throw error;
-  const idByKey = new Map((data || []).map((row) => [row.system_key, row.status_id]));
   return {
-    targetKey,
-    repairKey,
-    targetStatusId: idByKey.get(targetKey) ?? null,
-    targetRepairStatusId: idByKey.get(repairKey) ?? null,
-    repairStatusIds: new Set(REPAIR_STATUS_KEYS.map((key) => idByKey.get(key)).filter((id) => id != null)),
+    targetStatusId,
+    targetRepairStatusId,
+    repairStatusIds: new Set((data || []).map((row) => row.status_id)),
   };
 }
 
@@ -1683,14 +1737,15 @@ export async function createRun(runData) {
  * is updated to the corresponding project status.
  *
  * Business rules:
- * - Planned → Ready for Install
- * - In Progress → Currently Being Installed
- * - Completed → Fully Installed
- * - Statuses are matched by system_key (see resolveCascadeTargets), so all of
- *   them can be renamed in setup. The names above are today's names.
- * - Repair projects (status system_key in REPAIR_STATUS_KEYS) follow their own flow so
- *   they stay recognisable as repairs: Planned → For Repair,
- *   In Progress → Currently Being Repaired, Completed → Repaired.
+ * - Which project status each run status sends its stops to is set in Project
+ *   Map Setup → Status Cascade (proj_m_run_status_cascade, read by
+ *   resolveCascadeTargets). Statuses are linked by id, so all of them can be
+ *   renamed in setup. Out of the box: Planned → Ready for Install,
+ *   In Progress → Currently Being Installed, Completed → Fully Installed.
+ * - Repair projects (status system_key in REPAIR_STATUS_KEYS) follow their own
+ *   column so they stay recognisable as repairs (out of the box: For Repair,
+ *   Currently Being Repaired, Repaired). "No change" in a column leaves those
+ *   stops as they are; a repair never falls back to the normal status.
  * - The cascade fires only when the run enters a mapped status, not on every
  *   save of a run that is already in that status.
  * - Project statuses remain independently editable after the cascade. There is
@@ -1795,19 +1850,14 @@ export async function updateRun(runId, updates) {
 
   let cascadeResult = null;
 
-  // Fires only when the run enters a different status. Targets are found by
-  // system_key (resolveCascadeTargets), so the statuses can be renamed.
+  // Fires only when the run enters a different status. Targets come from
+  // Setup → Status Cascade (resolveCascadeTargets), linked by status id.
   if (previousStatus !== newStatus) {
     try {
       const targets = await resolveCascadeTargets(supabase, newStatus);
 
       if (!targets) {
-        // This run status changes no project statuses (draft, scheduled, cancelled, or one added in setup).
-      } else if (targets.targetStatusId == null) {
-        // A missing lookup row is not a run-save failure; log and skip the cascade.
-        console.error(
-          `[updateRun] project status with system_key '${targets.targetKey}' not found; skipping project status cascade for run #${runId}`
-        );
+        // This run status has no Status Cascade rule (both columns "No change").
       } else {
         // Collect every project assigned to this run.
         const { data: mappings, error: mappingsError } = await supabase
@@ -1827,13 +1877,9 @@ export async function updateRun(runId, updates) {
           const isRepair = targets.repairStatusIds.has(project.status_id);
           const nextStatusId = isRepair ? targets.targetRepairStatusId : targets.targetStatusId;
 
-          if (nextStatusId == null) {
-            // Repair-flow row missing: leave the repair as it is rather than turn it into a normal install.
-            console.error(
-              `[updateRun] project status with system_key '${targets.repairKey}' not found; leaving repair project #${mapping.project_id} unchanged for run #${runId}`
-            );
-            continue;
-          }
+          // "No change" for this kind of stop: leave it as it is (a repair never
+          // turns into a normal install).
+          if (nextStatusId == null) continue;
 
           statusByProjectId[mapping.project_id] = nextStatusId;
           if (project.status_id === nextStatusId) continue;

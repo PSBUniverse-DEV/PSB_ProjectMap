@@ -448,6 +448,23 @@ export async function loadRoleStatusMappings() {
  * Every run status, switched on or off, for the setup grid.
  * loadProjectMapSetup returns active ones only, which the map pages need.
  */
+/**
+ * Setup → Status Cascade rules (proj_m_run_status_cascade), one per run
+ * status: [{ run_status_id, project_status_id, repair_project_status_id }].
+ * A failed read returns [] (the page then shows every row as "No change").
+ */
+export async function loadRunStatusCascade() {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("proj_m_run_status_cascade")
+    .select("run_status_id, project_status_id, repair_project_status_id, updated_at");
+  if (error) {
+    console.error("[loadRunStatusCascade]", error.message);
+    return [];
+  }
+  return data || [];
+}
+
 export async function loadAllRunStatuses() {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase

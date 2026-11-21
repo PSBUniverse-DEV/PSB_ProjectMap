@@ -5,7 +5,7 @@ import { getCurrentSession } from "@/core/auth/session.service";
 // One session lookup per page request, shared by loadPageAccess and
 // loadProjectStatusTabAccess (locally a lookup is 3 database trips).
 const getSession = cache(getCurrentSession);
-import { FINISHED_RUN_STATUS_KEYS, getStatusTabGroupIds } from "./projectMap.data";
+import { getFinishedRunStatusNames, getStatusTabGroupIds } from "./projectMap.data";
 import projectMapModule from "../index";
 
 function getSupabaseAdmin() {
@@ -318,7 +318,7 @@ export async function loadProjectStatusTabAccess() {
         .maybeSingle(),
       loadProjectMapRoles(supabase, session.userId),
       supabase.from("proj_s_project_status").select("status_id, status_name, is_active, system_key"),
-      supabase.from("proj_s_run_status").select("status_id, status_name, system_key"),
+      supabase.from("proj_s_run_status").select("status_id, status_name, system_key, is_finished"),
     ]);
     if (userResult.error) throw new Error(userResult.error.message);
     const user = userResult.data;
@@ -349,10 +349,8 @@ export async function loadProjectStatusTabAccess() {
     access.allowedStatusIds = statuses.map((status) => String(status.status_id));
     access.visibleProjectStatusIds = access.allowedStatusIds;
     access.allowedRunStatusNames = runStatuses.map((status) => status.status_name);
-    // Run statuses that end a run (by system_key); every other one is "open".
-    access.finishedRunStatusNames = runStatuses
-      .filter((status) => FINISHED_RUN_STATUS_KEYS.includes(status.system_key))
-      .map((status) => status.status_name);
+    // Run statuses that end a run ("Finished" ticked in Setup); every other one is "open".
+    access.finishedRunStatusNames = getFinishedRunStatusNames(runStatuses);
 
     // Changing: only the statuses ticked for one of the user's roles. Several
     // roles can tick the same status, so de-duplicate.

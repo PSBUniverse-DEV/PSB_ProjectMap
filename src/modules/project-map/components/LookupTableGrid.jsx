@@ -220,7 +220,9 @@ export default function LookupTableGrid({
         const value = modalDraft[field.key];
         payload[field.key] = field.type === "number"
           ? (value === "" || value == null ? null : Number(value))
-          : String(value ?? "").trim();
+          : field.type === "boolean"
+            ? value === true
+            : String(value ?? "").trim();
       });
 
       if (modalMode === "add") {
@@ -496,20 +498,35 @@ export default function LookupTableGrid({
           )}
 
           {extraFields.map((field) => (
-            <Form.Group key={field.key} className="ltg-modal-field">
-              <Form.Label className="ltg-modal-label">
-                {field.label}{field.required ? <span className="ltg-modal-required">*</span> : ""}
-              </Form.Label>
-              <Form.Control
-                type={field.type || "text"}
-                size="sm"
-                value={modalDraft[field.key] ?? ""}
-                onChange={(e) => handleDraftChange(field.key, e.target.value)}
-                placeholder={field.label}
-                maxLength={field.maxLength}
-                className="ltg-modal-input"
-              />
-            </Form.Group>
+            field.type === "boolean" ? (
+              // On/off field (e.g. "Finished" on statuses), with an optional help line.
+              <Form.Group key={field.key} className="ltg-modal-field">
+                <Form.Check
+                  type="switch"
+                  id={`modal-${field.key}-switch`}
+                  label={field.label}
+                  checked={modalDraft[field.key] === true}
+                  onChange={(e) => handleDraftChange(field.key, e.target.checked)}
+                  className="ltg-modal-switch"
+                />
+                {field.help && <Form.Text className="text-muted">{field.help}</Form.Text>}
+              </Form.Group>
+            ) : (
+              <Form.Group key={field.key} className="ltg-modal-field">
+                <Form.Label className="ltg-modal-label">
+                  {field.label}{field.required ? <span className="ltg-modal-required">*</span> : ""}
+                </Form.Label>
+                <Form.Control
+                  type={field.type || "text"}
+                  size="sm"
+                  value={modalDraft[field.key] ?? ""}
+                  onChange={(e) => handleDraftChange(field.key, e.target.value)}
+                  placeholder={field.label}
+                  maxLength={field.maxLength}
+                  className="ltg-modal-input"
+                />
+              </Form.Group>
+            )
           ))}
 
           {/* Active Status */}

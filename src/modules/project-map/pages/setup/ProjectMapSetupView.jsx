@@ -373,6 +373,17 @@ export default function ProjectMapSetupView({ setup = {}, roles = [], roleStatus
   // ─── Custom Tab Components ────────────────────────────────
   const isCustomTab = ["projectStatuses", "originAddresses", "states", "buildingCategories", "permitStatuses", "welcomeCallStatuses", "confirmationStatuses", "runStatuses", "paymentMethods", "roleTabs"].includes(activeTab);
 
+  // "Finished" column for project and run statuses (proj_s_*_status.is_finished).
+  const finishedColumn = {
+    key: "is_finished",
+    label: "Finished",
+    sortable: true,
+    width: 110,
+    render: (row) => (row.is_finished === true
+      ? <span className="ltg-status-badge ltg-status-badge--active">Finished</span>
+      : <span className="ltg-description">--</span>),
+  };
+
   // Lookup table configs
   const lookupTableConfigs = {
     buildingCategories: {
@@ -425,6 +436,16 @@ export default function ProjectMapSetupView({ setup = {}, roles = [], roleStatus
       searchFields: "status_name,status_description,display_color",
       hasColor: true,
       idField: "status_id",
+      extraFields: [
+        {
+          key: "is_finished",
+          label: "Finished",
+          type: "boolean",
+          defaultValue: false,
+          help: "Tick for statuses that mean the job is done or past installation. These stop the History time clock, get no age flag and never show in the bell.",
+        },
+      ],
+      extraColumns: [finishedColumn],
     },
     states: {
       title: "States",
@@ -456,6 +477,16 @@ export default function ProjectMapSetupView({ setup = {}, roles = [], roleStatus
       searchFields: "status_name,status_description",
       hasColor: true,
       idField: "status_id",
+      extraFields: [
+        {
+          key: "is_finished",
+          label: "Finished",
+          type: "boolean",
+          defaultValue: false,
+          help: "Tick for statuses that end a run. These stop the History time clock, never show in the bell, and count as finished on the Run Calendar and Run Master List.",
+        },
+      ],
+      extraColumns: [finishedColumn],
     },
     paymentMethods: {
       title: "Payment Methods",

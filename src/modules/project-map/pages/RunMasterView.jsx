@@ -14,7 +14,7 @@ import { useRouter } from "next/navigation";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCircleInfo, faCheckCircle, faPrint, faMoneyCheckDollar, faPen, faPaperclip } from "@fortawesome/free-solid-svg-icons";
 import { Button, Modal, toastError, TableZ, FileAttachments } from "@/shared/components/ui";
-import { resolveRunStatusOptions, getRunStatusColor, formatProjectDescriptionForDisplay, stripTownshipLabel, parseStateRoute, getProjectAmountDisplay, splitRunAmounts, PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, formatDisplayDate, canEditRunStatusName, canCommentAndAttach, isOwnFile, FINISHED_RUN_STATUS_KEYS } from "../data/projectMap.data";
+import { resolveRunStatusOptions, getRunStatusColor, formatProjectDescriptionForDisplay, stripTownshipLabel, parseStateRoute, getProjectAmountDisplay, splitRunAmounts, PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, formatDisplayDate, canEditRunStatusName, canCommentAndAttach, isOwnFile, getFinishedRunStatusNames } from "../data/projectMap.data";
 import { loadRunDetails, loadRuns, loadPaidSheet, loadFiles, createFileUpload, saveUploadedFile, getFileUrl, deleteFile, loadProjectFileCounts } from "../data/projectMap.actions";
 import { generateRunManifestPrint } from "../utils/printRunManifest";
 import { generatePaidSheetPrint } from "../utils/printPaidSheet";
@@ -61,9 +61,9 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
     }
   }, []);
 
-  // Names of the run statuses that end a run (FINISHED_RUN_STATUS_KEYS).
+  // Names of the run statuses that end a run ("Finished" ticked in Setup).
   const finishedStatusNames = useMemo(
-    () => new Set(runStatuses.filter((s) => FINISHED_RUN_STATUS_KEYS.includes(s.system_key)).map((s) => s.status_name)),
+    () => new Set(getFinishedRunStatusNames(runStatuses)),
     [runStatuses]
   );
 

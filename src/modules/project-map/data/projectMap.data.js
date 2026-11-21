@@ -81,23 +81,30 @@ export function runStatusKeyByName(runStatuses = [], name) {
 }
 
 /**
- * system_key values of the run statuses that end a run. Runs in these
- * statuses are "finished"; every other run status is "open". Pages load
- * finished runs only when asked (loadRuns statusScope in projectMap.server.js).
+ * Run statuses that end a run: the ones with "Finished" ticked in Project Map
+ * Setup (proj_s_run_status.is_finished). Runs in these statuses are
+ * "finished"; every other run status is "open". Pages load finished runs only
+ * when asked (loadRuns statusScope in projectMap.server.js).
  */
-export const FINISHED_RUN_STATUS_KEYS = ["completed", "cancelled"];
+export function isFinishedRunStatus(status) {
+  return status?.is_finished === true;
+}
+
+/** Names of the run statuses that end a run (runs store their status by name). */
+export function getFinishedRunStatusNames(runStatuses = []) {
+  return (Array.isArray(runStatuses) ? runStatuses : []).filter(isFinishedRunStatus).map((s) => s.status_name);
+}
 
 /**
  * Where a run stands against its date, for the Run Calendar. Worked out on
  * the fly, never stored. `todayKey` is the viewer's date as "YYYY-MM-DD".
- * - finished: its run status is "completed" or "cancelled" (by system_key)
+ * - finished: its run status has "Finished" ticked in Setup (isFinishedRunStatus)
  * - onTrack: not finished, dated today or later
  * - behind: not finished, dated before today
  * - rescheduled: run_date differs from original_run_date (can be true together with onTrack or behind)
  */
 export function getRunScheduleState(run, runStatuses = [], todayKey) {
-  const key = runStatusKeyByName(runStatuses, run?.status);
-  const finished = FINISHED_RUN_STATUS_KEYS.includes(key);
+  const finished = getFinishedRunStatusNames(runStatuses).includes(run?.status);
   const runDate = String(run?.run_date || "").slice(0, 10);
   const originalDate = String(run?.original_run_date || "").slice(0, 10);
   return {
@@ -341,16 +348,17 @@ export function isRepairProject(project, statuses = []) {
  * "Repairs", everything else is green and labelled "Project Subtotal".
  * `prefix` is for compact spots that show the amount without a label cell.
  */
-// Done or past installation. Fully Installed / Repaired have system keys;
-// Completed, Pending Payment and Collections have none, so they are matched by name.
-const PAST_INSTALL_STATUS_KEYS = ["fully_installed", "repaired"];
-const PAST_INSTALL_STATUS_NAMES = ["completed", "pending payment", "collections"];
-
-/** True when the project is done or past installation (no age flag, never in the "not updated" bell). */
+/**
+ * True when the project's status has "Finished" ticked in Project Map Setup
+ * (proj_s_project_status.is_finished): done or past installation. Finished
+ * projects get no age flag, stop the History "Total time" clock and never
+ * show in the "not updated" bell. The status is looked up in `statuses` (full
+ * status rows, which carry is_finished) first; the project's embedded status
+ * is the fallback.
+ */
 export function isPastInstallProject(project, statuses = []) {
-  const status = project?.proj_s_project_status || statuses.find((s) => s.status_id === project?.status_id);
-  if (PAST_INSTALL_STATUS_KEYS.includes(status?.system_key)) return true;
-  return PAST_INSTALL_STATUS_NAMES.includes(String(status?.status_name || "").trim().toLowerCase());
+  const status = statuses.find((s) => s.status_id === project?.status_id) || project?.proj_s_project_status;
+  return status?.is_finished === true;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -372,14 +380,12 @@ export function getStaleProjects(projects = [], statuses = [], now = new Date())
 }
 
 /**
- * Open runs (status not one that ends a run: FINISHED_RUN_STATUS_KEYS) not
+ * Open runs (status without the "Finished" tick: isFinishedRunStatus) not
  * updated (updated_at, else created_at) for STALE_AFTER_DAYS days or more,
  * oldest first: [{ run, days }].
  */
 export function getStaleRuns(runs = [], runStatuses = [], now = new Date()) {
-  const finishedNames = new Set(runStatuses
-    .filter((s) => FINISHED_RUN_STATUS_KEYS.includes(s.system_key))
-    .map((s) => s.status_name));
+  const finishedNames = new Set(getFinishedRunStatusNames(runStatuses));
   return runs
     .filter((run) => !finishedNames.has(run.status))
     .map((run) => {

@@ -6,7 +6,7 @@ import { Button, Modal, FileAttachments, toastError, toastSuccess } from "@/shar
 import AppIcon from "@/shared/components/ui/AppIcon";
 import { startNavbarLoader } from "@/shared/utils/navbar-loader";
 import { loadRunDetails, updateRun, loadPaidSheet, loadFiles, createFileUpload, saveUploadedFile, getFileUrl, deleteFile } from "../data/projectMap.actions";
-import { formatRunCode, getRunStatusColor, getRunScheduleState, formatDisplayDate, splitRunAmounts, runStatusKeyByName, resolveRunStatusOptions, canEditRunStatusName, canCommentAndAttach, isOwnFile, PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, FINISHED_RUN_STATUS_KEYS, PROJECT_MAP_PAGES, formatArrivalWindow } from "../data/projectMap.data";
+import { formatRunCode, getRunStatusColor, getRunScheduleState, formatDisplayDate, splitRunAmounts, runStatusKeyByName, resolveRunStatusOptions, canEditRunStatusName, canCommentAndAttach, isOwnFile, PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, getFinishedRunStatusNames, PROJECT_MAP_PAGES, formatArrivalWindow } from "../data/projectMap.data";
 import { computeRunSegmentData } from "../utils/runSegments";
 import { generateRunManifestPrint } from "../utils/printRunManifest";
 import { generatePaidSheetPrint } from "../utils/printPaidSheet";
@@ -441,9 +441,9 @@ export default function RunCalendarView({ runs = [], runStatuses = [], statuses 
   // Completed / cancelled runs are loaded from `finishedFrom` on (RunCalendarPage):
   // "recent" = this month and the two before it, "year" = this calendar year.
   // Open runs are always all loaded, so Behind and On Track stay complete.
-  // The label is built from the run statuses that end a run (by system_key).
+  // The label is built from the run statuses that end a run ("Finished" ticked in Setup).
   const finishedLabel = useMemo(
-    () => runStatuses.filter((s) => FINISHED_RUN_STATUS_KEYS.includes(s.system_key)).map((s) => s.status_name).join(" / ") || "Finished",
+    () => getFinishedRunStatusNames(runStatuses).join(" / ") || "Finished",
     [runStatuses]
   );
   // True when the shown weeks start before the loaded finished runs do.

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { FINISHED_RUN_STATUS_KEYS, getRunStatusColor } from "../data/projectMap.data";
+import { getFinishedRunStatusNames, getRunStatusColor } from "../data/projectMap.data";
 
 // "3 d 4 h", "5 h 12 m", "12 m", "under 1 m"
 function formatDuration(totalSeconds) {
@@ -35,7 +35,7 @@ function secondsBetween(from, to) {
  * changes"), with how long the run sat
  * in the previous status; how long it has been in its current status; and the
  * total time since it was created, which stops once the run reaches a status
- * that ends a run (FINISHED_RUN_STATUS_KEYS).
+ * with "Finished" ticked in Setup (isFinishedRunStatus).
  */
 export default function RunStatusHistory({ run, runStatuses = [] }) {
   const rows = useMemo(() => (Array.isArray(run?.proj_t_run_status_log) ? run.proj_t_run_status_log : [])
@@ -58,7 +58,7 @@ export default function RunStatusHistory({ run, runStatuses = [] }) {
   const [showAll, setShowAll] = useState(false);
   const PREVIEW_COUNT = 3;
 
-  const finishedNames = new Set(runStatuses.filter((s) => FINISHED_RUN_STATUS_KEYS.includes(s.system_key)).map((s) => s.status_name));
+  const finishedNames = new Set(getFinishedRunStatusNames(runStatuses));
   const finished = finishedNames.has(run?.status);
   const last = rows.length ? rows[rows.length - 1] : null;
   const now = new Date();

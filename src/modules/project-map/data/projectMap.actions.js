@@ -235,6 +235,7 @@ export async function createProjectStatus(data) {
     status_description: data.status_description ? String(data.status_description).trim() : null,
     display_color: data.display_color ? String(data.display_color).trim() : null,
     display_order: nextOrder,
+    is_finished: data.is_finished === true,
     is_active: data.is_active === true || data.is_active === "true" || data.is_active === "1",
   };
 
@@ -280,6 +281,7 @@ export async function updateProjectStatus(statusId, data) {
   if (data.display_color !== undefined) payload.display_color = data.display_color ? String(data.display_color).trim() : null;
   if (data.display_order !== undefined) payload.display_order = Number(data.display_order);
   if (data.is_active !== undefined) payload.is_active = data.is_active === true || data.is_active === "true" || data.is_active === "1";
+  if (data.is_finished !== undefined) payload.is_finished = data.is_finished === true;
 
   const { data: result, error } = await supabase
     .from("proj_s_project_status")
@@ -757,6 +759,8 @@ export async function createLookupRow(tableKey, data) {
     ...(data.display_color !== undefined && { display_color: data.display_color ? String(data.display_color).trim() : null }),
     display_order: nextOrder,
     is_active: data.is_active === true || data.is_active === "true" || data.is_active === "1",
+    // Only run statuses send it (their "Finished" switch in Setup).
+    ...(data.is_finished !== undefined && { is_finished: data.is_finished === true }),
   };
 
   if (pk === "status_id") {
@@ -811,6 +815,8 @@ export async function updateLookupRow(tableKey, id, data) {
   if (data.display_color !== undefined) payload.display_color = data.display_color ? String(data.display_color).trim() : null;
   if (data.display_order !== undefined) payload.display_order = Number(data.display_order);
   if (data.is_active !== undefined) payload.is_active = data.is_active === true || data.is_active === "true" || data.is_active === "1";
+  // Only run statuses send it (their "Finished" switch in Setup).
+  if (data.is_finished !== undefined) payload.is_finished = data.is_finished === true;
 
   const { data: result, error } = await supabase.from(table).update(payload).eq(pk, rowId).select("*").single();
   if (error) throw new Error(error.message);

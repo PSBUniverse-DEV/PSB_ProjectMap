@@ -387,6 +387,26 @@ export default function ProjectMapSetupView({ setup = {}, roles = [], roleStatus
       : <span className="ltg-description">--</span>),
   };
 
+  // "System key" for project and run statuses: the fixed code the app uses to
+  // find a status whatever it is named. Typed when the status is added (or while
+  // it has none); read-only after that, also on the server (resolveNewSystemKey).
+  const systemKeyColumn = {
+    key: "system_key",
+    label: "System key",
+    sortable: true,
+    width: 170,
+    render: (row) => (row.system_key
+      ? <code style={{ fontSize: "11px", color: "#334155" }}>{row.system_key}</code>
+      : <span className="ltg-description">--</span>),
+  };
+  const systemKeyField = {
+    key: "system_key",
+    label: "System key",
+    maxLength: 50,
+    lockedOnceSet: true,
+    help: "Optional. Lowercase letters, numbers and _ only (for example on_hold). Can be set once and not changed later. A status with a system key cannot be deleted, only switched off.",
+  };
+
   // Lookup table configs
   const lookupTableConfigs = {
     buildingCategories: {
@@ -436,7 +456,7 @@ export default function ProjectMapSetupView({ setup = {}, roles = [], roleStatus
       nameLabel: "Status Name",
       descField: "status_description",
       descLabel: "Description",
-      searchFields: "status_name,status_description,display_color",
+      searchFields: "status_name,status_description,display_color,system_key",
       hasColor: true,
       idField: "status_id",
       extraFields: [
@@ -447,8 +467,9 @@ export default function ProjectMapSetupView({ setup = {}, roles = [], roleStatus
           defaultValue: false,
           help: "Tick for statuses that mean the job is done or past installation. These stop the History time clock, get no age flag and never show in the bell.",
         },
+        systemKeyField,
       ],
-      extraColumns: [finishedColumn],
+      extraColumns: [finishedColumn, systemKeyColumn],
     },
     states: {
       title: "States",
@@ -477,7 +498,7 @@ export default function ProjectMapSetupView({ setup = {}, roles = [], roleStatus
       nameLabel: "Status Name",
       descField: "status_description",
       descLabel: "Description",
-      searchFields: "status_name,status_description",
+      searchFields: "status_name,status_description,system_key",
       hasColor: true,
       idField: "status_id",
       extraFields: [
@@ -488,8 +509,9 @@ export default function ProjectMapSetupView({ setup = {}, roles = [], roleStatus
           defaultValue: false,
           help: "Tick for statuses that end a run. These stop the History time clock, never show in the bell, and count as finished on the Run Calendar and Run Master List.",
         },
+        systemKeyField,
       ],
-      extraColumns: [finishedColumn],
+      extraColumns: [finishedColumn, systemKeyColumn],
     },
     paymentMethods: {
       title: "Payment Methods",

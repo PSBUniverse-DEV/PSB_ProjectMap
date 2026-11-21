@@ -524,7 +524,10 @@ export default function LookupTableGrid({
                   placeholder={field.label}
                   maxLength={field.maxLength}
                   className="ltg-modal-input"
+                  // lockedOnceSet: typed when adding, or once while still empty; read-only after that.
+                  disabled={Boolean(field.lockedOnceSet && modalMode === "edit" && editingRow?.[field.key])}
                 />
+                {field.help && <Form.Text className="text-muted">{field.help}</Form.Text>}
               </Form.Group>
             )
           ))}

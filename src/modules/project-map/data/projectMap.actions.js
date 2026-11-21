@@ -239,6 +239,40 @@ export async function updateProjectMapSetting(settingKey, value) {
   }
 }
 
+// ─── Status System Keys ──────────────────────────────────────
+
+// A status's system_key is the fixed code the app uses to find it whatever it
+// is named (cascade, defaults, repair flow). Setup may give a status a key
+// while it has none; an existing key is never changed or cleared.
+const SYSTEM_KEY_PATTERN = /^[a-z][a-z0-9_]{0,49}$/;
+
+// "On Hold" / "on-hold" → "on_hold"; empty → null. Throws when not allowed.
+function normalizeSystemKey(value) {
+  const key = String(value ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (!key) return null;
+  if (!SYSTEM_KEY_PATTERN.test(key)) {
+    throw new Error('System key may use only lowercase letters, numbers and "_", must start with a letter, and be 50 characters or less.');
+  }
+  return key;
+}
+
+// The key to save on a status in `table`, or undefined when nothing should be
+// saved: no key typed, or the status (rowId, on edit) already has one.
+// Throws when another status in the same table already uses the key.
+async function resolveNewSystemKey(supabase, table, pk, value, rowId = null) {
+  const key = normalizeSystemKey(value);
+  if (!key) return undefined;
+  if (rowId != null) {
+    const { data: current, error } = await supabase.from(table).select("system_key").eq(pk, rowId).maybeSingle();
+    if (error) throw new Error(error.message);
+    if (current?.system_key) return undefined;
+  }
+  const { data: taken, error: takenError } = await supabase.from(table).select(pk).eq("system_key", key).limit(1);
+  if (takenError) throw new Error(takenError.message);
+  if ((taken || []).length > 0) throw new Error(`Another status already uses the system key "${key}".`);
+  return key;
+}
+
 // ─── Project Status Specific Actions ─────────────────────────
 
 export async function createProjectStatus(data) {
@@ -261,6 +295,9 @@ export async function createProjectStatus(data) {
     throw new Error("A project status with this name already exists.");
   }
 
+  // Optional system key typed when adding the status.
+  const systemKey = await resolveNewSystemKey(supabase, "proj_s_project_status", "status_id", data.system_key);
+
   // Get the highest display_order to auto-increment
   const { data: maxOrder } = await supabase
     .from("proj_s_project_status")
@@ -278,6 +315,7 @@ export async function createProjectStatus(data) {
     display_order: nextOrder,
     is_finished: data.is_finished === true,
     is_active: data.is_active === true || data.is_active === "true" || data.is_active === "1",
+    ...(systemKey && { system_key: systemKey }),
   };
 
   const { data: result, error } = await supabase
@@ -323,6 +361,11 @@ export async function updateProjectStatus(statusId, data) {
   if (data.display_order !== undefined) payload.display_order = Number(data.display_order);
   if (data.is_active !== undefined) payload.is_active = data.is_active === true || data.is_active === "true" || data.is_active === "1";
   if (data.is_finished !== undefined) payload.is_finished = data.is_finished === true;
+  // A system key can be given once, while the status has none; an existing one is kept.
+  if (data.system_key !== undefined) {
+    const systemKey = await resolveNewSystemKey(supabase, "proj_s_project_status", "status_id", data.system_key, id);
+    if (systemKey) payload.system_key = systemKey;
+  }
 
   const { data: result, error } = await supabase
     .from("proj_s_project_status")
@@ -804,6 +847,12 @@ export async function createLookupRow(tableKey, data) {
     ...(data.is_finished !== undefined && { is_finished: data.is_finished === true }),
   };
 
+  // Only run statuses have a system key (optional, typed when adding the status).
+  if (tableKey === "runStatuses" && data.system_key !== undefined) {
+    const systemKey = await resolveNewSystemKey(supabase, table, pk, data.system_key);
+    if (systemKey) payload.system_key = systemKey;
+  }
+
   if (pk === "status_id") {
     const { data: maxId } = await supabase
       .from(table)
@@ -858,6 +907,11 @@ export async function updateLookupRow(tableKey, id, data) {
   if (data.is_active !== undefined) payload.is_active = data.is_active === true || data.is_active === "true" || data.is_active === "1";
   // Only run statuses send it (their "Finished" switch in Setup).
   if (data.is_finished !== undefined) payload.is_finished = data.is_finished === true;
+  // Run statuses: a system key can be given once, while the status has none; an existing one is kept.
+  if (tableKey === "runStatuses" && data.system_key !== undefined) {
+    const systemKey = await resolveNewSystemKey(supabase, table, pk, data.system_key, rowId);
+    if (systemKey) payload.system_key = systemKey;
+  }
 
   const { data: result, error } = await supabase.from(table).update(payload).eq(pk, rowId).select("*").single();
   if (error) throw new Error(error.message);

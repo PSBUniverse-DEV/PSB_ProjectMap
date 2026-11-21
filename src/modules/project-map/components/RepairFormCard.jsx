@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Form } from "react-bootstrap";
 import { Button, FileAttachments, Modal, toastError, toastSuccess } from "@/shared/components/ui";
 import { loadRepairForm, saveRepairForm, loadFiles, createFileUpload, saveUploadedFile, getFileUrl, deleteFile } from "../data/projectMap.actions";
@@ -41,6 +41,14 @@ export default function RepairFormCard({ project, addressText = "", amountText =
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [saving, setSaving] = useState(false);
   const [printing, setPrinting] = useState(false);
+  // Photos are added and deleted in the pop-up; the card's read-only list
+  // reloads (new key) each time the pop-up closes.
+  const [photosVersion, setPhotosVersion] = useState(0);
+  const wasEditOpen = useRef(false);
+  useEffect(() => {
+    if (wasEditOpen.current && !showEdit) setPhotosVersion((v) => v + 1);
+    wasEditOpen.current = showEdit;
+  }, [showEdit]);
 
   useEffect(() => {
     let cancelled = false;
@@ -162,9 +170,10 @@ return (
         <div style={{ color: "#475569" }}>No repair form yet.</div>
       )}
 
+      {/* Read-only here: photos are added and deleted in the repair form pop-up. */}
       <div style={{ paddingTop: "6px", borderTop: "1px solid #f1f5f9" }}>
         <FileAttachments
-          key={`repair-photos-${projectId}`}
+          key={`repair-photos-${projectId}-${photosVersion}`}
           title="Repair photos"
           loadFiles={() => loadFiles("repair", projectId)}
           createUpload={(meta) => createFileUpload("repair", projectId, meta)}
@@ -173,9 +182,7 @@ return (
           deleteFile={(file) => deleteFile(file.id)}
           maxBytes={PROJECT_FILE_MAX_BYTES}
           accept={REPAIR_PHOTO_TYPES.join(",")}
-          // Same rules as the project's Files: add if you may attach; delete if you may edit, or your own file.
-          readOnly={filesReadOnly}
-          canDeleteFile={canDeleteFile}
+          readOnly
         />
       </div>
 
@@ -220,7 +227,24 @@ return (
             <Form.Label style={{ fontWeight: 600, fontSize: "12px" }}>Reported problem</Form.Label>
             <Form.Control as="textarea" rows={5} maxLength={REPAIR_PROBLEM_MAX_LENGTH} value={draft.reported_problem} onChange={(e) => handleChange("reported_problem", e.target.value)} disabled={saving} />
           </Form.Group>
-          <div style={{ fontSize: "11px", color: "#64748b" }}>Repair photos are added on the card, under &quot;Repair photos&quot;.</div>
+          {/* Repair photos: added and deleted only here. Same rules as the project's Files:
+              add if you may attach; delete if you may edit, or your own file. */}
+          <div style={{ paddingTop: "8px", borderTop: "1px solid #e2e8f0" }}>
+            <FileAttachments
+              key={`repair-photos-edit-${projectId}`}
+              title="Repair photos"
+              loadFiles={() => loadFiles("repair", projectId)}
+              createUpload={(meta) => createFileUpload("repair", projectId, meta)}
+              saveFile={(storagePath, meta) => saveUploadedFile("repair", projectId, storagePath, meta)}
+              getFileUrl={(file) => getFileUrl(file.id)}
+              deleteFile={(file) => deleteFile(file.id)}
+              maxBytes={PROJECT_FILE_MAX_BYTES}
+              accept={REPAIR_PHOTO_TYPES.join(",")}
+              readOnly={filesReadOnly}
+              canDeleteFile={canDeleteFile}
+            />
+            <div style={{ marginTop: "4px", fontSize: "11px", color: "#64748b" }}>Photos save as soon as they are added; they do not wait for Save form.</div>
+          </div>
 
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
             <Button variant="secondary" onClick={() => setShowEdit(false)} disabled={saving}>Cancel</Button>

@@ -53,7 +53,7 @@ export async function loadProjectMapSetup() {
       "location_source, location_confirmed, status_id, dealer, " +
       "building_category_id, permit_status_id, welcome_call_status_id, confirmation_status_id, invoice_number, " +
       "order_received_at, scheduled_project_start, scheduled_project_end, install_start, install_end, " +
-      "project_subtotal, project_notes, dimension, " +
+      "project_subtotal, project_notes, dimension, missive_link, " +
       "created_at, updated_at, created_by, updated_by, " +
       "proj_s_project_status!proj_t_projects_status_id_fkey(status_id, status_name, status_description, system_key), " +
       // History (written by logProjectStatusChanges in projectMap.actions.js on every status save); the drawer shows it with no extra call.

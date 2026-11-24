@@ -44,6 +44,7 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
     site_longitude: null,
     location_source: "geoapify",
     location_confirmed: false,
+    missive_link: "",
   });
 
   // Separate query state for LocationSearch so it can be controlled independently
@@ -154,6 +155,7 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
         site_longitude: project.site_longitude,
         location_source: project.location_source || "geoapify",
         location_confirmed: Boolean(project.location_confirmed),
+        missive_link: project.missive_link || "",
       });
       setLocationQuery(address);
     } else if (initialLocation) {
@@ -192,6 +194,7 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
         site_longitude: initialLocation.site_longitude,
         location_source: "map_click",
         location_confirmed: true,
+        missive_link: "",
       });
       setLocationQuery(initialLocation.formatted_address || "");
     } else {
@@ -229,6 +232,7 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
         site_longitude: null,
         location_source: "geoapify",
         location_confirmed: false,
+        missive_link: "",
       });
       setLocationQuery("");
     }
@@ -273,6 +277,12 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
 
     if (!form.status_id) {
       toastError("Project status is required.", "Validation");
+      return;
+    }
+
+    // Optional; when filled it must be a web link (copied from Missive).
+    if (form.missive_link.trim() && !/^https?:\/\//i.test(form.missive_link.trim())) {
+      toastError("Missive email link must start with http:// or https://.", "Validation");
       return;
     }
 
@@ -364,6 +374,29 @@ export default function AddProjectForm({ show, mode, project, statuses = [], bui
               />
               <div style={{ fontSize: "10px", color: "#94a3b8", marginTop: "3px" }}>
                 Optional. Links this project to the dealer&apos;s portal account. The Dealer box above keeps working as before.
+              </div>
+            </div>
+            <div style={{ gridColumn: "1 / -1" }}>
+              <label htmlFor="pm-missive-link" style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", display: "block", marginBottom: "3px" }}>
+                Missive Email Link
+              </label>
+              <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                <input
+                  id="pm-missive-link"
+                  type="url"
+                  value={form.missive_link}
+                  onChange={(e) => handleChange("missive_link", e.target.value)}
+                  style={{ flex: 1, minWidth: 0, border: "1px solid #e2e8f0", borderRadius: "3px", padding: "4px 8px", fontSize: "12px" }}
+                  placeholder="Paste the link to the Missive email"
+                />
+                {/^https?:\/\//i.test(form.missive_link.trim()) && (
+                  <a href={form.missive_link.trim()} target="_blank" rel="noopener noreferrer" style={{ fontSize: "12px", whiteSpace: "nowrap" }}>
+                    Open in Missive
+                  </a>
+                )}
+              </div>
+              <div style={{ fontSize: "10px", color: "#94a3b8", marginTop: "3px" }}>
+                Optional. The email this project came from, so it can be opened again later.
               </div>
             </div>
           </div>

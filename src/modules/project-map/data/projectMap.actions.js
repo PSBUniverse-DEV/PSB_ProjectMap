@@ -1469,6 +1469,7 @@ export async function createProject(project) {
     updated_by: toIntOrNull(access.user?.userId),
     project_notes: hasValue(project.project_notes) ? String(project.project_notes).trim() : null,
     dimension: hasValue(project.dimension) ? String(project.dimension).trim() : null,
+    missive_link: hasValue(project.missive_link) ? String(project.missive_link).trim() : null,
     created_at: now,
     updated_at: now,
   };
@@ -1522,6 +1523,7 @@ export async function updateProject(projectId, updates, { viaRunId = null } = {}
     welcome_call_status_id: toIntOrNull,
     confirmation_status_id: toIntOrNull,
     invoice_number: (v) => (hasValue(v) ? String(v).trim() : null),
+    missive_link: (v) => (hasValue(v) ? String(v).trim() : null),
     order_received_at: (v) => v || null,
     scheduled_project_start: (v) => v || null,
     scheduled_project_end: (v) => v || null,
@@ -2378,7 +2380,7 @@ export async function loadProjects() {
         "location_source, location_confirmed, status_id, dealer, " +
         "building_category_id, permit_status_id, welcome_call_status_id, confirmation_status_id, invoice_number, " +
         "order_received_at, scheduled_project_start, scheduled_project_end, install_start, install_end, " +
-        "project_subtotal, project_notes, dimension, " +
+        "project_subtotal, project_notes, dimension, missive_link, " +
         "created_at, updated_at, created_by, updated_by, " +
         "proj_s_project_status!proj_t_projects_status_id_fkey(status_id, status_name, status_description, system_key), " +
         // History (written by logProjectStatusChanges on every status save); the drawer shows it with no extra call.

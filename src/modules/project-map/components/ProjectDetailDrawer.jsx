@@ -8,6 +8,7 @@ import { FileAttachments } from "@/shared/components/ui";
 import ProjectComments from "./ProjectComments";
 import ProjectStatusHistory from "./ProjectStatusHistory";
 import RepairFormCard from "./RepairFormCard";
+import MissiveLinkButton from "./MissiveLinkButton";
 import { loadFiles, createFileUpload, saveUploadedFile, getFileUrl, deleteFile } from "../data/projectMap.actions";
 
 /**
@@ -158,7 +159,10 @@ export default function ProjectDetailDrawer({ project, statuses = [], buildingCa
           )}
         </div>
         <div>
-          <h2 style={{ margin: 0, fontSize: "18px", fontWeight: 700, lineHeight: 1.2, color: "#0f172a", overflowWrap: "anywhere" }}>{project.client_name || "Untitled"}</h2>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: "6px" }}>
+            <h2 style={{ margin: 0, flex: 1, minWidth: 0, fontSize: "18px", fontWeight: 700, lineHeight: 1.2, color: "#0f172a", overflowWrap: "anywhere" }}>{project.client_name || "Untitled"}</h2>
+            <MissiveLinkButton url={project.missive_link} size={14} />
+          </div>
           {subtitle && <div style={{ marginTop: "2px", color: "#64748b" }}>{subtitle}</div>}
         </div>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "12px" }}>

@@ -8,6 +8,7 @@ import { StatusBadge, FileAttachments } from "@/shared/components/ui";
 import { formatProjectDescriptionForDisplay, getRunStatusColor, resolveRunStatusOptions, stripTownshipLabel, PROJECT_FILE_MAX_BYTES, PROJECT_FILE_TYPES, getProjectAmountDisplay, splitRunAmounts, runStatusKeyByName, formatDisplayDate, formatArrivalWindow } from "../data/projectMap.data";
 import { generateRunManifestPrint } from "../utils/printRunManifest";
 import RunStatusHistory from "./RunStatusHistory";
+import MissiveLinkButton from "./MissiveLinkButton";
 import { loadFiles, createFileUpload, saveUploadedFile, getFileUrl, deleteFile } from "../data/projectMap.actions";
 
 function formatDistance(meters) {
@@ -353,6 +354,7 @@ export default function RunDetailPanel({ run, runProjects = [], runSegmentData =
                         <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "4px" }}>
                           <div style={{ display: "flex", alignItems: "baseline", gap: "6px" }}>
                             <span title={proj.client_name || "Untitled"} style={{ minWidth: 0, fontWeight: 700, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{proj.client_name || "Untitled"}</span>
+                            <MissiveLinkButton url={proj.missive_link} size={11} style={{ alignSelf: "center" }} />
                             {canEditStop ? (
                               <button type="button" onClick={() => onEditProjectPrice?.(rp)} title="Edit price" style={priceStyle}>{hasPrice ? sub : "+ Price"}</button>
                             ) : hasPrice ? (

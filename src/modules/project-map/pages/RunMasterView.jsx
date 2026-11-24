@@ -21,6 +21,7 @@ import { generatePaidSheetPrint } from "../utils/printPaidSheet";
 import { computeRunSegmentData } from "../utils/runSegments";
 import RunForm from "../components/RunForm";
 import PaidSheetForm from "../components/PaidSheetForm";
+import MissiveLinkButton from "../components/MissiveLinkButton";
 import { useProjectMapRealtime } from "../hooks/useProjectMapRealtime";
 import { useProjectMapPolling } from "../hooks/useProjectMapPolling";
 import "./run-master.css";
@@ -446,7 +447,10 @@ export default function RunMasterView({ runs = [], origins = [], statuses = [], 
                         <tr>
                           <td style={cellStyle}>
                             <div style={{ fontWeight: 700 }}>{idx + 1}</div>
-                            <div style={{ color: "#64748b" }}>{proj.client_name || "Untitled"}</div>
+                            <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                              <span style={{ color: "#64748b" }}>{proj.client_name || "Untitled"}</span>
+                              <MissiveLinkButton url={proj.missive_link} size={11} />
+                            </div>
                           </td>
                           <td style={{ ...cellStyle, maxWidth: "180px" }}>{address}</td>
                           <td style={cellStyle}>{proj.proj_s_project_status?.status_name || "—"}</td>

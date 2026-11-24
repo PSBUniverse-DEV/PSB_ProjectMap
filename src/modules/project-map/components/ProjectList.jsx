@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { StatusBadge } from "@/shared/components/ui";
+import MissiveLinkButton from "./MissiveLinkButton";
 import { stripTownshipLabel, getProjectAmountDisplay, isPastInstallProject } from "../data/projectMap.data";
 
 function getStatusTone(statusName) {
@@ -188,6 +189,7 @@ export default function ProjectList({ projects = [], selectedProjectId, onSelect
                   <span style={{ fontWeight: 600, fontSize: "11px", color: "#1e293b", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {project.client_name || "Untitled"}
                   </span>
+                  <MissiveLinkButton url={project.missive_link} size={10} />
                   {age && (
                     <span title="Days since this project was entered on the map" style={{ marginLeft: "auto", flexShrink: 0, fontSize: "9px", fontWeight: 600, color: age.color }}>
                       {age.label}

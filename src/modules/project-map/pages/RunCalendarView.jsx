@@ -12,6 +12,7 @@ import { generateRunManifestPrint } from "../utils/printRunManifest";
 import { generatePaidSheetPrint } from "../utils/printPaidSheet";
 import StopStatusPrompt from "../components/StopStatusPrompt";
 import PaidSheetForm from "../components/PaidSheetForm";
+import MissiveLinkButton from "../components/MissiveLinkButton";
 import { useProjectMapRealtime } from "../hooks/useProjectMapRealtime";
 import { useProjectMapPolling } from "../hooks/useProjectMapPolling";
 
@@ -1028,7 +1029,10 @@ export default function RunCalendarView({ runs = [], runStatuses = [], statuses 
                           {index + 1}
                         </span>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: "13px", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{project.client_name || "Untitled"}</div>
+                          <div style={{ display: "flex", alignItems: "center", gap: "4px", minWidth: 0 }}>
+                            <div style={{ minWidth: 0, fontSize: "13px", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{project.client_name || "Untitled"}</div>
+                            <MissiveLinkButton url={project.missive_link} size={12} />
+                          </div>
                           <div style={{ fontSize: "11px", color: "#64748b" }}>{[project.city, project.state_code].filter(Boolean).join(", ") || "—"}</div>
                           {/* Same stop details as the Run panel tiles (confirmation and price are on the right). */}
                           <div style={{ display: "flex", flexWrap: "wrap", gap: "2px 12px", marginTop: "3px", fontSize: "11px", color: "#64748b" }}>

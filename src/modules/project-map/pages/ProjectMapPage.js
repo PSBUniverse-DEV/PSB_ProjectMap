@@ -13,10 +13,11 @@ export default async function ProjectMapPage() {
   }
   // Only roles that have this page's card (also when the address is typed in).
   // The other pages' cards decide which page buttons the view shows.
-  const [hasPageAccess, canOpenRunMaster, canOpenCalendar] = await Promise.all([
+  const [hasPageAccess, canOpenRunMaster, canOpenCalendar, canOpenAnalytics] = await Promise.all([
     loadPageAccess(PROJECT_MAP_PAGES.map),
     loadPageAccess(PROJECT_MAP_PAGES.runMaster),
     loadPageAccess(PROJECT_MAP_PAGES.calendar),
+    loadPageAccess(PROJECT_MAP_PAGES.analytics),
   ]);
   if (!hasPageAccess) {
     return <ProjectMapAccessBlocked access={{ ...statusTabAccess, reason: "no-page-access" }} />;
@@ -36,5 +37,5 @@ export default async function ProjectMapPage() {
     ? setup.projects || []
     : (setup.projects || []).filter((project) => project.status_id == null || visibleStatusIds.has(String(project.status_id)));
   // Map projectStatuses to statuses for backward compatibility with view
-  return <ProjectMapView {...setup} projects={projects} statuses={setup.projectStatuses || []} origins={setup.originAddresses || []} runs={runs} runStatuses={setup.runStatuses || []} statusTabAccess={statusTabAccess} pageAccess={{ runMaster: canOpenRunMaster, calendar: canOpenCalendar }} />;
+  return <ProjectMapView {...setup} projects={projects} statuses={setup.projectStatuses || []} origins={setup.originAddresses || []} runs={runs} runStatuses={setup.runStatuses || []} statusTabAccess={statusTabAccess} pageAccess={{ runMaster: canOpenRunMaster, calendar: canOpenCalendar, analytics: canOpenAnalytics }} />;
 }

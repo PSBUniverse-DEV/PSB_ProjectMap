@@ -1629,6 +1629,9 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
             )}
           </>
         )}
+        {canOpenPage("analytics") && (
+          <button onClick={() => { startNavbarLoader(); router.push("/project-map/analytics"); }} style={{ padding: "6px 16px", fontSize: "12px", fontWeight: 400, border: "none", borderBottom: "2px solid transparent", background: "#fff", color: "#64748b", cursor: "pointer" }}>📊 Analytics</button>
+        )}
       </div>
 
       {mode === "projects" && (

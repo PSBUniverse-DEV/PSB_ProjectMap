@@ -652,6 +652,9 @@ export default function RunCalendarView({ runs = [], runStatuses = [], statuses 
           {canOpenPage("runMaster") && (
             <button type="button" style={navButtonStyle} onClick={() => { startNavbarLoader(); router.push("/project-map/run-master"); }}>📋 Run Master List</button>
           )}
+          {canOpenPage("analytics") && (
+            <button type="button" style={navButtonStyle} onClick={() => { startNavbarLoader(); router.push("/project-map/analytics"); }}>📊 Analytics</button>
+          )}
         </div>
       </div>
 

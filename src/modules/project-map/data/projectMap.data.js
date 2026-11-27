@@ -140,6 +140,7 @@ export const PROJECT_MAP_PAGES = {
   setup: "/project-map/setup",
   runMaster: "/project-map/run-master",
   calendar: "/project-map/calendar",
+  analytics: "/project-map/analytics",
 };
 
 export function formatRunCode(runNumber) {

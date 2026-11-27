@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "recharts": "^3.11.2"
+  },
+  "devDependencies": {}
+}

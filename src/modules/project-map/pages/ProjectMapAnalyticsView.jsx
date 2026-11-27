@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { startNavbarLoader } from "@/shared/utils/navbar-loader";
 import { PROJECT_MAP_PAGES, formatDisplayDate } from "../data/projectMap.data";
 import {
@@ -14,9 +14,14 @@ import {
   historySince,
   keyNumbers,
   ordersOverTime,
+  orderToInstall,
   projectsByStatus,
   rangeDates,
+  repairsOverTime,
+  runSchedule,
+  runsOverTime,
   stateOptions,
+  timeInStatus,
   topDealers,
 } from "../data/projectMap.analytics";
 import AnalyticsChartCard from "../components/analytics/AnalyticsChartCard";
@@ -80,6 +85,13 @@ export default function ProjectMapAnalyticsView({ projects = [], runs = [], stat
   const byStatus = useMemo(() => projectsByStatus({ projects: shown, statuses }), [shown, statuses]);
   const orders = useMemo(() => ordersOverTime({ projects: shown, range }), [shown, range]);
   const dealers = useMemo(() => topDealers({ projects: shown, range }), [shown, range]);
+  const statusTimes = useMemo(() => timeInStatus({ projects: shown, statuses, range }), [shown, statuses, range]);
+  const installSpeed = useMemo(() => orderToInstall({ projects: shown, statuses, range }), [shown, statuses, range]);
+  const runsByPeriod = useMemo(() => runsOverTime({ runs, runStatuses, range }), [runs, runStatuses, range]);
+  const schedule = useMemo(() => runSchedule({ runs, range }), [runs, range]);
+  const repairs = useMemo(() => repairsOverTime({ projects: shown, statuses, range }), [shown, statuses, range]);
+  const legendStyle = { fontSize: 11, color: "#334155" };
+  const hasAny = (rows, keys) => rows.some((row) => keys.some((key) => Number(row[key]) > 0));
   const period = orders.weekly ? "week" : "month";
   const filtersChanged = state || categoryId || rangeKey !== DEFAULT_ANALYTICS_RANGE;
 
@@ -246,6 +258,151 @@ export default function ProjectMapAnalyticsView({ projects = [], runs = [], stat
                 {dealers.map((row) => <Cell key={row.name} fill={row.other ? NEUTRAL_COLOR : SERIES[0]} />)}
               </Bar>
             </BarChart>
+          </ResponsiveContainer>
+        </AnalyticsChartCard>
+
+        <AnalyticsChartCard
+          title="Time spent in each status"
+          note="Average days a project stayed in a status before moving on, for moves in the period."
+          rows={statusTimes}
+          height={Math.max(220, statusTimes.length * 26 + 30)}
+          empty="No status changes in this period yet."
+          columns={[
+            { key: "name", label: "Status" },
+            { key: "average", label: "Average days", align: "right" },
+            { key: "median", label: "Median days", align: "right" },
+            { key: "longest", label: "Longest", align: "right" },
+            { key: "moves", label: "Moves", align: "right", format: number },
+          ]}
+        >
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={statusTimes} layout="vertical" margin={{ top: 4, right: 16, bottom: 4, left: 8 }} barCategoryGap={4}>
+              <CartesianGrid horizontal={false} stroke={GRID} />
+              <XAxis type="number" tick={TICK} axisLine={false} tickLine={false} />
+              <YAxis type="category" dataKey="name" width={160} tick={TICK} axisLine={false} tickLine={false} />
+              <Tooltip
+                cursor={CURSOR}
+                contentStyle={TOOLTIP_STYLE}
+                formatter={(value, _name, item) => [`${value} days average · ${item?.payload?.median} median · ${number(item?.payload?.moves)} moves`, "Time in status"]}
+              />
+              <Bar dataKey="average" radius={[0, 4, 4, 0]} maxBarSize={18} isAnimationActive={false}>
+                {statusTimes.map((row) => <Cell key={row.statusId} fill={row.color} />)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </AnalyticsChartCard>
+
+        <AnalyticsChartCard
+          title={`Order to install, per ${period}`}
+          note={installSpeed.overall.count
+            ? `Days from order to installed. Overall: ${installSpeed.overall.average} average, ${installSpeed.overall.median} median (${number(installSpeed.overall.count)} projects).`
+            : "Days from order to installed."}
+          rows={installSpeed.overall.count ? installSpeed.rows : []}
+          empty="No projects installed in this period yet."
+          columns={[
+            { key: "label", label: installSpeed.weekly ? "Week of" : "Month" },
+            { key: "average", label: "Average days", align: "right", format: (value) => (value == null ? "—" : value) },
+            { key: "median", label: "Median days", align: "right", format: (value) => (value == null ? "—" : value) },
+            { key: "count", label: "Installed", align: "right", format: number },
+          ]}
+        >
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={installSpeed.rows} margin={{ top: 8, right: 12, bottom: 4, left: 0 }}>
+              <CartesianGrid vertical={false} stroke={GRID} />
+              <XAxis dataKey="label" tick={TICK} axisLine={false} tickLine={false} />
+              <YAxis tick={TICK} axisLine={false} tickLine={false} width={36} />
+              <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value, name) => [value == null ? "—" : `${value} days`, name]} />
+              <Legend wrapperStyle={legendStyle} iconType="plainline" />
+              <Line type="monotone" dataKey="average" name="Average" stroke={SERIES[0]} strokeWidth={2} dot={{ r: 4 }} connectNulls isAnimationActive={false} />
+              <Line type="monotone" dataKey="median" name="Median" stroke={SERIES[1]} strokeWidth={2} dot={{ r: 4 }} connectNulls isAnimationActive={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </AnalyticsChartCard>
+
+        <AnalyticsChartCard
+          title={`Runs per ${runsByPeriod.weekly ? "week" : "month"}`}
+          note="By run status, in each status's Setup colour. All runs."
+          rows={hasAny(runsByPeriod.rows, ["total"]) ? runsByPeriod.rows : []}
+          empty="No runs in this period."
+          columns={[
+            { key: "label", label: runsByPeriod.weekly ? "Week of" : "Month" },
+            ...runsByPeriod.series.map((series) => ({ key: series.key, label: series.name, align: "right", format: number })),
+            { key: "total", label: "Runs", align: "right", format: number },
+            { key: "stops", label: "Stops", align: "right", format: number },
+          ]}
+        >
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={runsByPeriod.rows} margin={{ top: 4, right: 8, bottom: 4, left: 0 }} barCategoryGap="20%">
+              <CartesianGrid vertical={false} stroke={GRID} />
+              <XAxis dataKey="label" tick={TICK} axisLine={false} tickLine={false} />
+              <YAxis allowDecimals={false} tick={TICK} axisLine={false} tickLine={false} width={36} />
+              <Tooltip cursor={CURSOR} contentStyle={TOOLTIP_STYLE} formatter={(value, name) => [number(value), name]} />
+              <Legend wrapperStyle={legendStyle} />
+              {runsByPeriod.series.map((series, index) => (
+                <Bar
+                  key={series.key}
+                  dataKey={series.key}
+                  name={series.name}
+                  stackId="runs"
+                  fill={series.color}
+                  stroke="#fff"
+                  strokeWidth={1}
+                  radius={index === runsByPeriod.series.length - 1 ? [4, 4, 0, 0] : 0}
+                  maxBarSize={28}
+                  isAnimationActive={false}
+                />
+              ))}
+            </BarChart>
+          </ResponsiveContainer>
+        </AnalyticsChartCard>
+
+        <AnalyticsChartCard
+          title="Runs that kept their first date"
+          note={schedule.keptPercent == null
+            ? "Runs whose date was never moved vs runs that were rescheduled."
+            : `${schedule.keptPercent}% kept their first date (${number(schedule.kept)} of ${number(schedule.kept + schedule.rescheduled)} runs).`}
+          rows={hasAny(schedule.rows, ["kept", "rescheduled"]) ? schedule.rows : []}
+          empty="No runs in this period."
+          columns={[
+            { key: "label", label: schedule.weekly ? "Week of" : "Month" },
+            { key: "kept", label: "Kept first date", align: "right", format: number },
+            { key: "rescheduled", label: "Rescheduled", align: "right", format: number },
+          ]}
+        >
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={schedule.rows} margin={{ top: 4, right: 8, bottom: 4, left: 0 }} barCategoryGap="20%">
+              <CartesianGrid vertical={false} stroke={GRID} />
+              <XAxis dataKey="label" tick={TICK} axisLine={false} tickLine={false} />
+              <YAxis allowDecimals={false} tick={TICK} axisLine={false} tickLine={false} width={36} />
+              <Tooltip cursor={CURSOR} contentStyle={TOOLTIP_STYLE} formatter={(value, name) => [number(value), name]} />
+              <Legend wrapperStyle={legendStyle} />
+              <Bar dataKey="kept" name="Kept first date" stackId="schedule" fill={SERIES[0]} stroke="#fff" strokeWidth={1} maxBarSize={28} isAnimationActive={false} />
+              <Bar dataKey="rescheduled" name="Rescheduled" stackId="schedule" fill={SERIES[1]} stroke="#fff" strokeWidth={1} radius={[4, 4, 0, 0]} maxBarSize={28} isAnimationActive={false} />
+            </BarChart>
+          </ResponsiveContainer>
+        </AnalyticsChartCard>
+
+        <AnalyticsChartCard
+          title={`Repairs per ${repairs.weekly ? "week" : "month"}`}
+          note="Opened = moved into a repair status. Repaired = moved into a finished repair status."
+          rows={hasAny(repairs.rows, ["opened", "repaired"]) ? repairs.rows : []}
+          empty="No repair changes in this period yet."
+          columns={[
+            { key: "label", label: repairs.weekly ? "Week of" : "Month" },
+            { key: "opened", label: "Opened", align: "right", format: number },
+            { key: "repaired", label: "Repaired", align: "right", format: number },
+          ]}
+        >
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={repairs.rows} margin={{ top: 8, right: 12, bottom: 4, left: 0 }}>
+              <CartesianGrid vertical={false} stroke={GRID} />
+              <XAxis dataKey="label" tick={TICK} axisLine={false} tickLine={false} />
+              <YAxis allowDecimals={false} tick={TICK} axisLine={false} tickLine={false} width={36} />
+              <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value, name) => [number(value), name]} />
+              <Legend wrapperStyle={legendStyle} iconType="plainline" />
+              <Line type="monotone" dataKey="opened" name="Opened" stroke={SERIES[0]} strokeWidth={2} dot={{ r: 4 }} isAnimationActive={false} />
+              <Line type="monotone" dataKey="repaired" name="Repaired" stroke={SERIES[1]} strokeWidth={2} dot={{ r: 4 }} isAnimationActive={false} />
+            </LineChart>
           </ResponsiveContainer>
         </AnalyticsChartCard>
       </div>

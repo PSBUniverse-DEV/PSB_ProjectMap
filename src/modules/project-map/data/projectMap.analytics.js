@@ -238,3 +238,154 @@ export function topDealers({ projects = [], range, limit = 10 }) {
   }
   return top;
 }
+
+// ─── Phase 2 reports ─────────────────────────────────────────────────────────
+
+function average(values) {
+  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+}
+
+function median(values) {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+const oneDecimal = (value) => (value == null ? null : Math.round(value * 10) / 10);
+
+/** Real status changes (starting-point rows left out) dated inside the range. */
+function changesInRange(projects, range) {
+  return projects.flatMap((project) => (project.proj_t_project_status_log || [])
+    .filter((row) => !row.is_baseline && inRange(dayKey(row.changed_at), range)));
+}
+
+/**
+ * Days spent in each status before moving on, for moves made in the range
+ * (Setup order): how many moves, average, median and longest.
+ */
+export function timeInStatus({ projects = [], statuses = [], range }) {
+  const days = new Map();
+  for (const row of changesInRange(projects, range)) {
+    if (row.from_status_id == null || row.duration_seconds == null) continue;
+    const key = String(row.from_status_id);
+    if (!days.has(key)) days.set(key, []);
+    days.get(key).push(Number(row.duration_seconds) / 86400);
+  }
+  return statuses
+    .filter((status) => days.has(String(status.status_id)))
+    .map((status) => {
+      const list = days.get(String(status.status_id));
+      return {
+        statusId: String(status.status_id),
+        name: status.status_name,
+        color: status.display_color || NEUTRAL_COLOR,
+        moves: list.length,
+        average: oneDecimal(average(list)),
+        median: oneDecimal(median(list)),
+        longest: oneDecimal(Math.max(...list)),
+      };
+    });
+}
+
+/**
+ * Days from order (Order Received, or the day entered) to installed, for
+ * projects installed in the range: per week or month, and overall.
+ */
+export function orderToInstall({ projects = [], statuses = [], range }) {
+  const installIds = installStatusIds(statuses);
+  const { weekly, buckets } = bucketsFor(range);
+  const days = new Map(buckets.map((bucket) => [bucket.key, []]));
+  const all = [];
+  for (const project of projects) {
+    const install = installDayOf(project, installIds);
+    const order = orderDayOf(project);
+    if (!install || !order || !inRange(install, range) || install < order) continue;
+    const value = daysBetween(order, install);
+    days.get(bucketOf(install, weekly))?.push(value);
+    all.push(value);
+  }
+  return {
+    weekly,
+    overall: { count: all.length, average: oneDecimal(average(all)), median: oneDecimal(median(all)) },
+    rows: buckets.map((bucket) => {
+      const list = days.get(bucket.key) || [];
+      return { ...bucket, count: list.length, average: oneDecimal(average(list)), median: oneDecimal(median(list)) };
+    }),
+  };
+}
+
+/**
+ * Runs per week or month in the range, split by run status. Series keys are
+ * "s0", "s1", ... (status names can hold characters a chart key can't).
+ */
+export function runsOverTime({ runs = [], runStatuses = [], range }) {
+  const { weekly, buckets } = bucketsFor(range);
+  const statusSeries = runStatuses.map((status, index) => ({ key: `s${index}`, name: status.status_name, color: status.display_color || NEUTRAL_COLOR }));
+  const keyOfName = new Map(statusSeries.map((series) => [series.name, series.key]));
+  const otherKey = "other";
+  const rows = buckets.map((bucket) => ({
+    ...bucket,
+    total: 0,
+    stops: 0,
+    [otherKey]: 0,
+    ...Object.fromEntries(statusSeries.map((series) => [series.key, 0])),
+  }));
+  const byKey = new Map(rows.map((row) => [row.key, row]));
+  for (const run of runs) {
+    const day = dayKey(run.run_date);
+    if (!inRange(day, range)) continue;
+    const row = byKey.get(bucketOf(day, weekly));
+    if (!row) continue;
+    row[keyOfName.get(run.status) || otherKey] += 1;
+    row.total += 1;
+    row.stops += Number(run.stops) || 0;
+  }
+  const series = statusSeries.filter((item) => rows.some((row) => row[item.key] > 0));
+  if (rows.some((row) => row[otherKey] > 0)) series.push({ key: otherKey, name: "Other status", color: NEUTRAL_COLOR });
+  return { weekly, rows, series };
+}
+
+/** Runs per week or month that kept their first date vs were rescheduled. */
+export function runSchedule({ runs = [], range }) {
+  const { weekly, buckets } = bucketsFor(range);
+  const rows = buckets.map((bucket) => ({ ...bucket, kept: 0, rescheduled: 0 }));
+  const byKey = new Map(rows.map((row) => [row.key, row]));
+  for (const run of runs) {
+    const day = dayKey(run.run_date);
+    if (!inRange(day, range)) continue;
+    const row = byKey.get(bucketOf(day, weekly));
+    if (!row) continue;
+    const original = dayKey(run.original_run_date);
+    if (original && original !== day) row.rescheduled += 1;
+    else row.kept += 1;
+  }
+  const kept = rows.reduce((sum, row) => sum + row.kept, 0);
+  const rescheduled = rows.reduce((sum, row) => sum + row.rescheduled, 0);
+  const total = kept + rescheduled;
+  return { weekly, rows, kept, rescheduled, keptPercent: total ? Math.round((kept / total) * 100) : null };
+}
+
+/**
+ * Repairs per week or month: opened = a project moved into a repair status
+ * from a non-repair one; repaired = moved into a repair status with Finished
+ * ticked. Real status changes only.
+ */
+export function repairsOverTime({ projects = [], statuses = [], range }) {
+  const repairIds = new Set(statuses.filter((status) => REPAIR_STATUS_KEYS.includes(status?.system_key)).map((status) => String(status.status_id)));
+  const doneIds = new Set(statuses
+    .filter((status) => REPAIR_STATUS_KEYS.includes(status?.system_key) && status?.is_finished === true)
+    .map((status) => String(status.status_id)));
+  const { weekly, buckets } = bucketsFor(range);
+  const rows = buckets.map((bucket) => ({ ...bucket, opened: 0, repaired: 0 }));
+  const byKey = new Map(rows.map((row) => [row.key, row]));
+  for (const row of changesInRange(projects, range)) {
+    const bucket = byKey.get(bucketOf(dayKey(row.changed_at), weekly));
+    if (!bucket) continue;
+    const to = String(row.to_status_id);
+    const from = row.from_status_id == null ? "" : String(row.from_status_id);
+    if (repairIds.has(to) && !repairIds.has(from)) bucket.opened += 1;
+    if (doneIds.has(to) && !doneIds.has(from)) bucket.repaired += 1;
+  }
+  return { weekly, rows };
+}

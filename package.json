@@ -12,7 +12,9 @@
     "prebuild": "node scripts/generate-routes.js",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "add-package": "node scripts/module-package.mjs add",
+    "remove-package": "node scripts/module-package.mjs remove"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

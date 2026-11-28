@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { startNavbarLoader } from "@/shared/utils/navbar-loader";
-import { PROJECT_MAP_PAGES, formatDisplayDate } from "../data/projectMap.data";
+import { PROJECT_MAP_PAGES, formatDisplayDate, runStatusKeyByName } from "../data/projectMap.data";
 import {
   ANALYTICS_RANGES,
   DEFAULT_ANALYTICS_RANGE,
@@ -81,14 +81,20 @@ export default function ProjectMapAnalyticsView({ projects = [], runs = [], stat
   const categories = useMemo(() => buildingCategories.filter((category) => category?.is_active !== false), [buildingCategories]);
   const historyStart = useMemo(() => historySince(projects), [projects]);
 
-  const numbers = useMemo(() => keyNumbers({ projects: shown, runs, statuses, range }), [shown, runs, statuses, range]);
+  // Cancelled runs (run status system key "cancelled", as on the Run Calendar)
+  // are left out of the Runs tile and the kept-first-date chart.
+  const activeRuns = useMemo(
+    () => runs.filter((run) => runStatusKeyByName(runStatuses, run.status) !== "cancelled"),
+    [runs, runStatuses],
+  );
+  const numbers = useMemo(() => keyNumbers({ projects: shown, runs: activeRuns, statuses, range }), [shown, activeRuns, statuses, range]);
   const byStatus = useMemo(() => projectsByStatus({ projects: shown, statuses }), [shown, statuses]);
   const orders = useMemo(() => ordersOverTime({ projects: shown, range }), [shown, range]);
   const dealers = useMemo(() => topDealers({ projects: shown, range }), [shown, range]);
   const statusTimes = useMemo(() => timeInStatus({ projects: shown, statuses, range }), [shown, statuses, range]);
   const installSpeed = useMemo(() => orderToInstall({ projects: shown, statuses, range }), [shown, statuses, range]);
   const runsByPeriod = useMemo(() => runsOverTime({ runs, runStatuses, range }), [runs, runStatuses, range]);
-  const schedule = useMemo(() => runSchedule({ runs, range }), [runs, range]);
+  const schedule = useMemo(() => runSchedule({ runs: activeRuns, range }), [activeRuns, range]);
   const repairs = useMemo(() => repairsOverTime({ projects: shown, statuses, range }), [shown, statuses, range]);
   const legendStyle = { fontSize: 11, color: "#334155" };
   const hasAny = (rows, keys) => rows.some((row) => keys.some((key) => Number(row[key]) > 0));
@@ -158,7 +164,7 @@ export default function ProjectMapAnalyticsView({ projects = [], runs = [], stat
       <p style={{ margin: "6px 0 10px", fontSize: "11px", color: "#94a3b8" }}>
         Orders count by Order Received, or by the day the project was entered when that is blank.
         Installed counts projects that reached a finished status{historyStart ? `; status history starts ${formatDisplayDate(historyStart)}` : ""}.
-        Runs are all runs (the State and Building category filters apply to projects only).
+        Runs leave out cancelled runs (the State and Building category filters apply to projects only).
       </p>
 
       {/* Reports */}
@@ -263,7 +269,7 @@ export default function ProjectMapAnalyticsView({ projects = [], runs = [], stat
 
         <AnalyticsChartCard
           title="Time spent in each status"
-          note="Average days a project stayed in a status before moving on, for moves in the period."
+          note="Average days a project stayed in a status before moving on, for moves in the period. Only stays that started after status history began are counted."
           rows={statusTimes}
           height={Math.max(220, statusTimes.length * 26 + 30)}
           empty="No status changes in this period yet."
@@ -359,8 +365,8 @@ export default function ProjectMapAnalyticsView({ projects = [], runs = [], stat
         <AnalyticsChartCard
           title="Runs that kept their first date"
           note={schedule.keptPercent == null
-            ? "Runs whose date was never moved vs runs that were rescheduled."
-            : `${schedule.keptPercent}% kept their first date (${number(schedule.kept)} of ${number(schedule.kept + schedule.rescheduled)} runs).`}
+            ? "Runs whose date was never moved vs runs that were rescheduled. Cancelled runs are left out."
+            : `${schedule.keptPercent}% kept their first date (${number(schedule.kept)} of ${number(schedule.kept + schedule.rescheduled)} runs, cancelled runs left out).`}
           rows={hasAny(schedule.rows, ["kept", "rescheduled"]) ? schedule.rows : []}
           empty="No runs in this period."
           columns={[

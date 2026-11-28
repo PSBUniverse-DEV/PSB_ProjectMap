@@ -262,15 +262,26 @@ function changesInRange(projects, range) {
 
 /**
  * Days spent in each status before moving on, for moves made in the range
- * (Setup order): how many moves, average, median and longest.
+ * (Setup order): how many moves, average, median and longest. Only stays
+ * that started after status history began are counted.
  */
 export function timeInStatus({ projects = [], statuses = [], range }) {
   const days = new Map();
-  for (const row of changesInRange(projects, range)) {
-    if (row.from_status_id == null || row.duration_seconds == null) continue;
-    const key = String(row.from_status_id);
-    if (!days.has(key)) days.set(key, []);
-    days.get(key).push(Number(row.duration_seconds) / 86400);
+  for (const project of projects) {
+    // Oldest first, so each move can see the history row before it.
+    const history = [...(project.proj_t_project_status_log || [])]
+      .sort((a, b) => String(a.changed_at).localeCompare(String(b.changed_at)));
+    history.forEach((row, index) => {
+      if (row.is_baseline || row.from_status_id == null || row.duration_seconds == null) return;
+      if (!inRange(dayKey(row.changed_at), range)) return;
+      // The stay started at the row before. When that is the starting point
+      // (recorded when history began), the real time in the status is unknown.
+      const previous = history[index - 1];
+      if (!previous || previous.is_baseline) return;
+      const key = String(row.from_status_id);
+      if (!days.has(key)) days.set(key, []);
+      days.get(key).push(Number(row.duration_seconds) / 86400);
+    });
   }
   return statuses
     .filter((status) => days.has(String(status.status_id)))

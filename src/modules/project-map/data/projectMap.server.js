@@ -481,6 +481,65 @@ export async function loadAllRunStatuses() {
   return data || [];
 }
 
+// ─── Analytics Loader ───────────────────────────────────────
+
+/**
+ * Everything the Analytics reports read, and nothing more: projects with their
+ * status history, runs in the run statuses this user may see (with a stop
+ * count), and the lookup lists. Used by the Analytics page and its server
+ * actions; only the worked-out reports are sent to the browser.
+ */
+export async function loadAnalyticsData(access) {
+  const supabase = getSupabaseAdmin();
+  const runStatusNames = access?.allowedRunStatusNames || [];
+  const rows = async (query) => {
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
+    return data || [];
+  };
+
+  const [projects, runs, statuses, runStatuses, buildingCategories, permitStatuses, welcomeCallStatuses, confirmationStatuses, settings] = await Promise.all([
+    fetchAllRows(() => supabase
+      .from("proj_t_projects")
+      .select(
+        "id, client_name, status_id, state, building_category_id, dealer, project_subtotal, order_received_at, created_at, updated_at, " +
+        "welcome_call_status_id, confirmation_status_id, permit_status_id, install_start, " +
+        "proj_t_project_status_log(from_status_id, to_status_id, changed_at, duration_seconds, is_baseline)"
+      )
+      .order("id", { ascending: true })),
+    runStatusNames.length === 0
+      ? Promise.resolve([])
+      : fetchAllRows(() => supabase
+        .from("proj_t_runs")
+        .select(
+          "id, run_date, original_run_date, status, estimated_subtotal, estimated_mileage, estimated_duration, team_assigned, " +
+          "run_code, run_number, run_name, stops:proj_t_run_projects(count)"
+        )
+        .in("status", runStatusNames)
+        .order("id", { ascending: true })),
+    rows(supabase.from("proj_s_project_status").select("*").order("display_order", { ascending: true }).order("status_name", { ascending: true })),
+    rows(supabase.from("proj_s_run_status").select("*").eq("is_active", true).order("display_order", { ascending: true })),
+    rows(supabase.from("proj_s_building_categories").select("*").order("display_order", { ascending: true }).order("building_category_name", { ascending: true })),
+    rows(supabase.from("proj_s_permit_status").select("*").order("display_order", { ascending: true }).order("status_name", { ascending: true })),
+    rows(supabase.from("proj_s_welcome_call_status").select("*").order("display_order", { ascending: true }).order("status_name", { ascending: true })),
+    rows(supabase.from("proj_s_confirmation_status").select("*").order("display_order", { ascending: true }).order("status_name", { ascending: true })),
+    rows(supabase.from("proj_s_settings").select("*")),
+  ]);
+
+  return {
+    projects,
+    // The stop count arrives as [{ count }]; the reports read run.stops as a number.
+    runs: runs.map((run) => ({ ...run, stops: Number(run.stops?.[0]?.count) || 0 })),
+    statuses,
+    runStatuses,
+    buildingCategories,
+    permitStatuses,
+    welcomeCallStatuses,
+    confirmationStatuses,
+    settings,
+  };
+}
+
 // ─── Runs Loader ────────────────────────────────────────────
 
 // Which runs loadRuns returns (second argument, all optional):

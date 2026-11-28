@@ -11,7 +11,7 @@
  * Finished ticked that is not a repair status (from status history, which
  * only covers changes since history recording started).
  */
-import { REPAIR_STATUS_KEYS, formatRunCode, getStaleProjects, isPastInstallProject, isRepairProject } from "./projectMap.data";
+import { REPAIR_STATUS_KEYS, formatRunCode, getStaleAfterDays, getStaleProjects, isPastInstallProject, isRepairProject, runStatusKeyByName } from "./projectMap.data";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -796,4 +796,85 @@ export function drillRuns({ runs = [], runStatuses = [], range, pick }) {
     }))
     .sort((a, b) => String(b.date).localeCompare(String(a.date)) || a.code.localeCompare(b.code));
   return { kind: "runs", rows };
+}
+
+// ─── Worked out on the server ────────────────────────────────────────────────
+
+/** Filters from the browser made safe: a known period and plain text. */
+export function normalizeAnalyticsFilters(filters = {}) {
+  const rangeKey = ANALYTICS_RANGES.some((item) => item.key === filters?.rangeKey) ? filters.rangeKey : DEFAULT_ANALYTICS_RANGE;
+  return { rangeKey, state: String(filters?.state || ""), categoryId: String(filters?.categoryId || "") };
+}
+
+/**
+ * What every report needs for one set of filters: the period, the projects
+ * that match the State / Building category filters, the runs without
+ * cancelled ones (run status system key "cancelled", as on the Run Calendar),
+ * the bell's day limit and "now".
+ */
+function analyticsContext(data, filters, todayKey) {
+  const { projects = [], runs = [], runStatuses = [], settings = [] } = data;
+  return {
+    range: rangeDates(filters.rangeKey, todayKey, earliestDay(projects, runs)),
+    shown: filterProjects(projects, filters),
+    activeRuns: runs.filter((run) => runStatusKeyByName(runStatuses, run.status) !== "cancelled"),
+    staleAfterDays: getStaleAfterDays(settings),
+    now: new Date(`${todayKey}T23:59:59Z`),
+  };
+}
+
+/**
+ * Every Analytics report for one set of filters, so only the results go to the
+ * browser. The names match the ones the page shows.
+ * data = loadAnalyticsData(...) result; todayKey = "YYYY-MM-DD".
+ */
+export function buildAnalyticsReports(data, rawFilters, todayKey) {
+  const filters = normalizeAnalyticsFilters(rawFilters);
+  const {
+    projects = [], runs = [], statuses = [], runStatuses = [], buildingCategories = [],
+    welcomeCallStatuses = [], confirmationStatuses = [], permitStatuses = [],
+  } = data;
+  const { range, shown, activeRuns, staleAfterDays, now } = analyticsContext(data, filters, todayKey);
+  return {
+    filters,
+    range,
+    states: stateOptions(projects),
+    historyStart: historySince(projects),
+    staleAfterDays,
+    numbers: keyNumbers({ projects: shown, runs: activeRuns, statuses, range }),
+    byStatus: projectsByStatus({ projects: shown, statuses }),
+    orders: ordersOverTime({ projects: shown, range }),
+    dealers: topDealers({ projects: shown, range }),
+    statusTimes: timeInStatus({ projects: shown, statuses, range }),
+    installSpeed: orderToInstall({ projects: shown, statuses, range }),
+    runsByPeriod: runsOverTime({ runs, runStatuses, range }),
+    schedule: runSchedule({ runs: activeRuns, range }),
+    repairs: repairsOverTime({ projects: shown, statuses, range }),
+    openValue: openValueByStatus({ projects: shown, statuses }),
+    categoryRows: categoriesReport({ projects: shown, buildingCategories, range }),
+    valueTrend: averageValue({ projects: shown, range }),
+    stateRows: projectsByState({ projects: shown, range }),
+    stale: staleProjects({ projects: shown, statuses, staleAfterDays, now }),
+    care: careProgress({ projects: shown, statuses, welcomeCallStatuses, confirmationStatuses, permitStatuses }),
+    runSize: runSizeAndValue({ runs: activeRuns, range }),
+    travel: milesAndHours({ runs: activeRuns, range }),
+    teams: teamWorkload({ runs: activeRuns, range }),
+    installDays: installHeatmap({ projects: shown, range }),
+  };
+}
+
+/**
+ * The list behind one click, for one set of filters.
+ * click = { kind: "projects", pick } or { kind: "runs", runs: "all" | "active", pick }
+ * ("all" = every run, as "Runs per week/month" counts; "active" = cancelled left out).
+ */
+export function buildAnalyticsList(data, click = {}, rawFilters, todayKey) {
+  const filters = normalizeAnalyticsFilters(rawFilters);
+  const { statuses = [], runs = [], runStatuses = [] } = data;
+  const { range, shown, activeRuns, staleAfterDays, now } = analyticsContext(data, filters, todayKey);
+  const pick = { ...(click?.pick || {}), report: String(click?.pick?.report || ""), key: String(click?.pick?.key ?? "") };
+  if (click?.kind === "runs") {
+    return drillRuns({ runs: click.runs === "all" ? runs : activeRuns, runStatuses, range, pick });
+  }
+  return drillProjects({ projects: shown, statuses, range, pick, staleAfterDays, now });
 }

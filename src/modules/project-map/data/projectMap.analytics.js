@@ -807,6 +807,26 @@ export function normalizeAnalyticsFilters(filters = {}) {
 }
 
 /**
+ * Filters read from the page address: ?period=3m&state=Michigan&category=4.
+ * params is a plain object (Next.js searchParams); a value given twice uses the first.
+ */
+export function analyticsFiltersFromAddress(params = {}) {
+  const one = (value) => (Array.isArray(value) ? value[0] : value);
+  return normalizeAnalyticsFilters({ rangeKey: one(params?.period), state: one(params?.state), categoryId: one(params?.category) });
+}
+
+/** The page-address query for these filters ("" for the defaults), e.g. "?period=3m&state=Michigan". */
+export function analyticsAddress(filters = {}) {
+  const clean = normalizeAnalyticsFilters(filters);
+  const params = new URLSearchParams();
+  if (clean.rangeKey !== DEFAULT_ANALYTICS_RANGE) params.set("period", clean.rangeKey);
+  if (clean.state) params.set("state", clean.state);
+  if (clean.categoryId) params.set("category", clean.categoryId);
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
+/**
  * What every report needs for one set of filters: the period, the projects
  * that match the State / Building category filters, the runs without
  * cancelled ones (run status system key "cancelled", as on the Run Calendar),

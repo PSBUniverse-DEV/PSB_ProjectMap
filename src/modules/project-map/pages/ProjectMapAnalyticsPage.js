@@ -2,7 +2,8 @@
  * Server Component — ProjectMapAnalyticsPage.js
  *
  * Runs on the server. Checks access like the other Project Map pages, then
- * works out the reports for the default filters (last 12 months) from fresh
+ * works out the reports for the filters in the page address (else the
+ * defaults: last 12 months) from fresh
  * data and sends only those results to the View. A grey placeholder shows
  * while that happens. Later filter changes and click-through lists come from
  * the server actions in projectMap.analytics.actions.js.
@@ -14,7 +15,7 @@
 import { Suspense } from "react";
 import { loadAnalyticsDataCached, loadPageAccess, loadProjectStatusTabAccess } from "../data/projectMap.server";
 import { PROJECT_MAP_PAGES } from "../data/projectMap.data";
-import { DEFAULT_ANALYTICS_RANGE, buildAnalyticsReports } from "../data/projectMap.analytics";
+import { analyticsFiltersFromAddress, buildAnalyticsReports } from "../data/projectMap.analytics";
 import ProjectMapAccessBlocked from "../components/ProjectMapAccessBlocked";
 import ProjectMapAnalyticsView from "./ProjectMapAnalyticsView";
 
@@ -37,15 +38,15 @@ function AnalyticsSkeleton() {
   );
 }
 
-export default function ProjectMapAnalyticsPage() {
+export default function ProjectMapAnalyticsPage({ searchParams }) {
   return (
     <Suspense fallback={<AnalyticsSkeleton />}>
-      <AnalyticsContent />
+      <AnalyticsContent searchParams={searchParams} />
     </Suspense>
   );
 }
 
-async function AnalyticsContent() {
+async function AnalyticsContent({ searchParams }) {
   // Every Project Map user sees every project and run (same rule as the other pages).
   const access = await loadProjectStatusTabAccess();
   if (access.reason !== "ok") {
@@ -65,7 +66,9 @@ async function AnalyticsContent() {
 
   // Opening the page always reads fresh data (and keeps it for quick filter changes).
   const data = await loadAnalyticsDataCached(access, { fresh: true });
-  const initialReports = buildAnalyticsReports(data, { rangeKey: DEFAULT_ANALYTICS_RANGE }, new Date().toISOString().slice(0, 10));
+  // The filters in the page address (a reloaded or shared link), else the defaults.
+  const filters = analyticsFiltersFromAddress((await searchParams) || {});
+  const initialReports = buildAnalyticsReports(data, filters, new Date().toISOString().slice(0, 10));
 
   return (
     <ProjectMapAnalyticsView

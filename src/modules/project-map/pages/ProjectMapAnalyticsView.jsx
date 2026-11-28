@@ -5,7 +5,13 @@ import { useRouter } from "next/navigation";
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { startNavbarLoader } from "@/shared/utils/navbar-loader";
 import { PROJECT_MAP_PAGES, formatDisplayDate } from "../data/projectMap.data";
-import { ANALYTICS_RANGES, DEFAULT_ANALYTICS_RANGE, NEUTRAL_COLOR, WEEKDAYS } from "../data/projectMap.analytics";
+import { ANALYTICS_RANGES, DEFAULT_ANALYTICS_RANGE, NEUTRAL_COLOR, WEEKDAYS, analyticsAddress } from "../data/projectMap.analytics";
+
+// Keeps the filters in the page address without reloading the page and
+// without adding a Back-button step, so a reload or shared link shows the same view.
+function showFiltersInAddress(filters) {
+  window.history.replaceState(null, "", `${PROJECT_MAP_PAGES.analytics}${analyticsAddress(filters)}`);
+}
 import { loadAnalyticsList, loadAnalyticsReports } from "../data/projectMap.analytics.actions";
 import AnalyticsDrillModal from "../components/analytics/AnalyticsDrillModal";
 import AnalyticsChartCard from "../components/analytics/AnalyticsChartCard";
@@ -82,6 +88,7 @@ export default function ProjectMapAnalyticsView({ initialReports, buildingCatego
     setRangeKey(filters.rangeKey);
     setState(filters.state);
     setCategoryId(filters.categoryId);
+    showFiltersInAddress(filters);
     setLoadError("");
     reportRequest.current += 1;
     const request = reportRequest.current;
@@ -104,6 +111,7 @@ export default function ProjectMapAnalyticsView({ initialReports, buildingCatego
         setRangeKey(reports.filters.rangeKey);
         setState(reports.filters.state);
         setCategoryId(reports.filters.categoryId);
+        showFiltersInAddress(reports.filters);
         setLoadError(err?.message || "Could not load the reports.");
       }
     } finally {

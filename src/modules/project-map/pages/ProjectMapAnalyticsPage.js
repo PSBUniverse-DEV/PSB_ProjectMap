@@ -1,17 +1,19 @@
 /**
  * Server Component — ProjectMapAnalyticsPage.js
  *
- * Runs on the server. Checks access like the other Project Map pages, loads
- * projects (with their status history) and runs, keeps only the fields the
- * reports use, then passes them to the View, which works out every report in
- * the browser so the filters change instantly.
+ * Runs on the server. Checks access like the other Project Map pages, then
+ * works out the reports for the default filters (last 12 months) and sends
+ * only those results to the View. Later filter changes and click-through
+ * lists come from the server actions in projectMap.analytics.actions.js, so
+ * the page stays small however many projects there are.
  *
  * RULES:
  *   - No useState, useEffect, or onClick here — those go in the View.
  *   - Do NOT wrap JSX in try/catch (causes a React lint error).
  */
-import { loadPageAccess, loadProjectMapSetup, loadProjectStatusTabAccess, loadRuns } from "../data/projectMap.server";
+import { loadAnalyticsData, loadPageAccess, loadProjectStatusTabAccess } from "../data/projectMap.server";
 import { PROJECT_MAP_PAGES } from "../data/projectMap.data";
+import { DEFAULT_ANALYTICS_RANGE, buildAnalyticsReports } from "../data/projectMap.analytics";
 import ProjectMapAccessBlocked from "../components/ProjectMapAccessBlocked";
 import ProjectMapAnalyticsView from "./ProjectMapAnalyticsView";
 
@@ -35,59 +37,13 @@ export default async function ProjectMapAnalyticsPage() {
     return <ProjectMapAccessBlocked access={{ ...access, reason: "no-page-access" }} page="Analytics" />;
   }
 
-  const [setup, runs] = await Promise.all([loadProjectMapSetup(), loadRuns(access)]);
-
-  // Only what the reports read is sent to the browser.
-  const projects = (setup.projects || []).map((project) => ({
-    id: project.id,
-    status_id: project.status_id,
-    state: project.state,
-    building_category_id: project.building_category_id,
-    dealer: project.dealer,
-    project_subtotal: project.project_subtotal,
-    order_received_at: project.order_received_at,
-    created_at: project.created_at,
-    client_name: project.client_name,
-    updated_at: project.updated_at,
-    welcome_call_status_id: project.welcome_call_status_id,
-    confirmation_status_id: project.confirmation_status_id,
-    permit_status_id: project.permit_status_id,
-    install_start: project.install_start,
-    proj_t_project_status_log: (project.proj_t_project_status_log || []).map((row) => ({
-      from_status_id: row.from_status_id,
-      to_status_id: row.to_status_id,
-      changed_at: row.changed_at,
-      duration_seconds: row.duration_seconds,
-      is_baseline: row.is_baseline,
-    })),
-  }));
-  const runRows = (runs || []).map((run) => ({
-    id: run.id,
-    run_date: run.run_date,
-    original_run_date: run.original_run_date,
-    status: run.status,
-    stops: (run.proj_t_run_projects || []).length,
-    estimated_subtotal: run.estimated_subtotal,
-    estimated_mileage: run.estimated_mileage,
-    estimated_duration: run.estimated_duration,
-    team_assigned: run.team_assigned,
-    run_code: run.run_code,
-    run_number: run.run_number,
-    run_name: run.run_name,
-  }));
+  const data = await loadAnalyticsData(access);
+  const initialReports = buildAnalyticsReports(data, { rangeKey: DEFAULT_ANALYTICS_RANGE }, new Date().toISOString().slice(0, 10));
 
   return (
     <ProjectMapAnalyticsView
-      projects={projects}
-      runs={runRows}
-      statuses={setup.projectStatuses || []}
-      runStatuses={setup.runStatuses || []}
-      buildingCategories={setup.buildingCategories || []}
-      permitStatuses={setup.permitStatuses || []}
-      welcomeCallStatuses={setup.welcomeCallStatuses || []}
-      confirmationStatuses={setup.confirmationStatuses || []}
-      settings={setup.settings || []}
-      todayKey={new Date().toISOString().slice(0, 10)}
+      initialReports={initialReports}
+      buildingCategories={data.buildingCategories}
       pageAccess={{ map: canOpenMap, runMaster: canOpenRunMaster, calendar: canOpenCalendar }}
     />
   );

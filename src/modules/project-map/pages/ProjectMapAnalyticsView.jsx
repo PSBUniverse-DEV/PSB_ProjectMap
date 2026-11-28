@@ -1,42 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { startNavbarLoader } from "@/shared/utils/navbar-loader";
-import { PROJECT_MAP_PAGES, formatDisplayDate, getStaleAfterDays, runStatusKeyByName } from "../data/projectMap.data";
-import {
-  ANALYTICS_RANGES,
-  DEFAULT_ANALYTICS_RANGE,
-  NEUTRAL_COLOR,
-  earliestDay,
-  filterProjects,
-  historySince,
-  keyNumbers,
-  ordersOverTime,
-  orderToInstall,
-  projectsByStatus,
-  rangeDates,
-  repairsOverTime,
-  runSchedule,
-  runsOverTime,
-  stateOptions,
-  timeInStatus,
-  topDealers,
-  averageValue,
-  careProgress,
-  categoriesReport,
-  openValueByStatus,
-  projectsByState,
-  staleProjects,
-  WEEKDAYS,
-  installHeatmap,
-  milesAndHours,
-  runSizeAndValue,
-  teamWorkload,
-  drillProjects,
-  drillRuns,
-} from "../data/projectMap.analytics";
+import { PROJECT_MAP_PAGES, formatDisplayDate } from "../data/projectMap.data";
+import { ANALYTICS_RANGES, DEFAULT_ANALYTICS_RANGE, NEUTRAL_COLOR, WEEKDAYS } from "../data/projectMap.analytics";
+import { loadAnalyticsList, loadAnalyticsReports } from "../data/projectMap.analytics.actions";
 import AnalyticsDrillModal from "../components/analytics/AnalyticsDrillModal";
 import AnalyticsChartCard from "../components/analytics/AnalyticsChartCard";
 import AnalyticsHeatmap from "../components/analytics/AnalyticsHeatmap";
@@ -82,68 +52,85 @@ const navButtonStyle = { border: "1px solid #e2e8f0", background: "#fff", border
 const selectStyle = { border: "1px solid #e2e8f0", borderRadius: "3px", padding: "3px 6px", fontSize: "12px", background: "#fff", color: "#1e293b" };
 const labelStyle = { display: "flex", alignItems: "center", gap: "4px" };
 
-export default function ProjectMapAnalyticsView({ projects = [], runs = [], statuses = [], runStatuses = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [], confirmationStatuses = [], settings = [], todayKey, pageAccess = null }) {
+// The filters as one text key, to remember the results per filter set.
+const filterKey = (filters) => `${filters.rangeKey}|${filters.state}|${filters.categoryId}`;
+
+export default function ProjectMapAnalyticsView({ initialReports, buildingCategories = [], pageAccess = null }) {
   const router = useRouter();
-  const [rangeKey, setRangeKey] = useState(DEFAULT_ANALYTICS_RANGE);
-  const [state, setState] = useState("");
-  const [categoryId, setCategoryId] = useState("");
+  const [rangeKey, setRangeKey] = useState(initialReports?.filters?.rangeKey || DEFAULT_ANALYTICS_RANGE);
+  const [state, setState] = useState(initialReports?.filters?.state || "");
+  const [categoryId, setCategoryId] = useState(initialReports?.filters?.categoryId || "");
   // Click-through: the list shown in the pop-up, or null.
   const [drill, setDrill] = useState(null);
+  // Reports for the current filters. The server works them out and only the
+  // results come to the browser. Results already fetched are remembered per
+  // filter set, so going back to an earlier filter is instant.
+  const [reports, setReports] = useState(initialReports);
+  const [updating, setUpdating] = useState(false);
+  const [loadError, setLoadError] = useState("");
+  const savedReports = useRef(new Map(initialReports ? [[filterKey(initialReports.filters), initialReports]] : []));
+  const reportRequest = useRef(0);
+  const listRequest = useRef(0);
   const canOpenPage = (key) => !pageAccess || pageAccess[key] === true;
   const openPage = (path) => { startNavbarLoader(); router.push(path); };
 
-  const range = useMemo(() => rangeDates(rangeKey, todayKey, earliestDay(projects, runs)), [rangeKey, todayKey, projects, runs]);
-  const shown = useMemo(() => filterProjects(projects, { state, categoryId }), [projects, state, categoryId]);
-  const states = useMemo(() => stateOptions(projects), [projects]);
-  const categories = useMemo(() => buildingCategories.filter((category) => category?.is_active !== false), [buildingCategories]);
-  const historyStart = useMemo(() => historySince(projects), [projects]);
+  // Changes one or more filters and shows the reports for them. Only the
+  // newest request may update the page.
+  const applyFilters = async (changes) => {
+    const filters = { rangeKey, state, categoryId, ...changes };
+    setRangeKey(filters.rangeKey);
+    setState(filters.state);
+    setCategoryId(filters.categoryId);
+    setLoadError("");
+    reportRequest.current += 1;
+    const request = reportRequest.current;
+    const key = filterKey(filters);
+    const saved = savedReports.current.get(key);
+    if (saved) {
+      setUpdating(false);
+      setReports(saved);
+      return;
+    }
+    setUpdating(true);
+    try {
+      const next = await loadAnalyticsReports(filters);
+      savedReports.current.set(key, next);
+      if (request === reportRequest.current) setReports(next);
+    } catch (err) {
+      if (request === reportRequest.current) setLoadError(err?.message || "Could not load the reports.");
+    } finally {
+      if (request === reportRequest.current) setUpdating(false);
+    }
+  };
 
-  // Cancelled runs (run status system key "cancelled", as on the Run Calendar)
-  // are left out of the Runs tile and the kept-first-date chart.
-  const activeRuns = useMemo(
-    () => runs.filter((run) => runStatusKeyByName(runStatuses, run.status) !== "cancelled"),
-    [runs, runStatuses],
-  );
-  const numbers = useMemo(() => keyNumbers({ projects: shown, runs: activeRuns, statuses, range }), [shown, activeRuns, statuses, range]);
-  const byStatus = useMemo(() => projectsByStatus({ projects: shown, statuses }), [shown, statuses]);
-  const orders = useMemo(() => ordersOverTime({ projects: shown, range }), [shown, range]);
-  const dealers = useMemo(() => topDealers({ projects: shown, range }), [shown, range]);
-  const statusTimes = useMemo(() => timeInStatus({ projects: shown, statuses, range }), [shown, statuses, range]);
-  const installSpeed = useMemo(() => orderToInstall({ projects: shown, statuses, range }), [shown, statuses, range]);
-  const runsByPeriod = useMemo(() => runsOverTime({ runs, runStatuses, range }), [runs, runStatuses, range]);
-  const schedule = useMemo(() => runSchedule({ runs: activeRuns, range }), [activeRuns, range]);
-  const repairs = useMemo(() => repairsOverTime({ projects: shown, statuses, range }), [shown, statuses, range]);
+  const {
+    range, states, historyStart, staleAfterDays, numbers, byStatus, orders, dealers, statusTimes, installSpeed,
+    runsByPeriod, schedule, repairs, openValue, categoryRows, valueTrend, stateRows, stale, care, runSize, travel, teams, installDays,
+  } = reports;
+  const categories = useMemo(() => buildingCategories.filter((category) => category?.is_active !== false), [buildingCategories]);
   const legendStyle = { fontSize: 11, color: "#334155" };
   const hasAny = (rows, keys) => rows.some((row) => keys.some((key) => Number(row[key]) > 0));
-  const openValue = useMemo(() => openValueByStatus({ projects: shown, statuses }), [shown, statuses]);
-  const categoryRows = useMemo(() => categoriesReport({ projects: shown, buildingCategories, range }), [shown, buildingCategories, range]);
-  const valueTrend = useMemo(() => averageValue({ projects: shown, range }), [shown, range]);
-  const stateRows = useMemo(() => projectsByState({ projects: shown, range }), [shown, range]);
-  // Same day limit as the "not updated" bell (Setup → General Settings).
-  const staleAfterDays = useMemo(() => getStaleAfterDays(settings), [settings]);
-  const stale = useMemo(
-    () => staleProjects({ projects: shown, statuses, staleAfterDays, now: new Date(`${todayKey}T23:59:59Z`) }),
-    [shown, statuses, staleAfterDays, todayKey],
-  );
-  const care = useMemo(
-    () => careProgress({ projects: shown, statuses, welcomeCallStatuses, confirmationStatuses, permitStatuses }),
-    [shown, statuses, welcomeCallStatuses, confirmationStatuses, permitStatuses],
-  );
   const careRows = useMemo(() => care.flatMap((group) => group.rows), [care]);
-  const runSize = useMemo(() => runSizeAndValue({ runs: activeRuns, range }), [activeRuns, range]);
-  const travel = useMemo(() => milesAndHours({ runs: activeRuns, range }), [activeRuns, range]);
-  const teams = useMemo(() => teamWorkload({ runs: activeRuns, range }), [activeRuns, range]);
-  const installDays = useMemo(() => installHeatmap({ projects: shown, range }), [shown, range]);
   const installWeeks = useMemo(
     () => installDays.weeks.map((week) => ({ key: week.key, label: week.label, total: week.total, ...Object.fromEntries(week.counts.map((count, index) => [`d${index}`, count])) })),
     [installDays],
   );
   const runPeriod = runSize.weekly ? "week" : "month";
 
-  // Click-through: the projects behind a clicked bar, cell or table row.
-  const openDrill = ({ title, ...pick }) => {
-    setDrill({ title, ...drillProjects({ projects: shown, statuses, range, pick, staleAfterDays, now: new Date(`${todayKey}T23:59:59Z`) }) });
+  // Click-through: the server lists what is behind a clicked bar, cell or table
+  // row, for the current filters. The pop-up opens at once and fills in.
+  const openList = async (click, title) => {
+    listRequest.current += 1;
+    const request = listRequest.current;
+    setDrill({ title, kind: click.kind, rows: [], loading: true });
+    try {
+      const result = await loadAnalyticsList(click, { rangeKey, state, categoryId });
+      if (request === listRequest.current) setDrill({ title, ...result });
+    } catch (err) {
+      if (request === listRequest.current) setDrill({ title, kind: click.kind, rows: [], error: err?.message || "Could not load the list." });
+    }
   };
+  const openDrill = ({ title, ...pick }) => openList({ kind: "projects", pick }, title);
   // Recharts hands a bar's click its row as `payload`.
   const pickBar = (entry, toPick) => {
     if (entry?.payload) openDrill(toPick(entry.payload));
@@ -161,11 +148,12 @@ export default function ProjectMapAnalyticsView({ projects = [], runs = [], stat
     if (canOpenPage("map")) window.open(`${PROJECT_MAP_PAGES.map}?project=${encodeURIComponent(row.key)}`, "_blank", "noopener");
   };
 
-  // Click-through for run charts. `list` is the runs the chart counted:
-  // all runs for "Runs per week/month", runs without cancelled ones elsewhere.
-  const openRunDrill = ({ title, list, ...pick }) => {
-    setDrill({ title, ...drillRuns({ runs: list, runStatuses, range, pick }) });
-  };
+  // Click-through for run charts. `list` tells the server which runs the chart
+  // counted: "all" for "Runs per week/month", "active" (cancelled runs left
+  // out) for the others.
+  const runs = "all";
+  const activeRuns = "active";
+  const openRunDrill = ({ title, list, ...pick }) => openList({ kind: "runs", runs: list, pick }, title);
   const runPeriodLabel = (row) => `${runSize.weekly ? "week of " : ""}${row.label}`;
   const pickRunPeriod = (list) => (row) => ({ report: "period", key: row.key, list, title: `Runs, ${runPeriodLabel(row)}` });
   const pickRunStatus = (series) => (row) => ({
@@ -211,34 +199,39 @@ export default function ProjectMapAnalyticsView({ projects = [], runs = [], stat
       <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", background: "#fff", border: "1px solid #e2e8f0", borderRadius: "4px", padding: "6px 8px", marginBottom: "10px", fontSize: "12px", color: "#334155" }}>
         <label style={labelStyle}>
           Period
-          <select value={rangeKey} onChange={(event) => setRangeKey(event.target.value)} style={selectStyle}>
+          <select value={rangeKey} onChange={(event) => applyFilters({ rangeKey: event.target.value })} style={selectStyle}>
             {ANALYTICS_RANGES.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
           </select>
         </label>
         <label style={labelStyle}>
           State
-          <select value={state} onChange={(event) => setState(event.target.value)} style={selectStyle}>
+          <select value={state} onChange={(event) => applyFilters({ state: event.target.value })} style={selectStyle}>
             <option value="">All states</option>
             {states.map((item) => <option key={item} value={item}>{item}</option>)}
           </select>
         </label>
         <label style={labelStyle}>
           Building category
-          <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)} style={selectStyle}>
+          <select value={categoryId} onChange={(event) => applyFilters({ categoryId: event.target.value })} style={selectStyle}>
             <option value="">All categories</option>
             {categories.map((item) => <option key={item.id} value={String(item.id)}>{item.building_category_name}</option>)}
           </select>
         </label>
         {filtersChanged && (
-          <button type="button" style={navButtonStyle} onClick={() => { setRangeKey(DEFAULT_ANALYTICS_RANGE); setState(""); setCategoryId(""); }}>Reset</button>
+          <button type="button" style={navButtonStyle} onClick={() => applyFilters({ rangeKey: DEFAULT_ANALYTICS_RANGE, state: "", categoryId: "" })}>Reset</button>
         )}
-        <span style={{ marginLeft: "auto", fontSize: "11px", color: "#64748b" }}>
-          {formatDisplayDate(range.from)} – {formatDisplayDate(range.to)}
+        <span style={{ marginLeft: "auto", fontSize: "11px", color: "#64748b" }} aria-live="polite">
+          {updating ? "Updating… " : ""}{formatDisplayDate(range.from)} – {formatDisplayDate(range.to)}
         </span>
       </div>
+      {loadError && (
+        <div role="alert" style={{ marginBottom: "10px", padding: "6px 8px", border: "1px solid #fecaca", background: "#fef2f2", color: "#991b1b", borderRadius: "4px", fontSize: "12px" }}>
+          Could not update the reports: {loadError}. The numbers below are from the last successful update.
+        </div>
+      )}
 
       {/* Key numbers */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: "8px" }}>
+      <div aria-busy={updating} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: "8px", opacity: updating ? 0.55 : 1, transition: "opacity 0.15s" }}>
         <StatTile label="Open projects" value={number(numbers.openProjects)} note="Right now: status not finished" />
         <StatTile label="Open project value" value={money(numbers.openValue)} note="Subtotal of open projects, repairs left out" />
         <StatTile label="New orders" value={number(numbers.newOrders.now)} note={changeNote(numbers.newOrders)} />
@@ -254,7 +247,7 @@ export default function ProjectMapAnalyticsView({ projects = [], runs = [], stat
       </p>
 
       {/* Reports */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 420px), 1fr))", gap: "10px" }}>
+      <div aria-busy={updating} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 420px), 1fr))", gap: "10px", opacity: updating ? 0.55 : 1, transition: "opacity 0.15s" }}>
         <AnalyticsChartCard
           title="Projects by status"
           onRowClick={(row) => openDrill(pickStatus(row))}

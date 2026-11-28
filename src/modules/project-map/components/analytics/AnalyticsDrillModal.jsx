@@ -19,6 +19,8 @@ export default function AnalyticsDrillModal({ drill, onClose, canOpenMap = true 
   const rows = drill?.rows || [];
   const isRuns = drill?.kind === "runs";
   const total = rows.reduce((sum, row) => sum + (Number(row.value) || 0), 0);
+  // The list is fetched from the server after the pop-up opens.
+  const waiting = Boolean(drill?.loading || drill?.error);
 
   const columns = isRuns
     ? [
@@ -54,13 +56,15 @@ export default function AnalyticsDrillModal({ drill, onClose, canOpenMap = true 
 
   return (
     <Modal show={Boolean(drill)} onHide={onClose} title={drill?.title || ""} size="xl">
-      <p style={{ margin: "0 0 8px", fontSize: "12px", color: "#64748b" }}>
+      <p style={{ margin: "0 0 8px", fontSize: "12px", color: "#64748b", visibility: waiting ? "hidden" : "visible" }}>
         {number(rows.length)} {isRuns ? (rows.length === 1 ? "run" : "runs") : rows.length === 1 ? "project" : "projects"}
         {" · "}
         {money(total)} {isRuns ? "planned value" : "total value"}
       </p>
       {rows.length === 0 ? (
-        <p style={{ margin: 0, padding: "16px 0", textAlign: "center", fontSize: "12px", color: "#94a3b8" }}>Nothing to list.</p>
+        <p style={{ margin: 0, padding: "16px 0", textAlign: "center", fontSize: "12px", color: drill?.error ? "#991b1b" : "#94a3b8" }}>
+          {drill?.loading ? "Loading…" : drill?.error ? `Could not load the list: ${drill.error}` : "Nothing to list."}
+        </p>
       ) : (
         <div style={{ maxHeight: "60vh", overflow: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>

@@ -16,7 +16,8 @@ function stepFor(value, max) {
  * names its day and count on hover and to screen readers; numbers are printed
  * in the cells when the weeks are few enough to fit them.
  */
-export default function AnalyticsHeatmap({ weeks = [], max = 0, unit = "installs" }) {
+// onPick(dayKey): optional; days with a count become clickable (mouse, Enter or Space).
+export default function AnalyticsHeatmap({ weeks = [], max = 0, unit = "installs", onPick = null }) {
   const showNumbers = weeks.length <= 16;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "6px", height: "100%" }}>
@@ -36,8 +37,16 @@ export default function AnalyticsHeatmap({ weeks = [], max = 0, unit = "installs
                 <div
                   key={week.key}
                   role="gridcell"
-                  title={label}
+                  title={onPick && value > 0 ? `${label}. Click to list them.` : label}
                   aria-label={label}
+                  tabIndex={onPick && value > 0 ? 0 : undefined}
+                  onClick={onPick && value > 0 ? () => onPick(week.days[dayIndex]) : undefined}
+                  onKeyDown={onPick && value > 0 ? (event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      onPick(week.days[dayIndex]);
+                    }
+                  } : undefined}
                   style={{
                     background: step < 0 ? EMPTY : STEPS[step],
                     borderRadius: "2px",
@@ -47,6 +56,7 @@ export default function AnalyticsHeatmap({ weeks = [], max = 0, unit = "installs
                     fontSize: "10px",
                     color: step >= 3 ? "#fff" : "#0f172a",
                     fontVariantNumeric: "tabular-nums",
+                    cursor: onPick && value > 0 ? "pointer" : "default",
                   }}
                 >
                   {showNumbers && value > 0 ? value : ""}

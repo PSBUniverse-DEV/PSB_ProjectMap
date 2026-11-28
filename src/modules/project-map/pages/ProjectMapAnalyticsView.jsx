@@ -34,7 +34,9 @@ import {
   milesAndHours,
   runSizeAndValue,
   teamWorkload,
+  drillProjects,
 } from "../data/projectMap.analytics";
+import AnalyticsDrillModal from "../components/analytics/AnalyticsDrillModal";
 import AnalyticsChartCard from "../components/analytics/AnalyticsChartCard";
 import AnalyticsHeatmap from "../components/analytics/AnalyticsHeatmap";
 
@@ -84,6 +86,8 @@ export default function ProjectMapAnalyticsView({ projects = [], runs = [], stat
   const [rangeKey, setRangeKey] = useState(DEFAULT_ANALYTICS_RANGE);
   const [state, setState] = useState("");
   const [categoryId, setCategoryId] = useState("");
+  // Click-through: the list shown in the pop-up, or null.
+  const [drill, setDrill] = useState(null);
   const canOpenPage = (key) => !pageAccess || pageAccess[key] === true;
   const openPage = (path) => { startNavbarLoader(); router.push(path); };
 
@@ -134,6 +138,27 @@ export default function ProjectMapAnalyticsView({ projects = [], runs = [], stat
     [installDays],
   );
   const runPeriod = runSize.weekly ? "week" : "month";
+
+  // Click-through: the projects behind a clicked bar, cell or table row.
+  const openDrill = ({ title, ...pick }) => {
+    setDrill({ title, ...drillProjects({ projects: shown, statuses, range, pick, staleAfterDays, now: new Date(`${todayKey}T23:59:59Z`) }) });
+  };
+  // Recharts hands a bar's click its row as `payload`.
+  const pickBar = (entry, toPick) => {
+    if (entry?.payload) openDrill(toPick(entry.payload));
+  };
+  const pickStatus = (row) => ({ report: "status", key: row.statusId, title: `Projects in ${row.name}` });
+  const pickOpenStatus = (row) => ({ report: "openStatus", key: row.statusId, title: `Open projects in ${row.name}` });
+  const pickOrders = (row) => ({ report: "orders", key: row.key, title: `Orders ${orders.weekly ? "in the week of" : "in"} ${row.label}` });
+  const pickDealer = (row) => ({ report: "dealer", key: row.key, title: `Orders: ${row.name}` });
+  const pickCategory = (row) => ({ report: "category", key: row.key, title: `Orders: ${row.name}` });
+  const pickState = (row) => ({ report: "state", key: row.key, title: `Orders: ${row.name}` });
+  const pickStale = (row) => ({ report: "stale", key: row.statusId, title: `Not updated for ${staleAfterDays}+ days: ${row.name}` });
+  const pickCare = (row) => ({ report: "care", key: row.key, title: row.label });
+  // "Projects not updated" table rows are projects: open one on the map (new tab).
+  const openOnMap = (row) => {
+    if (canOpenPage("map")) window.open(`${PROJECT_MAP_PAGES.map}?project=${encodeURIComponent(row.key)}`, "_blank", "noopener");
+  };
   const sectionTitleStyle = { gridColumn: "1 / -1", margin: "8px 0 0", fontSize: "13px", fontWeight: 600, color: "#475569" };
   const period = orders.weekly ? "week" : "month";
   const filtersChanged = state || categoryId || rangeKey !== DEFAULT_ANALYTICS_RANGE;
@@ -202,12 +227,14 @@ export default function ProjectMapAnalyticsView({ projects = [], runs = [], stat
         Orders count by Order Received, or by the day the project was entered when that is blank.
         Installed counts projects that reached a finished status{historyStart ? `; status history starts ${formatDisplayDate(historyStart)}` : ""}.
         Runs leave out cancelled runs (the State and Building category filters apply to projects only).
+        Click a bar, or a row in a Table, to list what is behind it.
       </p>
 
       {/* Reports */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 420px), 1fr))", gap: "10px" }}>
         <AnalyticsChartCard
           title="Projects by status"
+          onRowClick={(row) => openDrill(pickStatus(row))}
           note="Right now, in Setup order. Hover a bar for its value."
           rows={byStatus}
           height={Math.max(220, byStatus.length * 26 + 30)}
@@ -227,7 +254,7 @@ export default function ProjectMapAnalyticsView({ projects = [], runs = [], stat
                 contentStyle={TOOLTIP_STYLE}
                 formatter={(value, _name, item) => [`${number(value)} projects · ${money(item?.payload?.value)}`, "Projects"]}
               />
-              <Bar dataKey="count" radius={[0, 4, 4, 0]} maxBarSize={18} isAnimationActive={false}>
+              <Bar dataKey="count" radius={[0, 4, 4, 0]} maxBarSize={18} isAnimationActive={false} cursor="pointer" onClick={(entry) => pickBar(entry, pickStatus)}>
                 {byStatus.map((row) => <Cell key={row.statusId || "none"} fill={row.color} />)}
               </Bar>
             </BarChart>
@@ -236,6 +263,7 @@ export default function ProjectMapAnalyticsView({ projects = [], runs = [], stat
 
         <AnalyticsChartCard
           title={`Orders received per ${period}`}
+          onRowClick={(row) => openDrill(pickOrders(row))}
           note="How many orders came in."
           rows={orders.rows.filter((row) => row.orders > 0).length ? orders.rows : []}
           columns={[
@@ -250,13 +278,14 @@ export default function ProjectMapAnalyticsView({ projects = [], runs = [], stat
               <XAxis dataKey="label" tick={TICK} axisLine={false} tickLine={false} />
               <YAxis allowDecimals={false} tick={TICK} axisLine={false} tickLine={false} width={36} />
               <Tooltip cursor={CURSOR} contentStyle={TOOLTIP_STYLE} formatter={(value) => [number(value), "Orders"]} />
-              <Bar dataKey="orders" fill={SERIES[0]} radius={[4, 4, 0, 0]} maxBarSize={28} isAnimationActive={false} />
+              <Bar dataKey="orders" fill={SERIES[0]} radius={[4, 4, 0, 0]} maxBarSize={28} isAnimationActive={false} cursor="pointer" onClick={(entry) => pickBar(entry, pickOrders)} />
             </BarChart>
           </ResponsiveContainer>
         </AnalyticsChartCard>
 
         <AnalyticsChartCard
           title={`Order value per ${period}`}
+          onRowClick={(row) => openDrill(pickOrders(row))}
           note="Total subtotal of the orders that came in."
           rows={orders.rows.filter((row) => row.orders > 0).length ? orders.rows : []}
           columns={[
@@ -271,13 +300,14 @@ export default function ProjectMapAnalyticsView({ projects = [], runs = [], stat
               <XAxis dataKey="label" tick={TICK} axisLine={false} tickLine={false} />
               <YAxis tickFormatter={compactMoney} tick={TICK} axisLine={false} tickLine={false} width={52} />
               <Tooltip cursor={CURSOR} contentStyle={TOOLTIP_STYLE} formatter={(value) => [money(value), "Order value"]} />
-              <Bar dataKey="value" fill={SERIES[0]} radius={[4, 4, 0, 0]} maxBarSize={28} isAnimationActive={false} />
+              <Bar dataKey="value" fill={SERIES[0]} radius={[4, 4, 0, 0]} maxBarSize={28} isAnimationActive={false} cursor="pointer" onClick={(entry) => pickBar(entry, pickOrders)} />
             </BarChart>
           </ResponsiveContainer>
         </AnalyticsChartCard>
 
         <AnalyticsChartCard
           title="Top dealers"
+          onRowClick={(row) => openDrill(pickDealer(row))}
           note="By value of orders in the period (the project's Dealer box)."
           rows={dealers}
           height={Math.max(220, dealers.length * 26 + 30)}
@@ -297,7 +327,7 @@ export default function ProjectMapAnalyticsView({ projects = [], runs = [], stat
                 contentStyle={TOOLTIP_STYLE}
                 formatter={(value, _name, item) => [`${money(value)} · ${number(item?.payload?.count)} orders`, "Value"]}
               />
-              <Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={18} isAnimationActive={false}>
+              <Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={18} isAnimationActive={false} cursor="pointer" onClick={(entry) => pickBar(entry, pickDealer)}>
                 {dealers.map((row) => <Cell key={row.name} fill={row.other ? NEUTRAL_COLOR : SERIES[0]} />)}
               </Bar>
             </BarChart>
@@ -453,6 +483,7 @@ export default function ProjectMapAnalyticsView({ projects = [], runs = [], stat
 
         <AnalyticsChartCard
           title="Open value by status"
+          onRowClick={(row) => openDrill(pickOpenStatus(row))}
           note="Total subtotal of open projects in each status, right now."
           rows={openValue}
           height={Math.max(200, openValue.length * 26 + 30)}
@@ -468,7 +499,7 @@ export default function ProjectMapAnalyticsView({ projects = [], runs = [], stat
               <XAxis type="number" tickFormatter={compactMoney} tick={TICK} axisLine={false} tickLine={false} />
               <YAxis type="category" dataKey="name" width={160} tick={TICK} axisLine={false} tickLine={false} />
               <Tooltip cursor={CURSOR} contentStyle={TOOLTIP_STYLE} formatter={(value, _name, item) => [`${money(value)} · ${number(item?.payload?.count)} projects`, "Open value"]} />
-              <Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={18} isAnimationActive={false}>
+              <Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={18} isAnimationActive={false} cursor="pointer" onClick={(entry) => pickBar(entry, pickOpenStatus)}>
                 {openValue.map((row) => <Cell key={row.statusId || "none"} fill={row.color} />)}
               </Bar>
             </BarChart>
@@ -477,6 +508,7 @@ export default function ProjectMapAnalyticsView({ projects = [], runs = [], stat
 
         <AnalyticsChartCard
           title="Building categories"
+          onRowClick={(row) => openDrill(pickCategory(row))}
           note="Orders in the period by building category, highest value first."
           rows={categoryRows}
           height={Math.max(200, categoryRows.length * 26 + 30)}
@@ -492,7 +524,7 @@ export default function ProjectMapAnalyticsView({ projects = [], runs = [], stat
               <XAxis type="number" tickFormatter={compactMoney} tick={TICK} axisLine={false} tickLine={false} />
               <YAxis type="category" dataKey="name" width={160} tick={TICK} axisLine={false} tickLine={false} />
               <Tooltip cursor={CURSOR} contentStyle={TOOLTIP_STYLE} formatter={(value, _name, item) => [`${money(value)} · ${number(item?.payload?.count)} orders`, "Value"]} />
-              <Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={18} isAnimationActive={false}>
+              <Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={18} isAnimationActive={false} cursor="pointer" onClick={(entry) => pickBar(entry, pickCategory)}>
                 {categoryRows.map((row) => <Cell key={row.key} fill={row.other ? NEUTRAL_COLOR : SERIES[0]} />)}
               </Bar>
             </BarChart>
@@ -525,6 +557,7 @@ export default function ProjectMapAnalyticsView({ projects = [], runs = [], stat
 
         <AnalyticsChartCard
           title="Orders by state"
+          onRowClick={(row) => openDrill(pickState(row))}
           note="Orders in the period per state, most orders first."
           rows={stateRows}
           height={Math.max(200, stateRows.length * 26 + 30)}
@@ -540,7 +573,7 @@ export default function ProjectMapAnalyticsView({ projects = [], runs = [], stat
               <XAxis type="number" allowDecimals={false} tick={TICK} axisLine={false} tickLine={false} />
               <YAxis type="category" dataKey="name" width={160} tick={TICK} axisLine={false} tickLine={false} />
               <Tooltip cursor={CURSOR} contentStyle={TOOLTIP_STYLE} formatter={(value, _name, item) => [`${number(value)} orders · ${money(item?.payload?.value)}`, "Orders"]} />
-              <Bar dataKey="count" radius={[0, 4, 4, 0]} maxBarSize={18} isAnimationActive={false}>
+              <Bar dataKey="count" radius={[0, 4, 4, 0]} maxBarSize={18} isAnimationActive={false} cursor="pointer" onClick={(entry) => pickBar(entry, pickState)}>
                 {stateRows.map((row) => <Cell key={row.key} fill={row.other ? NEUTRAL_COLOR : SERIES[0]} />)}
               </Bar>
             </BarChart>
@@ -549,6 +582,7 @@ export default function ProjectMapAnalyticsView({ projects = [], runs = [], stat
 
         <AnalyticsChartCard
           title="Projects not updated"
+          onRowClick={canOpenPage("map") ? openOnMap : null}
           note={`${number(stale.rows.length)} open projects not updated for ${staleAfterDays} days or more (same rule as the bell), per status. Table lists them, oldest first.`}
           rows={stale.rows}
           height={Math.max(200, stale.byStatus.length * 26 + 30)}
@@ -566,7 +600,7 @@ export default function ProjectMapAnalyticsView({ projects = [], runs = [], stat
               <XAxis type="number" allowDecimals={false} tick={TICK} axisLine={false} tickLine={false} />
               <YAxis type="category" dataKey="name" width={160} tick={TICK} axisLine={false} tickLine={false} />
               <Tooltip cursor={CURSOR} contentStyle={TOOLTIP_STYLE} formatter={(value) => [`${number(value)} projects`, "Not updated"]} />
-              <Bar dataKey="count" radius={[0, 4, 4, 0]} maxBarSize={18} isAnimationActive={false}>
+              <Bar dataKey="count" radius={[0, 4, 4, 0]} maxBarSize={18} isAnimationActive={false} cursor="pointer" onClick={(entry) => pickBar(entry, pickStale)}>
                 {stale.byStatus.map((row) => <Cell key={row.statusId || "none"} fill={row.color} />)}
               </Bar>
             </BarChart>
@@ -575,6 +609,7 @@ export default function ProjectMapAnalyticsView({ projects = [], runs = [], stat
 
         <AnalyticsChartCard
           title="Customer care progress"
+          onRowClick={(row) => openDrill(pickCare(row))}
           note="Open projects per welcome call, confirmation and permit status, right now."
           rows={careRows}
           height={Math.max(220, careRows.length * 24 + 30)}
@@ -589,7 +624,7 @@ export default function ProjectMapAnalyticsView({ projects = [], runs = [], stat
               <XAxis type="number" allowDecimals={false} tick={TICK} axisLine={false} tickLine={false} />
               <YAxis type="category" dataKey="label" width={210} tick={TICK} axisLine={false} tickLine={false} />
               <Tooltip cursor={CURSOR} contentStyle={TOOLTIP_STYLE} formatter={(value) => [`${number(value)} open projects`, "Projects"]} />
-              <Bar dataKey="count" radius={[0, 4, 4, 0]} maxBarSize={16} isAnimationActive={false}>
+              <Bar dataKey="count" radius={[0, 4, 4, 0]} maxBarSize={16} isAnimationActive={false} cursor="pointer" onClick={(entry) => pickBar(entry, pickCare)}>
                 {careRows.map((row) => <Cell key={row.key} fill={row.other ? NEUTRAL_COLOR : SERIES[0]} />)}
               </Bar>
             </BarChart>
@@ -726,9 +761,16 @@ export default function ProjectMapAnalyticsView({ projects = [], runs = [], stat
             { key: "total", label: "Total", align: "right", format: number },
           ]}
         >
-          <AnalyticsHeatmap weeks={installDays.weeks} max={installDays.max} unit="installs" />
+          <AnalyticsHeatmap
+            weeks={installDays.weeks}
+            max={installDays.max}
+            unit="installs"
+            onPick={(day) => openDrill({ report: "installDay", key: day, title: `Installs on ${formatDisplayDate(day)}` })}
+          />
         </AnalyticsChartCard>
       </div>
+
+      <AnalyticsDrillModal drill={drill} onClose={() => setDrill(null)} canOpenMap={canOpenPage("map")} />
     </div>
   );
 }

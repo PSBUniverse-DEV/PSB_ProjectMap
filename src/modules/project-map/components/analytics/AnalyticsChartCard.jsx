@@ -8,7 +8,8 @@ import { useState } from "react";
  * be read without hovering.
  * columns: [{ key, label, align?, format?(value, row) }]; rows: the table rows.
  */
-export default function AnalyticsChartCard({ title, note, columns = [], rows = [], height = 260, empty = "No data for these filters.", children }) {
+// onRowClick(row): optional; table rows become clickable (mouse, Enter or Space).
+export default function AnalyticsChartCard({ title, note, columns = [], rows = [], height = 260, empty = "No data for these filters.", onRowClick = null, children }) {
   const [showTable, setShowTable] = useState(false);
   const hasRows = rows.length > 0;
 
@@ -47,7 +48,18 @@ export default function AnalyticsChartCard({ title, note, columns = [], rows = [
             </thead>
             <tbody>
               {rows.map((row, index) => (
-                <tr key={row.key || row.statusId || row.name || index}>
+                <tr
+                  key={row.key || row.statusId || row.name || index}
+                  onClick={onRowClick ? () => onRowClick(row) : undefined}
+                  onKeyDown={onRowClick ? (event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      onRowClick(row);
+                    }
+                  } : undefined}
+                  tabIndex={onRowClick ? 0 : undefined}
+                  style={onRowClick ? { cursor: "pointer" } : undefined}
+                >
                   {columns.map((column) => (
                     <td key={column.key} style={{ textAlign: column.align || "left", padding: "4px 6px", borderBottom: "1px solid #f1f5f9", color: "#1e293b", fontVariantNumeric: "tabular-nums" }}>
                       {column.format ? column.format(row[column.key], row) : row[column.key]}

@@ -673,6 +673,21 @@ export default function ProjectMapView({ projects: initialProjects = [], statuse
     setSelectedProjectId(projectId);
   }, [filteredProjects]);
 
+  // Opened with ?project=<id> (e.g. "Open on map" on the Analytics page):
+  // select that project once it is in the list, the same way the bell does.
+  const openedFromLinkRef = useRef(false);
+  useEffect(() => {
+    if (openedFromLinkRef.current) return;
+    const id = Number(new URLSearchParams(window.location.search).get("project"));
+    if (!Number.isInteger(id) || id <= 0) {
+      openedFromLinkRef.current = true;
+      return;
+    }
+    if (!projects.some((project) => project.id === id)) return;
+    openedFromLinkRef.current = true;
+    handleOpenStaleProject(id);
+  }, [projects, handleOpenStaleProject]);
+
   const handleCloseDrawer = () => { setSelectedProjectId(null); };
 
   const handleEdit = () => {

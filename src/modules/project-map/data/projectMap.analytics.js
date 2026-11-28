@@ -220,7 +220,7 @@ export function topDealers({ projects = [], range, limit = 10 }) {
     if (!inRange(orderDayOf(project), range)) continue;
     const name = String(project.dealer || "").trim().replace(/\s+/g, " ");
     const key = name.toLowerCase();
-    const group = groups.get(key) || { name: name || "(No dealer)", count: 0, value: 0, other: false };
+    const group = groups.get(key) || { key: key || "none", name: name || "(No dealer)", count: 0, value: 0, other: false };
     group.count += 1;
     group.value += amountOf(project);
     groups.set(key, group);
@@ -230,6 +230,7 @@ export function topDealers({ projects = [], range, limit = 10 }) {
   const rest = sorted.slice(limit);
   if (rest.length > 0) {
     top.push({
+      key: "other",
       name: `All other dealers (${rest.length})`,
       count: rest.reduce((sum, group) => sum + group.count, 0),
       value: rest.reduce((sum, group) => sum + group.value, 0),
@@ -606,7 +607,14 @@ export function installHeatmap({ projects = [], range }) {
   const end = fromKey(range.to);
   const cursor = fromKey(bucketOf(range.from, true));
   while (cursor <= end) {
-    weeks.push({ key: toKey(cursor), label: `${MONTHS[cursor.getUTCMonth()]} ${cursor.getUTCDate()}`, counts: [0, 0, 0, 0, 0, 0, 0], total: 0 });
+    weeks.push({
+      key: toKey(cursor),
+      label: `${MONTHS[cursor.getUTCMonth()]} ${cursor.getUTCDate()}`,
+      // Day key of each weekday (Mon..Sun), for the click-through list.
+      days: [0, 1, 2, 3, 4, 5, 6].map((offset) => toKey(new Date(cursor.getTime() + offset * DAY_MS))),
+      counts: [0, 0, 0, 0, 0, 0, 0],
+      total: 0,
+    });
     cursor.setUTCDate(cursor.getUTCDate() + 7);
   }
   const byKey = new Map(weeks.map((week) => [week.key, week]));
@@ -624,4 +632,106 @@ export function installHeatmap({ projects = [], range }) {
     max = Math.max(max, week.counts[weekday]);
   }
   return { weeks, max, total };
+}
+
+// ─── Click-through lists ─────────────────────────────────────────────────────
+
+const noneKey = (key) => key || "none";
+
+/** A project row for the click-through list. */
+function projectRow(project, statusOf, dateOf) {
+  return {
+    key: String(project.id),
+    id: project.id,
+    client: project.client_name || "Untitled",
+    status: statusOf.get(String(project.status_id))?.status_name || "No status",
+    state: String(project.state || "").trim(),
+    dealer: String(project.dealer || "").trim(),
+    value: amountOf(project),
+    date: dateOf(project),
+  };
+}
+
+/**
+ * The projects behind one clicked bar, cell or table row, with the same
+ * filters and period as the chart. pick = { report, key }: key is the clicked
+ * row's key ("none" = the no-value row, "other" = the "All other …" row).
+ * Returns { kind: "projects", rows, dateLabel }.
+ */
+export function drillProjects({ projects = [], statuses = [], range, pick, staleAfterDays, now }) {
+  const statusOf = new Map(statuses.map((status) => [String(status.status_id), status]));
+  const ordered = (project) => inRange(orderDayOf(project), range);
+  const enteredDay = (project) => dayKey(project.created_at);
+  const dealerKey = (project) => noneKey(String(project.dealer || "").trim().replace(/\s+/g, " ").toLowerCase());
+  const stateKey = (project) => noneKey(groupName(project.state).key);
+  const categoryKey = (project) => noneKey(project.building_category_id == null ? "" : String(project.building_category_id));
+  const statusKey = (project) => String(project.status_id ?? "");
+  let list = [];
+  let dateLabel = "Order day";
+  let dateOf = orderDayOf;
+  let oldestFirst = false;
+
+  switch (pick.report) {
+    case "status":
+      list = projects.filter((project) => statusKey(project) === pick.key);
+      dateLabel = "Entered";
+      dateOf = enteredDay;
+      break;
+    case "openStatus":
+      list = projects.filter((project) => !isPastInstallProject(project, statuses) && statusKey(project) === pick.key);
+      dateLabel = "Entered";
+      dateOf = enteredDay;
+      break;
+    case "orders": {
+      const { weekly } = bucketsFor(range);
+      list = projects.filter((project) => ordered(project) && bucketOf(orderDayOf(project), weekly) === pick.key);
+      break;
+    }
+    case "dealer": {
+      const top = new Set(topDealers({ projects, range }).filter((row) => !row.other).map((row) => row.key));
+      list = projects.filter((project) => ordered(project)
+        && (pick.key === "other" ? !top.has(dealerKey(project)) : dealerKey(project) === pick.key));
+      break;
+    }
+    case "category":
+      list = projects.filter((project) => ordered(project) && categoryKey(project) === pick.key);
+      break;
+    case "state": {
+      const top = new Set(projectsByState({ projects, range }).filter((row) => !row.other).map((row) => row.key));
+      list = projects.filter((project) => ordered(project)
+        && (pick.key === "other" ? !top.has(stateKey(project)) : stateKey(project) === pick.key));
+      break;
+    }
+    case "stale":
+      list = getStaleProjects(projects, statuses, staleAfterDays, now)
+        .map((item) => item.project)
+        .filter((project) => statusKey(project) === pick.key);
+      dateLabel = "Last updated";
+      dateOf = (project) => dayKey(project.updated_at) || dayKey(project.created_at);
+      oldestFirst = true;
+      break;
+    case "care": {
+      const dash = pick.key.lastIndexOf("-");
+      const field = pick.key.slice(0, dash);
+      const id = pick.key.slice(dash + 1);
+      const wanted = id === "none" ? "" : id;
+      list = projects.filter((project) => !isPastInstallProject(project, statuses) && String(project[field] ?? "") === wanted);
+      dateLabel = "Entered";
+      dateOf = enteredDay;
+      break;
+    }
+    case "installDay":
+      list = projects.filter((project) => dayKey(project.install_start) === pick.key);
+      dateLabel = "Arrival";
+      dateOf = (project) => dayKey(project.install_start);
+      break;
+    default:
+      list = [];
+  }
+
+  const rows = list
+    .map((project) => projectRow(project, statusOf, dateOf))
+    .sort((a, b) => (oldestFirst ? String(a.date).localeCompare(String(b.date)) : String(b.date).localeCompare(String(a.date)))
+      || a.client.localeCompare(b.client));
+  return { kind: "projects", rows, dateLabel };
 }

@@ -47,6 +47,11 @@ export default async function ProjectMapAnalyticsPage() {
     project_subtotal: project.project_subtotal,
     order_received_at: project.order_received_at,
     created_at: project.created_at,
+    client_name: project.client_name,
+    updated_at: project.updated_at,
+    welcome_call_status_id: project.welcome_call_status_id,
+    confirmation_status_id: project.confirmation_status_id,
+    permit_status_id: project.permit_status_id,
     proj_t_project_status_log: (project.proj_t_project_status_log || []).map((row) => ({
       from_status_id: row.from_status_id,
       to_status_id: row.to_status_id,
@@ -70,6 +75,10 @@ export default async function ProjectMapAnalyticsPage() {
       statuses={setup.projectStatuses || []}
       runStatuses={setup.runStatuses || []}
       buildingCategories={setup.buildingCategories || []}
+      permitStatuses={setup.permitStatuses || []}
+      welcomeCallStatuses={setup.welcomeCallStatuses || []}
+      confirmationStatuses={setup.confirmationStatuses || []}
+      settings={setup.settings || []}
       todayKey={new Date().toISOString().slice(0, 10)}
       pageAccess={{ map: canOpenMap, runMaster: canOpenRunMaster, calendar: canOpenCalendar }}
     />

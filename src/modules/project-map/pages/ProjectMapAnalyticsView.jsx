@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { startNavbarLoader } from "@/shared/utils/navbar-loader";
-import { PROJECT_MAP_PAGES, formatDisplayDate, runStatusKeyByName } from "../data/projectMap.data";
+import { PROJECT_MAP_PAGES, formatDisplayDate, getStaleAfterDays, runStatusKeyByName } from "../data/projectMap.data";
 import {
   ANALYTICS_RANGES,
   DEFAULT_ANALYTICS_RANGE,
@@ -23,6 +23,12 @@ import {
   stateOptions,
   timeInStatus,
   topDealers,
+  averageValue,
+  careProgress,
+  categoriesReport,
+  openValueByStatus,
+  projectsByState,
+  staleProjects,
 } from "../data/projectMap.analytics";
 import AnalyticsChartCard from "../components/analytics/AnalyticsChartCard";
 
@@ -67,7 +73,7 @@ const navButtonStyle = { border: "1px solid #e2e8f0", background: "#fff", border
 const selectStyle = { border: "1px solid #e2e8f0", borderRadius: "3px", padding: "3px 6px", fontSize: "12px", background: "#fff", color: "#1e293b" };
 const labelStyle = { display: "flex", alignItems: "center", gap: "4px" };
 
-export default function ProjectMapAnalyticsView({ projects = [], runs = [], statuses = [], runStatuses = [], buildingCategories = [], todayKey, pageAccess = null }) {
+export default function ProjectMapAnalyticsView({ projects = [], runs = [], statuses = [], runStatuses = [], buildingCategories = [], permitStatuses = [], welcomeCallStatuses = [], confirmationStatuses = [], settings = [], todayKey, pageAccess = null }) {
   const router = useRouter();
   const [rangeKey, setRangeKey] = useState(DEFAULT_ANALYTICS_RANGE);
   const [state, setState] = useState("");
@@ -98,6 +104,22 @@ export default function ProjectMapAnalyticsView({ projects = [], runs = [], stat
   const repairs = useMemo(() => repairsOverTime({ projects: shown, statuses, range }), [shown, statuses, range]);
   const legendStyle = { fontSize: 11, color: "#334155" };
   const hasAny = (rows, keys) => rows.some((row) => keys.some((key) => Number(row[key]) > 0));
+  const openValue = useMemo(() => openValueByStatus({ projects: shown, statuses }), [shown, statuses]);
+  const categoryRows = useMemo(() => categoriesReport({ projects: shown, buildingCategories, range }), [shown, buildingCategories, range]);
+  const valueTrend = useMemo(() => averageValue({ projects: shown, range }), [shown, range]);
+  const stateRows = useMemo(() => projectsByState({ projects: shown, range }), [shown, range]);
+  // Same day limit as the "not updated" bell (Setup → General Settings).
+  const staleAfterDays = useMemo(() => getStaleAfterDays(settings), [settings]);
+  const stale = useMemo(
+    () => staleProjects({ projects: shown, statuses, staleAfterDays, now: new Date(`${todayKey}T23:59:59Z`) }),
+    [shown, statuses, staleAfterDays, todayKey],
+  );
+  const care = useMemo(
+    () => careProgress({ projects: shown, statuses, welcomeCallStatuses, confirmationStatuses, permitStatuses }),
+    [shown, statuses, welcomeCallStatuses, confirmationStatuses, permitStatuses],
+  );
+  const careRows = useMemo(() => care.flatMap((group) => group.rows), [care]);
+  const sectionTitleStyle = { gridColumn: "1 / -1", margin: "8px 0 0", fontSize: "13px", fontWeight: 600, color: "#475569" };
   const period = orders.weekly ? "week" : "month";
   const filtersChanged = state || categoryId || rangeKey !== DEFAULT_ANALYTICS_RANGE;
 
@@ -409,6 +431,153 @@ export default function ProjectMapAnalyticsView({ projects = [], runs = [], stat
               <Line type="monotone" dataKey="opened" name="Opened" stroke={SERIES[0]} strokeWidth={2} dot={{ r: 4 }} isAnimationActive={false} />
               <Line type="monotone" dataKey="repaired" name="Repaired" stroke={SERIES[1]} strokeWidth={2} dot={{ r: 4 }} isAnimationActive={false} />
             </LineChart>
+          </ResponsiveContainer>
+        </AnalyticsChartCard>
+
+        <h3 style={sectionTitleStyle}>More on projects</h3>
+
+        <AnalyticsChartCard
+          title="Open value by status"
+          note="Total subtotal of open projects in each status, right now."
+          rows={openValue}
+          height={Math.max(200, openValue.length * 26 + 30)}
+          columns={[
+            { key: "name", label: "Status" },
+            { key: "value", label: "Value", align: "right", format: money },
+            { key: "count", label: "Projects", align: "right", format: number },
+          ]}
+        >
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={openValue} layout="vertical" margin={{ top: 4, right: 16, bottom: 4, left: 8 }} barCategoryGap={4}>
+              <CartesianGrid horizontal={false} stroke={GRID} />
+              <XAxis type="number" tickFormatter={compactMoney} tick={TICK} axisLine={false} tickLine={false} />
+              <YAxis type="category" dataKey="name" width={160} tick={TICK} axisLine={false} tickLine={false} />
+              <Tooltip cursor={CURSOR} contentStyle={TOOLTIP_STYLE} formatter={(value, _name, item) => [`${money(value)} · ${number(item?.payload?.count)} projects`, "Open value"]} />
+              <Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={18} isAnimationActive={false}>
+                {openValue.map((row) => <Cell key={row.statusId || "none"} fill={row.color} />)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </AnalyticsChartCard>
+
+        <AnalyticsChartCard
+          title="Building categories"
+          note="Orders in the period by building category, highest value first."
+          rows={categoryRows}
+          height={Math.max(200, categoryRows.length * 26 + 30)}
+          columns={[
+            { key: "name", label: "Category" },
+            { key: "count", label: "Orders", align: "right", format: number },
+            { key: "value", label: "Value", align: "right", format: money },
+          ]}
+        >
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={categoryRows} layout="vertical" margin={{ top: 4, right: 16, bottom: 4, left: 8 }} barCategoryGap={4}>
+              <CartesianGrid horizontal={false} stroke={GRID} />
+              <XAxis type="number" tickFormatter={compactMoney} tick={TICK} axisLine={false} tickLine={false} />
+              <YAxis type="category" dataKey="name" width={160} tick={TICK} axisLine={false} tickLine={false} />
+              <Tooltip cursor={CURSOR} contentStyle={TOOLTIP_STYLE} formatter={(value, _name, item) => [`${money(value)} · ${number(item?.payload?.count)} orders`, "Value"]} />
+              <Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={18} isAnimationActive={false}>
+                {categoryRows.map((row) => <Cell key={row.key} fill={row.other ? NEUTRAL_COLOR : SERIES[0]} />)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </AnalyticsChartCard>
+
+        <AnalyticsChartCard
+          title={`Average order value per ${valueTrend.weekly ? "week" : "month"}`}
+          note="Average and median subtotal of the orders that came in (orders with a subtotal)."
+          rows={hasAny(valueTrend.rows, ["count"]) ? valueTrend.rows : []}
+          columns={[
+            { key: "label", label: valueTrend.weekly ? "Week of" : "Month" },
+            { key: "average", label: "Average", align: "right", format: (value) => (value == null ? "—" : money(value)) },
+            { key: "median", label: "Median", align: "right", format: (value) => (value == null ? "—" : money(value)) },
+            { key: "count", label: "Orders", align: "right", format: number },
+          ]}
+        >
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={valueTrend.rows} margin={{ top: 8, right: 12, bottom: 4, left: 0 }}>
+              <CartesianGrid vertical={false} stroke={GRID} />
+              <XAxis dataKey="label" tick={TICK} axisLine={false} tickLine={false} />
+              <YAxis tickFormatter={compactMoney} tick={TICK} axisLine={false} tickLine={false} width={52} />
+              <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value, name) => [value == null ? "—" : money(value), name]} />
+              <Legend wrapperStyle={legendStyle} iconType="plainline" />
+              <Line type="monotone" dataKey="average" name="Average" stroke={SERIES[0]} strokeWidth={2} dot={{ r: 4 }} connectNulls isAnimationActive={false} />
+              <Line type="monotone" dataKey="median" name="Median" stroke={SERIES[1]} strokeWidth={2} dot={{ r: 4 }} connectNulls isAnimationActive={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </AnalyticsChartCard>
+
+        <AnalyticsChartCard
+          title="Orders by state"
+          note="Orders in the period per state, most orders first."
+          rows={stateRows}
+          height={Math.max(200, stateRows.length * 26 + 30)}
+          columns={[
+            { key: "name", label: "State" },
+            { key: "count", label: "Orders", align: "right", format: number },
+            { key: "value", label: "Value", align: "right", format: money },
+          ]}
+        >
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={stateRows} layout="vertical" margin={{ top: 4, right: 16, bottom: 4, left: 8 }} barCategoryGap={4}>
+              <CartesianGrid horizontal={false} stroke={GRID} />
+              <XAxis type="number" allowDecimals={false} tick={TICK} axisLine={false} tickLine={false} />
+              <YAxis type="category" dataKey="name" width={160} tick={TICK} axisLine={false} tickLine={false} />
+              <Tooltip cursor={CURSOR} contentStyle={TOOLTIP_STYLE} formatter={(value, _name, item) => [`${number(value)} orders · ${money(item?.payload?.value)}`, "Orders"]} />
+              <Bar dataKey="count" radius={[0, 4, 4, 0]} maxBarSize={18} isAnimationActive={false}>
+                {stateRows.map((row) => <Cell key={row.key} fill={row.other ? NEUTRAL_COLOR : SERIES[0]} />)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </AnalyticsChartCard>
+
+        <AnalyticsChartCard
+          title="Projects not updated"
+          note={`${number(stale.rows.length)} open projects not updated for ${staleAfterDays} days or more (same rule as the bell), per status. Table lists them, oldest first.`}
+          rows={stale.rows}
+          height={Math.max(200, stale.byStatus.length * 26 + 30)}
+          empty={`Every open project was updated in the last ${staleAfterDays} days.`}
+          columns={[
+            { key: "client", label: "Project" },
+            { key: "status", label: "Status" },
+            { key: "days", label: "Days not updated", align: "right", format: number },
+            { key: "updated", label: "Last updated", format: (value) => formatDisplayDate(value) },
+          ]}
+        >
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={stale.byStatus} layout="vertical" margin={{ top: 4, right: 16, bottom: 4, left: 8 }} barCategoryGap={4}>
+              <CartesianGrid horizontal={false} stroke={GRID} />
+              <XAxis type="number" allowDecimals={false} tick={TICK} axisLine={false} tickLine={false} />
+              <YAxis type="category" dataKey="name" width={160} tick={TICK} axisLine={false} tickLine={false} />
+              <Tooltip cursor={CURSOR} contentStyle={TOOLTIP_STYLE} formatter={(value) => [`${number(value)} projects`, "Not updated"]} />
+              <Bar dataKey="count" radius={[0, 4, 4, 0]} maxBarSize={18} isAnimationActive={false}>
+                {stale.byStatus.map((row) => <Cell key={row.statusId || "none"} fill={row.color} />)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </AnalyticsChartCard>
+
+        <AnalyticsChartCard
+          title="Customer care progress"
+          note="Open projects per welcome call, confirmation and permit status, right now."
+          rows={careRows}
+          height={Math.max(220, careRows.length * 24 + 30)}
+          columns={[
+            { key: "label", label: "Step and status" },
+            { key: "count", label: "Open projects", align: "right", format: number },
+          ]}
+        >
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={careRows} layout="vertical" margin={{ top: 4, right: 16, bottom: 4, left: 8 }} barCategoryGap={3}>
+              <CartesianGrid horizontal={false} stroke={GRID} />
+              <XAxis type="number" allowDecimals={false} tick={TICK} axisLine={false} tickLine={false} />
+              <YAxis type="category" dataKey="label" width={210} tick={TICK} axisLine={false} tickLine={false} />
+              <Tooltip cursor={CURSOR} contentStyle={TOOLTIP_STYLE} formatter={(value) => [`${number(value)} open projects`, "Projects"]} />
+              <Bar dataKey="count" radius={[0, 4, 4, 0]} maxBarSize={16} isAnimationActive={false}>
+                {careRows.map((row) => <Cell key={row.key} fill={row.other ? NEUTRAL_COLOR : SERIES[0]} />)}
+              </Bar>
+            </BarChart>
           </ResponsiveContainer>
         </AnalyticsChartCard>
       </div>

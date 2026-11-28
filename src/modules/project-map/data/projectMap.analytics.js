@@ -11,7 +11,7 @@
  * Finished ticked that is not a repair status (from status history, which
  * only covers changes since history recording started).
  */
-import { REPAIR_STATUS_KEYS, isPastInstallProject, isRepairProject } from "./projectMap.data";
+import { REPAIR_STATUS_KEYS, getStaleProjects, isPastInstallProject, isRepairProject } from "./projectMap.data";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -399,4 +399,126 @@ export function repairsOverTime({ projects = [], statuses = [], range }) {
     if (doneIds.has(to) && !doneIds.has(from)) bucket.repaired += 1;
   }
   return { weekly, rows };
+}
+
+// ─── More project reports ────────────────────────────────────────────────────
+
+/** A typed name grouped ignoring capitals and extra spaces ({ key: "" } = none). */
+function groupName(value) {
+  const name = String(value || "").trim().replace(/\s+/g, " ");
+  return { key: name.toLowerCase(), name };
+}
+
+/** Keeps the first `limit` rows and folds the rest into one "All other …" row. */
+function foldRest(sorted, limit, label, sumKeys) {
+  const top = sorted.slice(0, limit);
+  const rest = sorted.slice(limit);
+  if (rest.length > 0) {
+    const other = { key: "other", name: `${label} (${rest.length})`, other: true };
+    for (const sumKey of sumKeys) other[sumKey] = rest.reduce((sum, row) => sum + (Number(row[sumKey]) || 0), 0);
+    top.push(other);
+  }
+  return top;
+}
+
+/** Open projects' total subtotal per current status (Setup order), right now. */
+export function openValueByStatus({ projects = [], statuses = [] }) {
+  const open = projects.filter((project) => !isPastInstallProject(project, statuses));
+  return projectsByStatus({ projects: open, statuses }).filter((row) => row.value > 0);
+}
+
+/** Orders in the range per building category: how many and their value, highest value first. */
+export function categoriesReport({ projects = [], buildingCategories = [], range }) {
+  const nameOf = new Map(buildingCategories.map((category) => [String(category.id), category.building_category_name]));
+  const groups = new Map();
+  for (const project of projects) {
+    if (!inRange(orderDayOf(project), range)) continue;
+    const id = project.building_category_id == null ? "" : String(project.building_category_id);
+    const group = groups.get(id) || {
+      key: id || "none",
+      name: id ? nameOf.get(id) || "Unknown category" : "No category",
+      count: 0,
+      value: 0,
+      other: !id,
+    };
+    group.count += 1;
+    group.value += amountOf(project);
+    groups.set(id, group);
+  }
+  return [...groups.values()].sort((a, b) => b.value - a.value || b.count - a.count || a.name.localeCompare(b.name));
+}
+
+/** Average and median order value per week or month (orders that have a subtotal). */
+export function averageValue({ projects = [], range }) {
+  const { weekly, buckets } = bucketsFor(range);
+  const values = new Map(buckets.map((bucket) => [bucket.key, []]));
+  for (const project of projects) {
+    const day = orderDayOf(project);
+    const amount = amountOf(project);
+    if (!inRange(day, range) || amount <= 0) continue;
+    values.get(bucketOf(day, weekly))?.push(amount);
+  }
+  const rows = buckets.map((bucket) => {
+    const list = values.get(bucket.key) || [];
+    return {
+      ...bucket,
+      count: list.length,
+      average: list.length ? Math.round(average(list)) : null,
+      median: list.length ? Math.round(median(list)) : null,
+    };
+  });
+  return { weekly, rows };
+}
+
+/** Orders in the range per state: how many and their value; the top `limit`, then "All other states". */
+export function projectsByState({ projects = [], range, limit = 15 }) {
+  const groups = new Map();
+  for (const project of projects) {
+    if (!inRange(orderDayOf(project), range)) continue;
+    const { key, name } = groupName(project.state);
+    const group = groups.get(key) || { key: key || "none", name: name || "(No state)", count: 0, value: 0, other: !key };
+    group.count += 1;
+    group.value += amountOf(project);
+    groups.set(key, group);
+  }
+  const sorted = [...groups.values()].sort((a, b) => b.count - a.count || b.value - a.value || a.name.localeCompare(b.name));
+  return foldRest(sorted, limit, "All other states", ["count", "value"]);
+}
+
+/**
+ * Open projects not updated for `staleAfterDays` days or more — the same rule
+ * and day limit as the "not updated" bell (getStaleProjects). Returns the list
+ * (oldest first) and the count per current status.
+ */
+export function staleProjects({ projects = [], statuses = [], staleAfterDays, now }) {
+  const list = getStaleProjects(projects, statuses, staleAfterDays, now);
+  const nameOf = new Map(statuses.map((status) => [String(status.status_id), status.status_name]));
+  const rows = list.map(({ project, days }) => ({
+    key: String(project.id),
+    client: project.client_name || "Untitled",
+    status: nameOf.get(String(project.status_id)) || "No status",
+    days,
+    updated: dayKey(project.updated_at) || dayKey(project.created_at),
+  }));
+  return { rows, byStatus: projectsByStatus({ projects: list.map((item) => item.project), statuses }) };
+}
+
+/**
+ * Open projects per welcome call, confirmation and permit status (each list in
+ * its Setup order), with "Not set" when none is picked.
+ */
+export function careProgress({ projects = [], statuses = [], welcomeCallStatuses = [], confirmationStatuses = [], permitStatuses = [] }) {
+  const open = projects.filter((project) => !isPastInstallProject(project, statuses));
+  const step = (label, field, list) => {
+    const rows = list.map((item) => ({ key: `${field}-${item.id}`, id: String(item.id), label: `${label}: ${item.status_name}`, count: 0, other: false }));
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    const none = { key: `${field}-none`, id: "", label: `${label}: Not set`, count: 0, other: true };
+    for (const project of open) (byId.get(String(project[field] ?? "")) || none).count += 1;
+    return [...rows, none].filter((row) => row.count > 0);
+  };
+  return [
+    { label: "Welcome call", rows: step("Welcome call", "welcome_call_status_id", welcomeCallStatuses) },
+    { label: "Confirmation", rows: step("Confirmation", "confirmation_status_id", confirmationStatuses) },
+    { label: "Permit", rows: step("Permit", "permit_status_id", permitStatuses) },
+  ];
 }

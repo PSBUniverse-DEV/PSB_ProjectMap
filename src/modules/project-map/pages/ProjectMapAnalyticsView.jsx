@@ -76,7 +76,8 @@ export default function ProjectMapAnalyticsView({ initialReports, buildingCatego
 
   // Changes one or more filters and shows the reports for them. Only the
   // newest request may update the page.
-  const applyFilters = async (changes) => {
+  // options.fresh (Refresh): skip remembered results and the server's short-lived copy.
+  const applyFilters = async (changes, { fresh = false } = {}) => {
     const filters = { rangeKey, state, categoryId, ...changes };
     setRangeKey(filters.rangeKey);
     setState(filters.state);
@@ -85,7 +86,7 @@ export default function ProjectMapAnalyticsView({ initialReports, buildingCatego
     reportRequest.current += 1;
     const request = reportRequest.current;
     const key = filterKey(filters);
-    const saved = savedReports.current.get(key);
+    const saved = fresh ? null : savedReports.current.get(key);
     if (saved) {
       setUpdating(false);
       setReports(saved);
@@ -93,14 +94,28 @@ export default function ProjectMapAnalyticsView({ initialReports, buildingCatego
     }
     setUpdating(true);
     try {
-      const next = await loadAnalyticsReports(filters);
+      const next = await loadAnalyticsReports(filters, { fresh });
       savedReports.current.set(key, next);
       if (request === reportRequest.current) setReports(next);
     } catch (err) {
-      if (request === reportRequest.current) setLoadError(err?.message || "Could not load the reports.");
+      if (request === reportRequest.current) {
+        // Put the filters back to the ones the charts still show, so lists
+        // opened from the charts match them.
+        setRangeKey(reports.filters.rangeKey);
+        setState(reports.filters.state);
+        setCategoryId(reports.filters.categoryId);
+        setLoadError(err?.message || "Could not load the reports.");
+      }
     } finally {
       if (request === reportRequest.current) setUpdating(false);
     }
+  };
+
+  // Refresh: the latest numbers for the current filters. Results remembered
+  // for other filters are dropped, as they may be out of date.
+  const refreshReports = () => {
+    savedReports.current.clear();
+    applyFilters({}, { fresh: true });
   };
 
   const {
@@ -108,6 +123,8 @@ export default function ProjectMapAnalyticsView({ initialReports, buildingCatego
     runsByPeriod, schedule, repairs, openValue, categoryRows, valueTrend, stateRows, stale, care, runSize, travel, teams, installDays,
   } = reports;
   const categories = useMemo(() => buildingCategories.filter((category) => category?.is_active !== false), [buildingCategories]);
+  // "numbers as of 3:42 PM" (the viewer's own clock).
+  const asOfText = reports.asOf ? new Date(reports.asOf).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : "";
   const legendStyle = { fontSize: 11, color: "#334155" };
   const hasAny = (rows, keys) => rows.some((row) => keys.some((key) => Number(row[key]) > 0));
   const careRows = useMemo(() => care.flatMap((group) => group.rows), [care]);
@@ -122,12 +139,12 @@ export default function ProjectMapAnalyticsView({ initialReports, buildingCatego
   const openList = async (click, title) => {
     listRequest.current += 1;
     const request = listRequest.current;
-    setDrill({ title, kind: click.kind, rows: [], loading: true });
+    setDrill({ id: request, title, kind: click.kind, rows: [], loading: true });
     try {
       const result = await loadAnalyticsList(click, { rangeKey, state, categoryId });
-      if (request === listRequest.current) setDrill({ title, ...result });
+      if (request === listRequest.current) setDrill({ id: request, title, ...result });
     } catch (err) {
-      if (request === listRequest.current) setDrill({ title, kind: click.kind, rows: [], error: err?.message || "Could not load the list." });
+      if (request === listRequest.current) setDrill({ id: request, title, kind: click.kind, rows: [], error: err?.message || "Could not load the list." });
     }
   };
   const openDrill = ({ title, ...pick }) => openList({ kind: "projects", pick }, title);
@@ -222,7 +239,9 @@ export default function ProjectMapAnalyticsView({ initialReports, buildingCatego
         )}
         <span style={{ marginLeft: "auto", fontSize: "11px", color: "#64748b" }} aria-live="polite">
           {updating ? "Updating… " : ""}{formatDisplayDate(range.from)} – {formatDisplayDate(range.to)}
+          {asOfText ? <span suppressHydrationWarning> · numbers as of {asOfText}</span> : null}
         </span>
+        <button type="button" style={navButtonStyle} onClick={refreshReports} disabled={updating} title="Load the latest numbers">↻ Refresh</button>
       </div>
       {loadError && (
         <div role="alert" style={{ marginBottom: "10px", padding: "6px 8px", border: "1px solid #fecaca", background: "#fef2f2", color: "#991b1b", borderRadius: "4px", fontSize: "12px" }}>
@@ -795,7 +814,7 @@ export default function ProjectMapAnalyticsView({ initialReports, buildingCatego
         </AnalyticsChartCard>
       </div>
 
-      <AnalyticsDrillModal drill={drill} onClose={() => setDrill(null)} canOpenMap={canOpenPage("map")} />
+      <AnalyticsDrillModal key={drill?.id ?? "closed"} drill={drill} onClose={() => setDrill(null)} canOpenMap={canOpenPage("map")} />
     </div>
   );
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Modal } from "@/shared/components/ui";
 import { PROJECT_MAP_PAGES, formatDisplayDate } from "../../data/projectMap.data";
 
@@ -16,8 +17,15 @@ const CELL = { padding: "4px 6px", borderBottom: "1px solid #f1f5f9", color: "#1
  * A project opens on the Project Map in a new tab, so the Analytics filters stay.
  */
 export default function AnalyticsDrillModal({ drill, onClose, canOpenMap = true }) {
-  const rows = drill?.rows || [];
+  const [query, setQuery] = useState("");
   const isRuns = drill?.kind === "runs";
+  const allRows = drill?.rows || [];
+  // Search narrows long lists: projects by name, dealer, state, status; runs by code, name, status, team.
+  const needle = query.trim().toLowerCase();
+  const rows = needle
+    ? allRows.filter((row) => (isRuns ? [row.code, row.name, row.status, row.team] : [row.client, row.dealer, row.state, row.status])
+      .some((value) => String(value || "").toLowerCase().includes(needle)))
+    : allRows;
   const total = rows.reduce((sum, row) => sum + (Number(row.value) || 0), 0);
   // The list is fetched from the server after the pop-up opens.
   const waiting = Boolean(drill?.loading || drill?.error);
@@ -56,14 +64,33 @@ export default function AnalyticsDrillModal({ drill, onClose, canOpenMap = true 
 
   return (
     <Modal show={Boolean(drill)} onHide={onClose} title={drill?.title || ""} size="xl">
-      <p style={{ margin: "0 0 8px", fontSize: "12px", color: "#64748b", visibility: waiting ? "hidden" : "visible" }}>
-        {number(rows.length)} {isRuns ? (rows.length === 1 ? "run" : "runs") : rows.length === 1 ? "project" : "projects"}
-        {" · "}
-        {money(total)} {isRuns ? "planned value" : "total value"}
-      </p>
+      <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", margin: "0 0 8px", visibility: waiting ? "hidden" : "visible" }}>
+        <p style={{ margin: 0, fontSize: "12px", color: "#64748b" }}>
+          {needle ? `${number(rows.length)} of ${number(allRows.length)}` : number(rows.length)}{" "}
+          {isRuns ? (allRows.length === 1 ? "run" : "runs") : allRows.length === 1 ? "project" : "projects"}
+          {" · "}
+          {money(total)} {isRuns ? "planned value" : "total value"}
+        </p>
+        {allRows.length > 10 && (
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={isRuns ? "Search runs: code, name, status, team" : "Search projects: name, dealer, state, status"}
+            aria-label={isRuns ? "Search runs" : "Search projects"}
+            style={{ marginLeft: "auto", minWidth: "240px", border: "1px solid #e2e8f0", borderRadius: "3px", padding: "3px 8px", fontSize: "12px" }}
+          />
+        )}
+      </div>
       {rows.length === 0 ? (
         <p style={{ margin: 0, padding: "16px 0", textAlign: "center", fontSize: "12px", color: drill?.error ? "#991b1b" : "#94a3b8" }}>
-          {drill?.loading ? "Loading…" : drill?.error ? `Could not load the list: ${drill.error}` : "Nothing to list."}
+          {drill?.loading
+            ? "Loading…"
+            : drill?.error
+              ? `Could not load the list: ${drill.error}`
+              : needle
+                ? `Nothing matches "${query.trim()}".`
+                : "Nothing to list."}
         </p>
       ) : (
         <div style={{ maxHeight: "60vh", overflow: "auto" }}>

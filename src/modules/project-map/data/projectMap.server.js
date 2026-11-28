@@ -527,6 +527,8 @@ export async function loadAnalyticsData(access) {
   ]);
 
   return {
+    // When this data was read, shown on the page as "numbers as of …".
+    loadedAt: new Date().toISOString(),
     projects,
     // The stop count arrives as [{ count }]; the reports read run.stops as a number.
     runs: runs.map((run) => ({ ...run, stops: Number(run.stops?.[0]?.count) || 0 })),
@@ -538,6 +540,29 @@ export async function loadAnalyticsData(access) {
     confirmationStatuses,
     settings,
   };
+}
+
+// A short-lived copy of the Analytics data, kept in this server's memory, so
+// changing filters or clicking bars right after does not reload everything.
+// fresh: true (page open, Refresh) always reads the database again.
+const ANALYTICS_DATA_KEEP_MS = 60 * 1000;
+let analyticsDataCopy = null; // { key, at, promise }
+
+export async function loadAnalyticsDataCached(access, { fresh = false } = {}) {
+  const key = (access?.allowedRunStatusNames || []).join("|");
+  const now = Date.now();
+  if (!fresh && analyticsDataCopy && analyticsDataCopy.key === key && now - analyticsDataCopy.at < ANALYTICS_DATA_KEEP_MS) {
+    return analyticsDataCopy.promise;
+  }
+  const promise = loadAnalyticsData(access);
+  analyticsDataCopy = { key, at: now, promise };
+  try {
+    return await promise;
+  } catch (err) {
+    // A failed read is not kept.
+    if (analyticsDataCopy?.promise === promise) analyticsDataCopy = null;
+    throw err;
+  }
 }
 
 // ─── Runs Loader ────────────────────────────────────────────

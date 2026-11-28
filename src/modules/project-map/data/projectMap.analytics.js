@@ -837,6 +837,8 @@ export function buildAnalyticsReports(data, rawFilters, todayKey) {
   const { range, shown, activeRuns, staleAfterDays, now } = analyticsContext(data, filters, todayKey);
   return {
     filters,
+    // When the data behind these numbers was read (ISO time).
+    asOf: data.loadedAt || new Date().toISOString(),
     range,
     states: stateOptions(projects),
     historyStart: historySince(projects),

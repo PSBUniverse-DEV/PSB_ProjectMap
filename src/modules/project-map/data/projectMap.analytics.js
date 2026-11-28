@@ -688,7 +688,9 @@ export function drillProjects({ projects = [], statuses = [], range, pick, stale
       break;
     }
     case "dealer": {
-      const top = new Set(topDealers({ projects, range }).filter((row) => !row.other).map((row) => row.key));
+      // Rows shown on their own: every row except the folded "All other" one
+      // (the no-value row is shown on its own too, only drawn grey).
+      const top = new Set(topDealers({ projects, range }).filter((row) => row.key !== "other").map((row) => row.key));
       list = projects.filter((project) => ordered(project)
         && (pick.key === "other" ? !top.has(dealerKey(project)) : dealerKey(project) === pick.key));
       break;
@@ -697,7 +699,7 @@ export function drillProjects({ projects = [], statuses = [], range, pick, stale
       list = projects.filter((project) => ordered(project) && categoryKey(project) === pick.key);
       break;
     case "state": {
-      const top = new Set(projectsByState({ projects, range }).filter((row) => !row.other).map((row) => row.key));
+      const top = new Set(projectsByState({ projects, range }).filter((row) => row.key !== "other").map((row) => row.key));
       list = projects.filter((project) => ordered(project)
         && (pick.key === "other" ? !top.has(stateKey(project)) : stateKey(project) === pick.key));
       break;
@@ -721,7 +723,7 @@ export function drillProjects({ projects = [], statuses = [], range, pick, stale
       break;
     }
     case "installDay":
-      list = projects.filter((project) => dayKey(project.install_start) === pick.key);
+      list = projects.filter((project) => dayKey(project.install_start) === pick.key && inRange(pick.key, range));
       dateLabel = "Arrival";
       dateOf = (project) => dayKey(project.install_start);
       break;
@@ -770,7 +772,7 @@ export function drillRuns({ runs = [], runStatuses = [], range, pick }) {
       list = runs.filter(inBucket);
       break;
     case "team": {
-      const top = new Set(teamWorkload({ runs, range }).filter((row) => !row.other).map((row) => row.key));
+      const top = new Set(teamWorkload({ runs, range }).filter((row) => row.key !== "other").map((row) => row.key));
       list = runs.filter((run) => inRange(dayKey(run.run_date), range)
         && (pick.key === "other" ? !top.has(teamKey(run)) : teamKey(run) === pick.key));
       break;

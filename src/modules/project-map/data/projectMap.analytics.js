@@ -11,7 +11,7 @@
  * Finished ticked that is not a repair status (from status history, which
  * only covers changes since history recording started).
  */
-import { REPAIR_STATUS_KEYS, getStaleProjects, isPastInstallProject, isRepairProject } from "./projectMap.data";
+import { REPAIR_STATUS_KEYS, formatRunCode, getStaleProjects, isPastInstallProject, isRepairProject } from "./projectMap.data";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -734,4 +734,64 @@ export function drillProjects({ projects = [], statuses = [], range, pick, stale
     .sort((a, b) => (oldestFirst ? String(a.date).localeCompare(String(b.date)) : String(b.date).localeCompare(String(a.date)))
       || a.client.localeCompare(b.client));
   return { kind: "projects", rows, dateLabel };
+}
+
+/**
+ * The runs behind one clicked bar or table row, for the same period as the
+ * chart. pick = { report, key, statusName?, otherStatus? }; key is the clicked
+ * row's period key, or its team key for "team" ("none" / "other" as above).
+ * Returns { kind: "runs", rows }.
+ */
+export function drillRuns({ runs = [], runStatuses = [], range, pick }) {
+  const { weekly } = bucketsFor(range);
+  const inBucket = (run) => {
+    const day = dayKey(run.run_date);
+    return inRange(day, range) && bucketOf(day, weekly) === pick.key;
+  };
+  const isRescheduled = (run) => {
+    const original = dayKey(run.original_run_date);
+    return Boolean(original) && original !== dayKey(run.run_date);
+  };
+  const knownNames = new Set(runStatuses.map((status) => status.status_name));
+  const teamKey = (run) => noneKey(groupName(run.team_assigned).key);
+  let list = [];
+
+  switch (pick.report) {
+    case "runsByStatus":
+      list = runs.filter((run) => inBucket(run) && (pick.otherStatus ? !knownNames.has(run.status) : run.status === pick.statusName));
+      break;
+    case "kept":
+      list = runs.filter((run) => inBucket(run) && !isRescheduled(run));
+      break;
+    case "rescheduled":
+      list = runs.filter((run) => inBucket(run) && isRescheduled(run));
+      break;
+    case "period":
+      list = runs.filter(inBucket);
+      break;
+    case "team": {
+      const top = new Set(teamWorkload({ runs, range }).filter((row) => !row.other).map((row) => row.key));
+      list = runs.filter((run) => inRange(dayKey(run.run_date), range)
+        && (pick.key === "other" ? !top.has(teamKey(run)) : teamKey(run) === pick.key));
+      break;
+    }
+    default:
+      list = [];
+  }
+
+  const rows = list
+    .map((run) => ({
+      key: String(run.id),
+      code: run.run_code || formatRunCode(run.run_number) || "",
+      name: run.run_name || "",
+      date: dayKey(run.run_date),
+      status: run.status || "",
+      stops: Number(run.stops) || 0,
+      value: Number(run.estimated_subtotal) || 0,
+      miles: run.estimated_mileage != null ? Math.round(Number(run.estimated_mileage)) : null,
+      hours: run.estimated_duration != null ? Math.round((Number(run.estimated_duration) / 3600) * 10) / 10 : null,
+      team: String(run.team_assigned || "").trim(),
+    }))
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)) || a.code.localeCompare(b.code));
+  return { kind: "runs", rows };
 }

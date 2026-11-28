@@ -35,6 +35,7 @@ import {
   runSizeAndValue,
   teamWorkload,
   drillProjects,
+  drillRuns,
 } from "../data/projectMap.analytics";
 import AnalyticsDrillModal from "../components/analytics/AnalyticsDrillModal";
 import AnalyticsChartCard from "../components/analytics/AnalyticsChartCard";
@@ -158,6 +159,28 @@ export default function ProjectMapAnalyticsView({ projects = [], runs = [], stat
   // "Projects not updated" table rows are projects: open one on the map (new tab).
   const openOnMap = (row) => {
     if (canOpenPage("map")) window.open(`${PROJECT_MAP_PAGES.map}?project=${encodeURIComponent(row.key)}`, "_blank", "noopener");
+  };
+
+  // Click-through for run charts. `list` is the runs the chart counted:
+  // all runs for "Runs per week/month", runs without cancelled ones elsewhere.
+  const openRunDrill = ({ title, list, ...pick }) => {
+    setDrill({ title, ...drillRuns({ runs: list, runStatuses, range, pick }) });
+  };
+  const runPeriodLabel = (row) => `${runSize.weekly ? "week of " : ""}${row.label}`;
+  const pickRunPeriod = (list) => (row) => ({ report: "period", key: row.key, list, title: `Runs, ${runPeriodLabel(row)}` });
+  const pickRunStatus = (series) => (row) => ({
+    report: "runsByStatus",
+    key: row.key,
+    statusName: series.name,
+    otherStatus: series.key === "other",
+    list: runs,
+    title: `${series.name} runs, ${runPeriodLabel(row)}`,
+  });
+  const pickKept = (row) => ({ report: "kept", key: row.key, list: activeRuns, title: `Runs that kept their first date, ${runPeriodLabel(row)}` });
+  const pickRescheduled = (row) => ({ report: "rescheduled", key: row.key, list: activeRuns, title: `Rescheduled runs, ${runPeriodLabel(row)}` });
+  const pickTeam = (row) => ({ report: "team", key: row.key, list: activeRuns, title: `Runs: ${row.name}` });
+  const pickRunBar = (entry, toPick) => {
+    if (entry?.payload) openRunDrill(toPick(entry.payload));
   };
   const sectionTitleStyle = { gridColumn: "1 / -1", margin: "8px 0 0", fontSize: "13px", fontWeight: 600, color: "#475569" };
   const period = orders.weekly ? "week" : "month";
@@ -394,6 +417,7 @@ export default function ProjectMapAnalyticsView({ projects = [], runs = [], stat
 
         <AnalyticsChartCard
           title={`Runs per ${runsByPeriod.weekly ? "week" : "month"}`}
+          onRowClick={(row) => openRunDrill(pickRunPeriod(runs)(row))}
           note="By run status, in each status's Setup colour. All runs."
           rows={hasAny(runsByPeriod.rows, ["total"]) ? runsByPeriod.rows : []}
           empty="No runs in this period."
@@ -417,6 +441,8 @@ export default function ProjectMapAnalyticsView({ projects = [], runs = [], stat
                   dataKey={series.key}
                   name={series.name}
                   stackId="runs"
+                  cursor="pointer"
+                  onClick={(entry) => pickRunBar(entry, pickRunStatus(series))}
                   fill={series.color}
                   stroke="#fff"
                   strokeWidth={1}
@@ -431,6 +457,7 @@ export default function ProjectMapAnalyticsView({ projects = [], runs = [], stat
 
         <AnalyticsChartCard
           title="Runs that kept their first date"
+          onRowClick={(row) => openRunDrill(pickRunPeriod(activeRuns)(row))}
           note={schedule.keptPercent == null
             ? "Runs whose date was never moved vs runs that were rescheduled. Cancelled runs are left out."
             : `${schedule.keptPercent}% kept their first date (${number(schedule.kept)} of ${number(schedule.kept + schedule.rescheduled)} runs, cancelled runs left out).`}
@@ -449,8 +476,8 @@ export default function ProjectMapAnalyticsView({ projects = [], runs = [], stat
               <YAxis allowDecimals={false} tick={TICK} axisLine={false} tickLine={false} width={36} />
               <Tooltip cursor={CURSOR} contentStyle={TOOLTIP_STYLE} formatter={(value, name) => [number(value), name]} />
               <Legend wrapperStyle={legendStyle} />
-              <Bar dataKey="kept" name="Kept first date" stackId="schedule" fill={SERIES[0]} stroke="#fff" strokeWidth={1} maxBarSize={28} isAnimationActive={false} />
-              <Bar dataKey="rescheduled" name="Rescheduled" stackId="schedule" fill={SERIES[1]} stroke="#fff" strokeWidth={1} radius={[4, 4, 0, 0]} maxBarSize={28} isAnimationActive={false} />
+              <Bar dataKey="kept" name="Kept first date" stackId="schedule" fill={SERIES[0]} stroke="#fff" strokeWidth={1} maxBarSize={28} isAnimationActive={false} cursor="pointer" onClick={(entry) => pickRunBar(entry, pickKept)} />
+              <Bar dataKey="rescheduled" name="Rescheduled" stackId="schedule" fill={SERIES[1]} stroke="#fff" strokeWidth={1} radius={[4, 4, 0, 0]} maxBarSize={28} isAnimationActive={false} cursor="pointer" onClick={(entry) => pickRunBar(entry, pickRescheduled)} />
             </BarChart>
           </ResponsiveContainer>
         </AnalyticsChartCard>
@@ -635,6 +662,7 @@ export default function ProjectMapAnalyticsView({ projects = [], runs = [], stat
 
         <AnalyticsChartCard
           title={`Average stops per run, per ${runPeriod}`}
+          onRowClick={(row) => openRunDrill(pickRunPeriod(activeRuns)(row))}
           note="How many stops a run had on average. Cancelled runs are left out."
           rows={hasAny(runSize.rows, ["runs"]) ? runSize.rows : []}
           empty="No runs in this period."
@@ -658,6 +686,7 @@ export default function ProjectMapAnalyticsView({ projects = [], runs = [], stat
 
         <AnalyticsChartCard
           title={`Run value per ${runPeriod}`}
+          onRowClick={(row) => openRunDrill(pickRunPeriod(activeRuns)(row))}
           note="Total planned value of the runs (from each run's route estimate). Cancelled runs are left out."
           rows={hasAny(runSize.rows, ["runs"]) ? runSize.rows : []}
           empty="No runs in this period."
@@ -673,13 +702,14 @@ export default function ProjectMapAnalyticsView({ projects = [], runs = [], stat
               <XAxis dataKey="label" tick={TICK} axisLine={false} tickLine={false} />
               <YAxis tickFormatter={compactMoney} tick={TICK} axisLine={false} tickLine={false} width={52} />
               <Tooltip cursor={CURSOR} contentStyle={TOOLTIP_STYLE} formatter={(value) => [money(value), "Planned value"]} />
-              <Bar dataKey="value" fill={SERIES[0]} radius={[4, 4, 0, 0]} maxBarSize={28} isAnimationActive={false} />
+              <Bar dataKey="value" fill={SERIES[0]} radius={[4, 4, 0, 0]} maxBarSize={28} isAnimationActive={false} cursor="pointer" onClick={(entry) => pickRunBar(entry, pickRunPeriod(activeRuns))} />
             </BarChart>
           </ResponsiveContainer>
         </AnalyticsChartCard>
 
         <AnalyticsChartCard
           title={`Planned miles per ${runPeriod}`}
+          onRowClick={(row) => openRunDrill(pickRunPeriod(activeRuns)(row))}
           note={`From each run's route estimate. ${number(travel.runsWithMiles)} of ${number(travel.runs)} runs in the period have miles.`}
           rows={hasAny(travel.rows, ["runs"]) ? travel.rows : []}
           empty="No runs in this period."
@@ -695,13 +725,14 @@ export default function ProjectMapAnalyticsView({ projects = [], runs = [], stat
               <XAxis dataKey="label" tick={TICK} axisLine={false} tickLine={false} />
               <YAxis allowDecimals={false} tick={TICK} axisLine={false} tickLine={false} width={44} />
               <Tooltip cursor={CURSOR} contentStyle={TOOLTIP_STYLE} formatter={(value) => [`${number(value)} miles`, "Planned miles"]} />
-              <Bar dataKey="miles" fill={SERIES[0]} radius={[4, 4, 0, 0]} maxBarSize={28} isAnimationActive={false} />
+              <Bar dataKey="miles" fill={SERIES[0]} radius={[4, 4, 0, 0]} maxBarSize={28} isAnimationActive={false} cursor="pointer" onClick={(entry) => pickRunBar(entry, pickRunPeriod(activeRuns))} />
             </BarChart>
           </ResponsiveContainer>
         </AnalyticsChartCard>
 
         <AnalyticsChartCard
           title={`Planned drive hours per ${runPeriod}`}
+          onRowClick={(row) => openRunDrill(pickRunPeriod(activeRuns)(row))}
           note="From each run's route estimate. Cancelled runs are left out."
           rows={hasAny(travel.rows, ["runs"]) ? travel.rows : []}
           empty="No runs in this period."
@@ -717,13 +748,14 @@ export default function ProjectMapAnalyticsView({ projects = [], runs = [], stat
               <XAxis dataKey="label" tick={TICK} axisLine={false} tickLine={false} />
               <YAxis tick={TICK} axisLine={false} tickLine={false} width={40} />
               <Tooltip cursor={CURSOR} contentStyle={TOOLTIP_STYLE} formatter={(value) => [`${value} hours`, "Planned drive time"]} />
-              <Bar dataKey="hours" fill={SERIES[0]} radius={[4, 4, 0, 0]} maxBarSize={28} isAnimationActive={false} />
+              <Bar dataKey="hours" fill={SERIES[0]} radius={[4, 4, 0, 0]} maxBarSize={28} isAnimationActive={false} cursor="pointer" onClick={(entry) => pickRunBar(entry, pickRunPeriod(activeRuns))} />
             </BarChart>
           </ResponsiveContainer>
         </AnalyticsChartCard>
 
         <AnalyticsChartCard
           title="Team workload"
+          onRowClick={(row) => openRunDrill(pickTeam(row))}
           note="Runs in the period per team (the run's Team box), most runs first. Cancelled runs are left out."
           rows={teams}
           height={Math.max(220, teams.length * 26 + 30)}
@@ -742,7 +774,7 @@ export default function ProjectMapAnalyticsView({ projects = [], runs = [], stat
               <XAxis type="number" allowDecimals={false} tick={TICK} axisLine={false} tickLine={false} />
               <YAxis type="category" dataKey="name" width={160} tick={TICK} axisLine={false} tickLine={false} />
               <Tooltip cursor={CURSOR} contentStyle={TOOLTIP_STYLE} formatter={(value, _name, item) => [`${number(value)} runs · ${number(item?.payload?.stops)} stops`, "Runs"]} />
-              <Bar dataKey="runs" radius={[0, 4, 4, 0]} maxBarSize={18} isAnimationActive={false}>
+              <Bar dataKey="runs" radius={[0, 4, 4, 0]} maxBarSize={18} isAnimationActive={false} cursor="pointer" onClick={(entry) => pickRunBar(entry, pickTeam)}>
                 {teams.map((row) => <Cell key={row.key} fill={row.other ? NEUTRAL_COLOR : SERIES[0]} />)}
               </Bar>
             </BarChart>

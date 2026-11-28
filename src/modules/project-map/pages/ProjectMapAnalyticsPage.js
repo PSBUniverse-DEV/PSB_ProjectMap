@@ -71,6 +71,9 @@ export default async function ProjectMapAnalyticsPage() {
     estimated_mileage: run.estimated_mileage,
     estimated_duration: run.estimated_duration,
     team_assigned: run.team_assigned,
+    run_code: run.run_code,
+    run_number: run.run_number,
+    run_name: run.run_name,
   }));
 
   return (

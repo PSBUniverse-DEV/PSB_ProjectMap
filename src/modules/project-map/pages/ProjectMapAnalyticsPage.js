@@ -52,6 +52,7 @@ export default async function ProjectMapAnalyticsPage() {
     welcome_call_status_id: project.welcome_call_status_id,
     confirmation_status_id: project.confirmation_status_id,
     permit_status_id: project.permit_status_id,
+    install_start: project.install_start,
     proj_t_project_status_log: (project.proj_t_project_status_log || []).map((row) => ({
       from_status_id: row.from_status_id,
       to_status_id: row.to_status_id,
@@ -66,6 +67,10 @@ export default async function ProjectMapAnalyticsPage() {
     original_run_date: run.original_run_date,
     status: run.status,
     stops: (run.proj_t_run_projects || []).length,
+    estimated_subtotal: run.estimated_subtotal,
+    estimated_mileage: run.estimated_mileage,
+    estimated_duration: run.estimated_duration,
+    team_assigned: run.team_assigned,
   }));
 
   return (

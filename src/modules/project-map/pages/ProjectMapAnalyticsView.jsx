@@ -29,8 +29,14 @@ import {
   openValueByStatus,
   projectsByState,
   staleProjects,
+  WEEKDAYS,
+  installHeatmap,
+  milesAndHours,
+  runSizeAndValue,
+  teamWorkload,
 } from "../data/projectMap.analytics";
 import AnalyticsChartCard from "../components/analytics/AnalyticsChartCard";
+import AnalyticsHeatmap from "../components/analytics/AnalyticsHeatmap";
 
 // Chart colours. One series uses slot 1; two series use slots 1 and 2 (checked
 // for colour-blind separation on a white background). Project and run status
@@ -119,6 +125,15 @@ export default function ProjectMapAnalyticsView({ projects = [], runs = [], stat
     [shown, statuses, welcomeCallStatuses, confirmationStatuses, permitStatuses],
   );
   const careRows = useMemo(() => care.flatMap((group) => group.rows), [care]);
+  const runSize = useMemo(() => runSizeAndValue({ runs: activeRuns, range }), [activeRuns, range]);
+  const travel = useMemo(() => milesAndHours({ runs: activeRuns, range }), [activeRuns, range]);
+  const teams = useMemo(() => teamWorkload({ runs: activeRuns, range }), [activeRuns, range]);
+  const installDays = useMemo(() => installHeatmap({ projects: shown, range }), [shown, range]);
+  const installWeeks = useMemo(
+    () => installDays.weeks.map((week) => ({ key: week.key, label: week.label, total: week.total, ...Object.fromEntries(week.counts.map((count, index) => [`d${index}`, count])) })),
+    [installDays],
+  );
+  const runPeriod = runSize.weekly ? "week" : "month";
   const sectionTitleStyle = { gridColumn: "1 / -1", margin: "8px 0 0", fontSize: "13px", fontWeight: 600, color: "#475569" };
   const period = orders.weekly ? "week" : "month";
   const filtersChanged = state || categoryId || rangeKey !== DEFAULT_ANALYTICS_RANGE;
@@ -579,6 +594,139 @@ export default function ProjectMapAnalyticsView({ projects = [], runs = [], stat
               </Bar>
             </BarChart>
           </ResponsiveContainer>
+        </AnalyticsChartCard>
+
+        <h3 style={sectionTitleStyle}>More on runs</h3>
+
+        <AnalyticsChartCard
+          title={`Average stops per run, per ${runPeriod}`}
+          note="How many stops a run had on average. Cancelled runs are left out."
+          rows={hasAny(runSize.rows, ["runs"]) ? runSize.rows : []}
+          empty="No runs in this period."
+          columns={[
+            { key: "label", label: runSize.weekly ? "Week of" : "Month" },
+            { key: "averageStops", label: "Stops per run", align: "right", format: (value) => (value == null ? "—" : value) },
+            { key: "runs", label: "Runs", align: "right", format: number },
+            { key: "stops", label: "Stops", align: "right", format: number },
+          ]}
+        >
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={runSize.rows} margin={{ top: 8, right: 12, bottom: 4, left: 0 }}>
+              <CartesianGrid vertical={false} stroke={GRID} />
+              <XAxis dataKey="label" tick={TICK} axisLine={false} tickLine={false} />
+              <YAxis tick={TICK} axisLine={false} tickLine={false} width={36} />
+              <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => [value == null ? "—" : `${value} stops`, "Per run"]} />
+              <Line type="monotone" dataKey="averageStops" name="Stops per run" stroke={SERIES[0]} strokeWidth={2} dot={{ r: 4 }} connectNulls isAnimationActive={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </AnalyticsChartCard>
+
+        <AnalyticsChartCard
+          title={`Run value per ${runPeriod}`}
+          note="Total planned value of the runs (from each run's route estimate). Cancelled runs are left out."
+          rows={hasAny(runSize.rows, ["runs"]) ? runSize.rows : []}
+          empty="No runs in this period."
+          columns={[
+            { key: "label", label: runSize.weekly ? "Week of" : "Month" },
+            { key: "value", label: "Planned value", align: "right", format: money },
+            { key: "runs", label: "Runs", align: "right", format: number },
+          ]}
+        >
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={runSize.rows} margin={{ top: 4, right: 8, bottom: 4, left: 0 }} barCategoryGap="20%">
+              <CartesianGrid vertical={false} stroke={GRID} />
+              <XAxis dataKey="label" tick={TICK} axisLine={false} tickLine={false} />
+              <YAxis tickFormatter={compactMoney} tick={TICK} axisLine={false} tickLine={false} width={52} />
+              <Tooltip cursor={CURSOR} contentStyle={TOOLTIP_STYLE} formatter={(value) => [money(value), "Planned value"]} />
+              <Bar dataKey="value" fill={SERIES[0]} radius={[4, 4, 0, 0]} maxBarSize={28} isAnimationActive={false} />
+            </BarChart>
+          </ResponsiveContainer>
+        </AnalyticsChartCard>
+
+        <AnalyticsChartCard
+          title={`Planned miles per ${runPeriod}`}
+          note={`From each run's route estimate. ${number(travel.runsWithMiles)} of ${number(travel.runs)} runs in the period have miles.`}
+          rows={hasAny(travel.rows, ["runs"]) ? travel.rows : []}
+          empty="No runs in this period."
+          columns={[
+            { key: "label", label: travel.weekly ? "Week of" : "Month" },
+            { key: "miles", label: "Miles", align: "right", format: number },
+            { key: "runsWithMiles", label: "Runs with miles", align: "right", format: number },
+          ]}
+        >
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={travel.rows} margin={{ top: 4, right: 8, bottom: 4, left: 0 }} barCategoryGap="20%">
+              <CartesianGrid vertical={false} stroke={GRID} />
+              <XAxis dataKey="label" tick={TICK} axisLine={false} tickLine={false} />
+              <YAxis allowDecimals={false} tick={TICK} axisLine={false} tickLine={false} width={44} />
+              <Tooltip cursor={CURSOR} contentStyle={TOOLTIP_STYLE} formatter={(value) => [`${number(value)} miles`, "Planned miles"]} />
+              <Bar dataKey="miles" fill={SERIES[0]} radius={[4, 4, 0, 0]} maxBarSize={28} isAnimationActive={false} />
+            </BarChart>
+          </ResponsiveContainer>
+        </AnalyticsChartCard>
+
+        <AnalyticsChartCard
+          title={`Planned drive hours per ${runPeriod}`}
+          note="From each run's route estimate. Cancelled runs are left out."
+          rows={hasAny(travel.rows, ["runs"]) ? travel.rows : []}
+          empty="No runs in this period."
+          columns={[
+            { key: "label", label: travel.weekly ? "Week of" : "Month" },
+            { key: "hours", label: "Hours", align: "right" },
+            { key: "runs", label: "Runs", align: "right", format: number },
+          ]}
+        >
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={travel.rows} margin={{ top: 4, right: 8, bottom: 4, left: 0 }} barCategoryGap="20%">
+              <CartesianGrid vertical={false} stroke={GRID} />
+              <XAxis dataKey="label" tick={TICK} axisLine={false} tickLine={false} />
+              <YAxis tick={TICK} axisLine={false} tickLine={false} width={40} />
+              <Tooltip cursor={CURSOR} contentStyle={TOOLTIP_STYLE} formatter={(value) => [`${value} hours`, "Planned drive time"]} />
+              <Bar dataKey="hours" fill={SERIES[0]} radius={[4, 4, 0, 0]} maxBarSize={28} isAnimationActive={false} />
+            </BarChart>
+          </ResponsiveContainer>
+        </AnalyticsChartCard>
+
+        <AnalyticsChartCard
+          title="Team workload"
+          note="Runs in the period per team (the run's Team box), most runs first. Cancelled runs are left out."
+          rows={teams}
+          height={Math.max(220, teams.length * 26 + 30)}
+          empty="No runs in this period."
+          columns={[
+            { key: "name", label: "Team" },
+            { key: "runs", label: "Runs", align: "right", format: number },
+            { key: "stops", label: "Stops", align: "right", format: number },
+            { key: "miles", label: "Miles", align: "right", format: number },
+            { key: "hours", label: "Hours", align: "right" },
+          ]}
+        >
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={teams} layout="vertical" margin={{ top: 4, right: 16, bottom: 4, left: 8 }} barCategoryGap={4}>
+              <CartesianGrid horizontal={false} stroke={GRID} />
+              <XAxis type="number" allowDecimals={false} tick={TICK} axisLine={false} tickLine={false} />
+              <YAxis type="category" dataKey="name" width={160} tick={TICK} axisLine={false} tickLine={false} />
+              <Tooltip cursor={CURSOR} contentStyle={TOOLTIP_STYLE} formatter={(value, _name, item) => [`${number(value)} runs · ${number(item?.payload?.stops)} stops`, "Runs"]} />
+              <Bar dataKey="runs" radius={[0, 4, 4, 0]} maxBarSize={18} isAnimationActive={false}>
+                {teams.map((row) => <Cell key={row.key} fill={row.other ? NEUTRAL_COLOR : SERIES[0]} />)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </AnalyticsChartCard>
+
+        <AnalyticsChartCard
+          title="Install days"
+          note={`Projects by the weekday and week of their Arrival From date (${number(installDays.total)} in the period). Darker = more. Point at a day for its count.`}
+          rows={installDays.total > 0 ? installWeeks : []}
+          height={210}
+          empty="No Arrival From dates in this period."
+          columns={[
+            { key: "label", label: "Week of" },
+            ...WEEKDAYS.map((weekday, index) => ({ key: `d${index}`, label: weekday, align: "right", format: number })),
+            { key: "total", label: "Total", align: "right", format: number },
+          ]}
+        >
+          <AnalyticsHeatmap weeks={installDays.weeks} max={installDays.max} unit="installs" />
         </AnalyticsChartCard>
       </div>
     </div>

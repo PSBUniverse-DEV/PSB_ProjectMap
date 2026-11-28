@@ -522,3 +522,106 @@ export function careProgress({ projects = [], statuses = [], welcomeCallStatuses
     { label: "Permit", rows: step("Permit", "permit_status_id", permitStatuses) },
   ];
 }
+
+// ─── More run reports ────────────────────────────────────────────────────────
+
+/** Run rows per week or month in the range, with each run handed to `add`. */
+function runsByBucket(runs, range, makeRow, add) {
+  const { weekly, buckets } = bucketsFor(range);
+  const rows = buckets.map((bucket) => ({ ...bucket, ...makeRow() }));
+  const byKey = new Map(rows.map((row) => [row.key, row]));
+  for (const run of runs) {
+    const day = dayKey(run.run_date);
+    if (!inRange(day, range)) continue;
+    const row = byKey.get(bucketOf(day, weekly));
+    if (row) add(row, run);
+  }
+  return { weekly, rows };
+}
+
+/** Per week or month: runs, average stops per run, and total planned run value. */
+export function runSizeAndValue({ runs = [], range }) {
+  const result = runsByBucket(runs, range, () => ({ runs: 0, stops: 0, value: 0 }), (row, run) => {
+    row.runs += 1;
+    row.stops += Number(run.stops) || 0;
+    row.value += Number(run.estimated_subtotal) || 0;
+  });
+  result.rows.forEach((row) => {
+    row.averageStops = row.runs ? Math.round((row.stops / row.runs) * 10) / 10 : null;
+  });
+  return result;
+}
+
+/** Per week or month: planned miles and drive hours (route estimates), and how many runs had miles. */
+export function milesAndHours({ runs = [], range }) {
+  const result = runsByBucket(runs, range, () => ({ runs: 0, runsWithMiles: 0, miles: 0, hours: 0 }), (row, run) => {
+    row.runs += 1;
+    if (run.estimated_mileage != null) {
+      row.runsWithMiles += 1;
+      row.miles += Number(run.estimated_mileage) || 0;
+    }
+    row.hours += (Number(run.estimated_duration) || 0) / 3600;
+  });
+  result.rows.forEach((row) => {
+    row.miles = Math.round(row.miles);
+    row.hours = Math.round(row.hours * 10) / 10;
+  });
+  result.runs = result.rows.reduce((sum, row) => sum + row.runs, 0);
+  result.runsWithMiles = result.rows.reduce((sum, row) => sum + row.runsWithMiles, 0);
+  return result;
+}
+
+/**
+ * Runs in the range per team (the run's Team box, grouped ignoring capitals and
+ * extra spaces): runs, stops, planned miles and hours. Most runs first; the top
+ * `limit`, then "All other teams".
+ */
+export function teamWorkload({ runs = [], range, limit = 12 }) {
+  const groups = new Map();
+  for (const run of runs) {
+    if (!inRange(dayKey(run.run_date), range)) continue;
+    const { key, name } = groupName(run.team_assigned);
+    const group = groups.get(key) || { key: key || "none", name: name || "(No team)", runs: 0, stops: 0, miles: 0, hours: 0, other: !key };
+    group.runs += 1;
+    group.stops += Number(run.stops) || 0;
+    group.miles += Number(run.estimated_mileage) || 0;
+    group.hours += (Number(run.estimated_duration) || 0) / 3600;
+    groups.set(key, group);
+  }
+  const sorted = [...groups.values()]
+    .map((group) => ({ ...group, miles: Math.round(group.miles), hours: Math.round(group.hours * 10) / 10 }))
+    .sort((a, b) => b.runs - a.runs || b.stops - a.stops || a.name.localeCompare(b.name));
+  return foldRest(sorted, limit, "All other teams", ["runs", "stops", "miles", "hours"]);
+}
+
+export const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+/**
+ * Install days in the range: projects whose Arrival From date falls on each
+ * weekday of each week (weeks start Monday). Returns the weeks (with a count
+ * per weekday), the highest single-day count, and the total.
+ */
+export function installHeatmap({ projects = [], range }) {
+  const weeks = [];
+  const end = fromKey(range.to);
+  const cursor = fromKey(bucketOf(range.from, true));
+  while (cursor <= end) {
+    weeks.push({ key: toKey(cursor), label: `${MONTHS[cursor.getUTCMonth()]} ${cursor.getUTCDate()}`, counts: [0, 0, 0, 0, 0, 0, 0], total: 0 });
+    cursor.setUTCDate(cursor.getUTCDate() + 7);
+  }
+  const byKey = new Map(weeks.map((week) => [week.key, week]));
+  let max = 0;
+  let total = 0;
+  for (const project of projects) {
+    const day = dayKey(project.install_start);
+    if (!inRange(day, range)) continue;
+    const week = byKey.get(bucketOf(day, true));
+    if (!week) continue;
+    const weekday = (fromKey(day).getUTCDay() + 6) % 7;
+    week.counts[weekday] += 1;
+    week.total += 1;
+    total += 1;
+    max = Math.max(max, week.counts[weekday]);
+  }
+  return { weeks, max, total };
+}
